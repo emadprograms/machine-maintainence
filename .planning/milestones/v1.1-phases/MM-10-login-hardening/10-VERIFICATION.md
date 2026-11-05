@@ -1,7 +1,7 @@
 ---
 phase: MM-10-login-hardening
 verified: 2026-11-05T11:55:00Z
-status: passed
+status: superseded in part (throttle removed 2026-11-05)
 score: 5/5 must-haves verified
 covered_files:
   - .planning/phases/MM-10-login-hardening/10-01-PLAN.md
@@ -18,7 +18,10 @@ behavior_unverified: 0
 
 **Phase Goal:** Guessing passwords over the LAN is slow and visible.
 **Verified:** 2026-11-05
-**Status:** passed
+**Status:** superseded in part — the throttle described below was removed on
+2026-11-05 and replaced with a failure log. Must-haves 1, 3 and 4 no longer
+describe shipping code. The report is kept because it records what passed, and
+the amendment at the end records what changed.
 
 *Auditors are not installed in this environment (`agents_installed: false`), so
 the audit ran inline against live probes and the suite.*
@@ -118,3 +121,39 @@ port was free afterwards.
 - A determined attacker using many source addresses (a botnet, or ARP spoofing
   several IPs on the LAN). Per-source throttling cannot see a distributed attack;
   detecting one is a different feature. AR-10-02.
+
+---
+
+## Amendment 2026-11-05 — the mechanism verified here was removed
+
+The report above is an accurate record of a phase that shipped a throttle. That
+throttle no longer exists.
+
+**Must-haves that no longer describe shipping code:**
+
+| # | Must-have | Now |
+|---|---|---|
+| 1 | Five failures make the next attempt a 429 with the wait stated | **Removed.** Failures are recorded; nothing is refused and no wait is stated |
+| 2 | A successful login clears that source's count | **Retained in substance** — a successful sign-in adds no failure entry |
+| 3 | The block expires on its own, no stored flag | **Superseded** — there is no block |
+| 4 | An unknown email counts as a failure | **Retained** — recorded identically, still not an account oracle |
+| 5 | `X-Forwarded-For` cannot escape the throttle | **Moot** — no per-source state to escape |
+
+**What replaced it, and how it is verified now:**
+
+| New behaviour | Evidence |
+|---|---|
+| Failed sign-ins are written to `starter/data/login-failures.log` | smoke: file exists, ≥40 lines after 40 failures |
+| Each line carries a timestamp, source address, attempted address and reason | smoke: field-by-field assertions |
+| Forty failures in a row are all identical 401s | smoke: "no limit reached", measured under 200 ms per attempt |
+| Nothing is delayed | smoke: 40 attempts complete well under the 8 s a 200 ms delay would need |
+| The password is never written | smoke: proved to fail when a fragment was deliberately logged |
+| A good sign-in adds no failure entry | smoke: log line count unchanged |
+| An unknown address is recorded like any other | smoke: invented addresses produce entries |
+
+**Suite:** 138 checks, 0 failures (was 145; the removed assertions covered the
+removed mechanism).
+
+**Live probe at the time of amendment:** six consecutive wrong passwords all
+returned 401 with no `Retry-After` header and no mention of a wait, and the log
+gained six lines.

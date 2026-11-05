@@ -1,7 +1,7 @@
 ---
 phase: "10"
 slug: "login-hardening"
-status: validated
+status: validated (amended — throttle rows superseded 2026-11-05)
 nyquist_compliant: true
 wave_0_complete: true
 created: "2026-11-05"
@@ -80,3 +80,26 @@ falling 900 → 450 → gone.
 - [x] The suite refuses to run against an orphaned server
 
 **Approval:** validated — 145 checks, 0 failures.
+
+---
+
+## Amendment 2026-11-05 — throttle rows superseded
+
+The five task rows above verify a throttle that has been removed. They are left
+in place as history; the rows below supersede them and describe what ships.
+
+| Task | Requirement | Secure behaviour | Evidence | Status |
+|---|---|---|---|---|
+| 10-02-01 | AUTH-01 | Failures are recorded with timestamp, source and attempted address | smoke: "failed sign-ins are written to a log", field assertions | ✅ passed |
+| 10-02-02 | AUTH-01 | Nobody is refused and nothing is delayed | smoke: "forty wrong passwords … no limit reached", "the attempts were not slowed down" | ✅ passed |
+| 10-02-03 | AUTH-02 | A good sign-in adds no failure entry | smoke: "a successful sign-in adds no failure entry" | ✅ passed |
+| 10-02-04 | — | The password never reaches the log | smoke: proved to fail when a fragment was logged | ✅ passed |
+| 10-02-05 | AUTH-03 | No throttle exists, so nothing can lock anyone out | structural: `throttle.js` and the 429 gate are absent from the source | ✅ passed |
+
+**Nyquist check on the replacement assertions.** Each was proved to fail:
+stopping the log write broke 7 of them; reintroducing a throttle broke 5;
+adding a 250 ms delay broke the timing assertion; logging the password broke the
+leak assertion. The timing assertion is the weakest of these — it allows 200 ms
+per attempt, so it catches a deliberate sleep but not micro-optimisation.
+
+**Approval:** amended — 138 checks, 0 failures.

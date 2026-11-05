@@ -89,3 +89,24 @@ connected to that orphan on port 3999 and spoke to an old process with an old
 database — producing a page of nonsense failures. The suite now refuses to start
 if the port is occupied, and kills its child on every exit path. Both were
 verified by crashing it deliberately.
+
+---
+
+## Amendment 2026-11-05 — superseded by decision
+
+Everything above describes a throttle that was built, verified and then removed.
+It is kept because the reasoning about *why a stored lock is wrong* still holds
+and still explains the design that replaced it.
+
+**What changed:** failed sign-ins are now recorded to
+`starter/data/login-failures.log` and nobody is refused or delayed. The
+argument that account-keyed state turns an attacker into a denial of service was
+correct; the conclusion drawn from it — that per-source blocking was therefore
+safe — was wrong, because a technician locked out of their own workshop needs no
+attacker to suffer it.
+
+**Removed:** `throttle.js`, the 429 gate, `Retry-After`, the client countdown,
+and the ten throttle assertions. **Added:** `login-log.js` and nine assertions
+covering the log.
+
+**Files now:** `starter/login-log.js`, `starter/server.js`, `starter/scripts/smoke-test.js`.
