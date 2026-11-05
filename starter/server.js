@@ -45,14 +45,21 @@ const send = (res, status, body) => {
   res.writeHead(status, JSON_HEADERS);
   res.end(JSON.stringify(body));
 };
-const readBody = (req) => new Promise((resolve) => {
+// A malformed body is a client mistake, not a server crash. Rejecting with a
+// typed error lets route() answer every handler with the same readable 400 —
+// otherwise each handler has to remember a null check, and the one that forgets
+// leaks "Cannot read properties of null" to the user (found in review of 7).
+class BadBody extends Error {}
+
+const readBody = (req) => new Promise((resolve, reject) => {
   let data = '';
   req.on('data', (c) => {
     data += c;
     if (data.length > 1_000_000) req.destroy();   // 1 MB cap: no giant photo payloads
   });
   req.on('end', () => {
-    try { resolve(data ? JSON.parse(data) : {}); } catch { resolve(null); }
+    if (!data) return resolve({});
+    try { resolve(JSON.parse(data)); } catch { reject(new BadBody('invalid JSON')); }
   });
 });
 
@@ -66,6 +73,9 @@ const route = (fn, opts = {}) => async (req, res) => {
     req.user = user;
     await fn(req, res);
   } catch (err) {
+    if (err instanceof BadBody) {
+      return send(res, 400, { error: 'The request body is not valid JSON' });
+    }
     // Turn database constraint errors into messages a workshop user can act on.
     const raw = String(err.message);
     if (raw.includes('FOREIGN KEY')) {
@@ -84,6 +94,27 @@ const route = (fn, opts = {}) => async (req, res) => {
 
 const id = (v) => Number(v);
 const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+
+/** A whole, non-negative count. Returns { value } or { error } — never clamps,
+ *  because silently turning -5 into 0 would hide the data-entry mistake. */
+const MAX_COUNT = 1_000_000;
+function stockValue(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return { value: fallback };
+  const n = Number(raw);
+  if (!Number.isInteger(n)) return { error: 'Quantity must be a whole number' };
+  if (n < 0) return { error: 'Quantity cannot be negative' };
+  if (n > MAX_COUNT) return { error: 'Quantity is unrealistically large' };
+  return { value: n };
+}
+
+/** A non-negative money value, or null to clear it. */
+function priceValue(raw) {
+  if (raw === undefined || raw === null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return { error: 'Unit price must be a number' };
+  if (n < 0) return { error: 'Unit price cannot be negative' };
+  return { value: n };
+}
 
 // ------------------------------------------------------------------ API
 const api = {
@@ -178,10 +209,69 @@ const api = {
   'POST /api/parts': route(async (req, res) => {
     const b = await readBody(req);
     if (!b?.name?.trim()) return send(res, 400, { error: 'Name is required' });
-    const r = run('INSERT INTO parts (name, reference, qty, unit_price, supplier) VALUES (?,?,?,?,?)',
-      b.name.trim(), b.reference || null, Number(b.qty) || 0,
-      b.unit_price == null ? null : Number(b.unit_price), b.supplier || null);
+    const stock = stockValue(b.qty, 0);
+    if (stock.error) return send(res, 400, { error: stock.error });
+    const level = stockValue(b.reorder_level, 5);
+    if (level.error) return send(res, 400, { error: level.error.replace('Quantity', 'Reorder level') });
+    const price = priceValue(b.unit_price);
+    if (price.error) return send(res, 400, { error: price.error });
+    const r = run(`INSERT INTO parts (name, reference, qty, unit_price, supplier, reorder_level)
+                   VALUES (?,?,?,?,?,?)`,
+      b.name.trim(), b.reference || null, stock.value, price.value, b.supplier || null, level.value);
     send(res, 201, get('SELECT * FROM parts WHERE id = ?', r.lastInsertRowid));
+  }),
+
+  // Restock or correct a part. Every field is optional: the row is read first and
+  // an absent key keeps its current value, so correcting a typo in the name cannot
+  // quietly zero the stock (bug class the reviewed repo hit).
+  'PUT /api/parts/:id': route(async (req, res) => {
+    // readBody rejects on malformed JSON, so `b` is always an object here.
+    const b = await readBody(req);
+    const before = get('SELECT * FROM parts WHERE id = ?', id(req.params.id));
+    if (!before) return send(res, 404, { error: 'Part not found' });
+
+    if (b.name !== undefined && !String(b.name).trim()) {
+      return send(res, 400, { error: 'Name cannot be empty' });
+    }
+    const stock = b.qty === undefined ? { value: before.qty } : stockValue(b.qty, before.qty);
+    if (stock.error) return send(res, 400, { error: stock.error });
+    const level = b.reorder_level === undefined
+      ? { value: before.reorder_level }
+      : stockValue(b.reorder_level, before.reorder_level);
+    if (level.error) return send(res, 400, { error: level.error.replace('Quantity', 'Reorder level') });
+    const price = b.unit_price === undefined ? { value: before.unit_price } : priceValue(b.unit_price);
+    if (price.error) return send(res, 400, { error: price.error });
+
+    run(`UPDATE parts SET name = ?, reference = ?, qty = ?, unit_price = ?, supplier = ?,
+                          reorder_level = ?
+         WHERE id = ?`,
+      b.name === undefined ? before.name : String(b.name).trim(),
+      b.reference === undefined ? before.reference : (b.reference || null),
+      stock.value, price.value,
+      b.supplier === undefined ? before.supplier : (b.supplier || null),
+      level.value, before.id);
+    send(res, 200, get('SELECT * FROM parts WHERE id = ?', before.id));
+  }),
+
+  // Deleting is allowed only for a part no job has consumed. The pre-check exists
+  // to build a message naming the jobs — relying on ON DELETE RESTRICT alone would
+  // surface "FOREIGN KEY constraint failed", which tells a workshop nothing.
+  'DELETE /api/parts/:id': route(async (req, res) => {
+    const part = get('SELECT * FROM parts WHERE id = ?', id(req.params.id));
+    if (!part) return send(res, 404, { error: 'Part not found' });
+
+    const usedOn = all(`SELECT w.id, w.title FROM work_order_parts wop
+                        JOIN work_orders w ON w.id = wop.work_order_id
+                        WHERE wop.part_id = ? ORDER BY w.created_at DESC`, part.id);
+    if (usedOn.length) {
+      const titles = usedOn.map((w) => w.title).join(', ');
+      return send(res, 400, {
+        error: `This part was used on: ${titles}. Remove it from those jobs first.`,
+        work_orders: usedOn,
+      });
+    }
+    run('DELETE FROM parts WHERE id = ?', part.id);
+    send(res, 200, { ok: true });
   }),
 
   // Which parts were used on this job.

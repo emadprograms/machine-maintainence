@@ -153,25 +153,92 @@ async function advance(id, status) {
 }
 
 // ------------------------------------------------------------------ parts
+let partsCache = [];
+let editingPart = null;              // id of the row currently in edit mode
+
+// The badge rule lives in one place so the UI and the tests cannot disagree:
+// out of stock, at-or-below the part's own reorder level, or healthy.
+function stockCell(p) {
+  if (p.qty <= 0) return badge('out', 'red');
+  if (p.qty <= p.reorder_level) return badge(p.qty, 'amber');
+  return esc(p.qty);
+}
+
 async function loadParts() {
-  const rows = await api('/parts');
-  $('#parts-rows').innerHTML = rows.map((p) => `
-    <tr>
-      <td>${esc(p.name)}</td><td>${esc(p.reference || '—')}</td>
-      <td>${p.qty <= 0 ? badge('out', 'red') : p.qty < 5 ? badge(p.qty, 'amber') : esc(p.qty)}</td>
-      <td>${p.unit_price == null ? '—' : esc(p.unit_price)}</td>
-    </tr>`).join('') || '<tr><td colspan="4" class="muted">No parts yet.</td></tr>';
+  partsCache = await api('/parts');
+  $('#parts-rows').innerHTML = partsCache.map((p) => (p.id === editingPart
+    ? `<tr>
+        <td><input id="edit-name-${p.id}" value="${esc(p.name)}" /></td>
+        <td><input id="edit-ref-${p.id}" value="${esc(p.reference || '')}" /></td>
+        <td><input id="edit-qty-${p.id}" type="number" min="0" value="${p.qty}" /></td>
+        <td><input id="edit-price-${p.id}" type="number" step="0.01" value="${p.unit_price ?? ''}" /></td>
+        <td><input id="edit-reorder-${p.id}" type="number" min="0" value="${p.reorder_level}" /></td>
+        <td class="actions">
+          <button class="small" onclick="savePart(${p.id})">Save</button>
+          <button class="small" onclick="cancelPart()">Cancel</button>
+        </td>
+      </tr>`
+    : `<tr>
+        <td>${esc(p.name)}</td><td>${esc(p.reference || '—')}</td>
+        <td>${stockCell(p)}</td>
+        <td>${p.unit_price == null ? '—' : esc(p.unit_price)}</td>
+        <td>${esc(p.reorder_level)}</td>
+        <td class="actions">
+          <button class="small" onclick="editPart(${p.id})">Edit</button>
+          <button class="small danger" onclick="removePart(${p.id})">Delete</button>
+        </td>
+      </tr>`)).join('') || '<tr><td colspan="6" class="muted">No parts yet.</td></tr>';
+}
+
+function editPart(idToEdit) {
+  editingPart = idToEdit;
+  loadParts();
+}
+
+function cancelPart() {
+  editingPart = null;
+  loadParts();
+}
+
+async function savePart(idToSave) {
+  try {
+    await api(`/parts/${idToSave}`, { method: 'PUT', body: JSON.stringify({
+      name: $(`#edit-name-${idToSave}`).value,
+      reference: $(`#edit-ref-${idToSave}`).value,
+      qty: $(`#edit-qty-${idToSave}`).value,
+      unit_price: $(`#edit-price-${idToSave}`).value,
+      reorder_level: $(`#edit-reorder-${idToSave}`).value,
+    })});
+    editingPart = null;
+    loadParts();
+  } catch (e) { alert(e.message); }
+}
+
+async function removePart(idToRemove) {
+  // Look the name up by id rather than interpolating it into the onclick — a part
+  // called O'Brien or one containing a quote must not break the button.
+  const part = partsCache.find((p) => p.id === idToRemove);
+  if (!confirm(`Delete the part "${part ? part.name : ''}"?`)) return;
+  try {
+    await api(`/parts/${idToRemove}`, { method: 'DELETE' });
+    loadParts();
+  } catch (e) { alert(e.message); }
 }
 
 async function addPart() {
   const name = $('#p-name').value.trim();
   if (!name) return alert('Name is required');
-  await api('/parts', { method: 'POST', body: JSON.stringify({
-    name, reference: $('#p-ref').value, qty: $('#p-qty').value, unit_price: $('#p-price').value,
-  })});
-  ['#p-name', '#p-ref', '#p-price'].forEach((s) => { $(s).value = ''; });
-  $('#p-qty').value = '0';
-  loadParts();
+  try {
+    await api('/parts', { method: 'POST', body: JSON.stringify({
+      name, reference: $('#p-ref').value, qty: $('#p-qty').value,
+      unit_price: $('#p-price').value, reorder_level: $('#p-reorder').value,
+      supplier: $('#p-supplier').value,
+    })});
+    ['#p-name', '#p-ref', '#p-price', '#p-supplier'].forEach((s) => { $(s).value = ''; });
+    $('#p-qty').value = '0';
+    $('#p-reorder').value = '5';
+    loadParts();
+  } catch (e) { alert(e.message); }
 }
 
 // ----------------------------------------------------- preventive maint.

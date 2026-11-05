@@ -49,11 +49,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function makeClient() {
   let cookie = '';
-  return async (path, { method = 'GET', body } = {}) => {
+  // `rawBody` sends bytes verbatim, so a test can prove what the server does with
+  // a body it cannot parse. Without it this client can only ever send valid JSON.
+  return async (path, { method = 'GET', body, rawBody } = {}) => {
     const res = await fetch(BASE + path, {
       method,
       headers: { 'content-type': 'application/json', cookie },
-      body: body == null ? undefined : JSON.stringify(body),
+      body: rawBody !== undefined ? rawBody : (body == null ? undefined : JSON.stringify(body)),
     });
     const setCookie = res.headers.get('set-cookie');
     if (setCookie) cookie = setCookie.split(';')[0];
@@ -124,6 +126,67 @@ await c(`/api/work-orders/${wo.data.id}/parts`, { method: 'POST', body: { part_i
 const lines = (await c(`/api/work-orders/${wo.data.id}/parts`)).data;
 ok('same part twice merges into one line', lines.length === 1 && lines[0].qty === 3,
   JSON.stringify(lines));
+
+console.log('\nPhase 7 — parts are maintainable');
+// The one-way ratchet: v1.0 could consume stock but never restore it.
+const restocked = await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 40 } });
+ok('stock can be raised back up', restocked.status === 200 && restocked.data.qty === 40,
+  JSON.stringify(restocked.data));
+const renamed = await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { name: 'Seal kit 35mm' } });
+ok('part can be renamed after creation',
+  renamed.status === 200 && renamed.data.name === 'Seal kit 35mm');
+ok('renaming does not disturb the stock (partial update)', renamed.data.qty === 40,
+  `qty=${renamed.data.qty}`);
+ok('negative quantity rejected, not clamped',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: -5 } })).status === 400);
+ok('non-numeric quantity rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 'abc' } })).status === 400);
+ok('fractional quantity rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 1.5 } })).status === 400);
+ok('negative unit price rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { unit_price: -1 } })).status === 400);
+
+// Deleting a part that a job consumed must explain itself, not leak SQL.
+const inUse = await c(`/api/parts/${part.data.id}`, { method: 'DELETE' });
+ok('deleting a part used on a job is refused', inUse.status === 400, JSON.stringify(inUse.data));
+ok('the refusal names the work order', String(inUse.data.error).includes(wo.data.title),
+  JSON.stringify(inUse.data.error));
+ok('the refusal does not leak SQL', !/FOREIGN KEY|constraint/i.test(inUse.data.error),
+  JSON.stringify(inUse.data.error));
+
+// A part nobody used can go, and it leaves the list.
+const spare = await c('/api/parts', { method: 'POST', body: { name: 'Unused gasket', qty: 1 } });
+const beforeCount = (await c('/api/parts')).data.length;
+ok('unused part deletes cleanly',
+  (await c(`/api/parts/${spare.data.id}`, { method: 'DELETE' })).status === 200);
+ok('deleted part disappears from the list',
+  (await c('/api/parts')).data.length === beforeCount - 1);
+ok('deleting a part that never existed is a 404',
+  (await c('/api/parts/999999', { method: 'DELETE' })).status === 404);
+
+// Reorder level: per part, migrated, inclusive at the boundary.
+ok('reorder level defaults to 5', part.data.reorder_level === 5,
+  `reorder_level=${part.data.reorder_level}`);
+const atLevel = await c('/api/parts', { method: 'POST', body: { name: 'At level', qty: 2, reorder_level: 2 } });
+ok('reorder level is stored per part',
+  atLevel.status === 201 && atLevel.data.reorder_level === 2 && atLevel.data.qty === 2);
+const otherLevel = await c('/api/parts', { method: 'POST', body: { name: 'Same qty, other level', qty: 2, reorder_level: 0 } });
+ok('two parts at the same qty carry different levels',
+  otherLevel.data.qty === atLevel.data.qty && otherLevel.data.reorder_level !== atLevel.data.reorder_level);
+ok('reorder level is inclusive at the boundary (qty == level is low)',
+  atLevel.data.qty <= atLevel.data.reorder_level && !(otherLevel.data.qty <= otherLevel.data.reorder_level));
+ok('negative reorder level rejected',
+  (await c('/api/parts', { method: 'POST', body: { name: 'Bad level', reorder_level: -1 } })).status === 400);
+
+// A malformed body must be a readable 400, never a leaked TypeError. This held
+// for no handler before phase 7: readBody resolved null and handlers dereferenced it.
+const malformed = await c(`/api/parts/${part.data.id}`, {
+  method: 'PUT', rawBody: '{not json',
+});
+ok('malformed JSON is a 400', malformed.status === 400, JSON.stringify(malformed.data));
+ok('malformed JSON does not leak a TypeError',
+  !/Cannot read propert|TypeError|undefined/i.test(String(malformed.data.error)),
+  JSON.stringify(malformed.data.error));
 
 console.log('\nPhase 2b — user management');
 const users0 = await c('/api/users');

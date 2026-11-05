@@ -60,12 +60,13 @@ CREATE TABLE IF NOT EXISTS work_orders (
 );
 
 CREATE TABLE IF NOT EXISTS parts (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  reference  TEXT,
-  qty        INTEGER NOT NULL DEFAULT 0,
-  unit_price REAL,
-  supplier   TEXT
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name          TEXT NOT NULL,
+  reference     TEXT,
+  qty           INTEGER NOT NULL DEFAULT 0,
+  unit_price    REAL,
+  supplier      TEXT,
+  reorder_level INTEGER NOT NULL DEFAULT 5
 );
 
 -- Which parts went into which job (many-to-many).
@@ -100,6 +101,9 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('equipment', 'manufacturer', 'TEXT');
+// Fixed threshold of 5 became per-part in phase 7; the default keeps every
+// existing part behaving exactly as it did before the upgrade.
+ensureColumn('parts', 'reorder_level', 'INTEGER NOT NULL DEFAULT 5');
 ensureColumn('users', 'active', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('users', 'created_at', "TEXT");
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example

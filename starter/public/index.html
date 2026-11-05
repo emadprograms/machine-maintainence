@@ -141,15 +141,17 @@
         <div class="form-grid">
           <input id="p-name" placeholder="Name (required)" />
           <input id="p-ref" placeholder="Reference" />
-          <input id="p-qty" type="number" placeholder="Quantity" value="0" />
+          <input id="p-qty" type="number" min="0" placeholder="Quantity" value="0" />
           <input id="p-price" type="number" step="0.01" placeholder="Unit price" />
+          <input id="p-reorder" type="number" min="0" placeholder="Reorder at" value="5" />
+          <input id="p-supplier" placeholder="Supplier" />
         </div>
         <p></p>
         <button class="primary" onclick="addPart()">Add part</button>
       </div>
       <div class="card">
         <h2>Spare parts</h2>
-        <table><thead><tr><th>Name</th><th>Reference</th><th>In stock</th><th>Unit price</th></tr></thead>
+        <table><thead><tr><th>Name</th><th>Reference</th><th>In stock</th><th>Unit price</th><th>Reorder at</th><th></th></tr></thead>
           <tbody id="parts-rows"></tbody></table>
       </div>
     </section>
