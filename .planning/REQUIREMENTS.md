@@ -1,106 +1,80 @@
-# Requirements: Machine Maintenance — v1.1 Operable
+# Requirements: Machine Maintenance — v2.0 Dashboard
 
-**Milestone:** v1.1 Operable
+**Milestone:** v2.0 Dashboard
 **Status:** Defining — opened 2026-11-05
-**Context:** v1.0 shipped all eleven of its requirements (archived in
-`.planning/milestones/v1.0-REQUIREMENTS.md`). This milestone closes the gap between "records
-can be created" and "a workshop can run on it".
+**Context:** v1.0 shipped the working core; v1.1 made every entity operable. Both
+are archived in `.planning/milestones/`. This milestone changes how the
+application presents itself rather than what it can do.
 
 ## Why this milestone exists
 
-Every gap below was found by probing the running v1.0 build, not by reading the code:
+The app has seven screens behind a row of top tabs and no landing page. A
+technician signing in lands on "Due soon", which answers one question and
+nothing else: how many open jobs are there, how much stock is below its reorder
+level, which machines are down. Those answers exist in the database and are
+reachable only by visiting four separate pages and counting by eye.
 
-| Probe | v1.0 behaviour |
+The tabs also do not scale. Seven is already at the width where labels compete
+for space, and the admin-only screens appearing and disappearing from the row
+makes the navigation move depending on who signed in.
+
+## v2.0 Requirements
+
+### Navigation (NAV)
+
+- [ ] **NAV-01** — A persistent sidebar lists every screen the signed-in user may reach, with the current screen visibly marked
+- [ ] **NAV-02** — The sidebar collapses to an icon rail and expands back, and the chosen state survives a page reload
+- [ ] **NAV-03** — The sidebar shows only screens the user is permitted to open; a technician never sees Users or Backup
+- [ ] **NAV-04** — The existing screens remain reachable and unchanged in behaviour; this milestone moves the navigation, it does not alter what the screens do
+
+### Dashboard (DASH)
+
+- [ ] **DASH-01** — Signing in lands on a dashboard showing, at minimum: open work orders, maintenance due within the warning window, parts at or below their reorder level, and machines marked down
+- [ ] **DASH-02** — Each summary shows the count **and** the few items that need action, so the user can act without navigating away
+- [ ] **DASH-03** — Each summary links to the screen that holds the full list
+- [ ] **DASH-04** — The dashboard is role-aware: a technician sees the operational summaries and no user or backup information
+- [ ] **DASH-05** — An empty state is honest — "no work orders open" reads differently from "could not load"
+
+### Screens (SCREEN)
+
+- [ ] **SCREEN-01** — Due soon, Machines, Work orders, Maintenance, Spare parts, Users and Backup share one visual language: consistent headings, table styling, empty states and action placement
+- [ ] **SCREEN-02** — Every list has a defined empty state that names what the screen is for and, where the user can act, offers the action
+- [ ] **SCREEN-03** — Every destructive action states its consequence before it happens
+- [ ] **SCREEN-04** — The app is usable at a laptop width and does not require horizontal scrolling to reach a primary action
+
+## Constraints (unchanged, and binding)
+
+- Plain JavaScript, no framework, no build step, no CDN, no external fonts or images
+- Zero `node_modules`; the offline audit stays `OFFLINE-SAFE`
+- Runs on Windows via `start.bat`
+- **Readability is the bar**, not a line count: a beginner can read every file in
+  one sitting, and any file over ~600 lines is a signal to split it. The shell and
+  the dashboard are new browser modules, not more lines in `app.js`.
+
+## Out of Scope (v2.0)
+
+| Not doing | Why |
 |---|---|
-| `PUT /api/parts/:id` | **404 — no route exists.** Stock can only decrease. |
-| `DELETE /api/parts/:id` | **404 — no route exists.** A mistyped part is permanent. |
-| `POST /api/pm/:id/done` with `{"on": "2026-01-15"}` | Stored today's date instead, returned 200. `req.body` is never assigned anywhere in `server.js`, so the field is silently dropped. |
-
-The consequence is a ratchet: `parts.qty` decrements when a part is used on a job and nothing
-increments it. Once a part reaches zero it is unusable forever, and the only workaround is a
-duplicate row with the same name and its own stock count. Reporting features were therefore
-deferred: a low-stock alert would fire about a number nobody can correct.
-
-## v1.1 Requirements
-
-### Parts (PART)
-
-- [x] **PART-01** — User can change the stock quantity of an existing part, raising or lowering it
-- [x] **PART-02** — User can edit a part's name, reference, supplier and unit price after creation
-- [x] **PART-03** — User can delete a part that has never been used on a work order
-- [x] **PART-04** — Deleting a part that *has* been used is refused with a message naming the jobs it appears on, not a raw foreign-key error
-- [x] **PART-05** — Each part carries its own reorder level; the low-stock badge reflects that level rather than a fixed threshold of 5
-
-### Work orders (WO)
-
-- [x] **WO-01** — User can assign a work order to a named user, and reassign or unassign it
-- [x] **WO-02** — An assigned work order shows who owns it in the list and on the machine's history
-- [x] **WO-03** — User can edit a work order's title, notes and priority after creation
-- [x] **WO-04** — A technician can edit work orders but still cannot delete machines or manage users (v1.0's role boundary is preserved)
-
-### Preventive maintenance (PM)
-
-- [x] **PM-01** — "Mark done" honours a supplied completion date instead of silently using today
-- [x] **PM-02** — An invalid or unparseable completion date is rejected with a 400 naming the field, never silently substituted
-- [x] **PM-03** — A completion date in the future is refused, because it would move `next_due` beyond a maintenance cycle that has not happened
-
-### Reporting (CSV)
-
-- [x] **CSV-01** — User can download the work-order list as a CSV file that opens in Excel without a manual import step
-- [x] **CSV-02** — User can download the parts list (with stock, reorder level and unit price) as CSV
-- [x] **CSV-03** — A CSV export preserves the filters currently applied in the UI, so what is downloaded matches what is on screen
-- [x] **CSV-04** — Exported text is quoted and escaped correctly, so a title containing a comma, quote or newline does not corrupt the columns
-
-### Authentication (AUTH)
-
-- [x] **AUTH-01** — Failed sign-ins are recorded with a timestamp, the source address and the address attempted, so guessing is visible — **amended 2026-11-05**
-  - *Originally:* "Repeated failed logins from the same source are throttled, and the throttle is stated in the error message."
-  - *Why it changed:* blocking was built and verified, then removed by decision. This app has no password reset and no second admin by default, so a block locks a technician out of their own workshop — a technician who cannot afford to be locked out, to slow an attacker who already had to be on the LAN. Visibility does not require refusing anyone.
-  - *Cost accepted:* guessing is now unlimited and fast. The compensating controls are a random unguessable admin password and the 8-character minimum for everyone else. Raising that minimum is the control that would actually address this, and it is not in scope here.
-- [x] **AUTH-02** — A successful sign-in adds no failure entry, and failure records are never written for it
-- [x] **AUTH-03** — Superseded 2026-11-05: there is no throttle, so there is no mechanism that can lock a legitimate user out. The requirement existed to constrain the throttle; with the throttle gone the constraint is met trivially.
-  - *Originally:* "Throttling cannot be used to lock a legitimate user out permanently; the block expires on its own."
-
-## Future Requirements (deferred, with reasons)
-
-| Requirement | Why deferred |
-|---|---|
-| Audit log — who changed what, when | Real value, but attribution on work orders (WO-01/WO-02) covers the dominant daily need. A full append-only log touches every write path and belongs in its own milestone. |
-| Concurrency control / conflict resolution | Last-write-wins is acceptable for a workshop of 3–5 people on a LAN. Documented as a limitation rather than engineered around. |
-| Service history table (every completed PM with date and user) | Desirable, but it changes PM from "a schedule" to "a log plus a schedule". Larger than one milestone's worth of schema change; revisit once WO edit/assign lands. |
-| Low-stock *alerting* (dashboard banner, digest file) | The data must be correctable first (PART-01, PART-05). Alerting on unfixable numbers is noise. This is the natural headline for v1.2. |
-| Per-machine work-order history view | Depends on WO-01/WO-02 so the history can say who did the work. Revisit in v1.2. |
-
-## Out of Scope (v1.1)
-
-- **Multi-user real-time updates** — no websockets; the app is a LAN page that refreshes on action.
-- **Password reset by email** — the LAN has no mail relay. An admin resets a password; that exists.
-- **Bulk CSV import** — export first, learn the real column shape from use, import later.
-- **Anything needing internet** — unchanged from v1.0; the offline audit still gates every release.
+| Dark mode / theming | Presentation for its own sake; no operational value, and doubles the styling surface to verify |
+| Charts and graphs | The data is small and discrete (counts and short lists). A chart of four numbers is decoration |
+| Drag-and-drop dashboard customisation | Needs persisted per-user layout and a settings screen; not worth it at this scale |
+| Mobile layout beyond "does not break" | The workshop runs on a desktop or laptop. A phone layout is a separate project |
+| Rewriting the server API for the dashboard | The existing endpoints are tested; reuse is the default (see the phase plan for the decision) |
 
 ## Traceability
 
-| REQ-ID | Phase | Status | Evidence |
+| REQ | Phase | Status | Evidence |
 |---|---|---|---|
-| PART-01 | 7 | Complete | `PUT /api/parts/:id`; smoke "stock can be raised back up" |
-| PART-02 | 7 | Complete | smoke "part can be renamed after creation", "renaming does not disturb the stock" |
-| PART-03 | 7 | Complete | smoke "unused part deletes cleanly", "deleted part disappears from the list" |
-| PART-04 | 7 | Complete | smoke "the refusal names the work order", "the refusal does not leak SQL" |
-| PART-05 | 7 | Complete | smoke "two parts at the same qty carry different levels", "inclusive at the boundary" |
-| WO-01 | 8 | Complete | `POST`/`PATCH` accept `assigned_to`; smoke "can be assigned", "can be reassigned", "can be unassigned" |
-| WO-02 | 8 | Complete | smoke "the list resolves the owner name", "a disabled owner is still named on the job" |
-| WO-03 | 8 | Complete | smoke "title can be edited", "editing the title leaves the status alone", "empty title refused" |
-| WO-04 | 8 | Complete | smoke "technician can edit a work order" + 403 on users and machine delete |
-| PM-01 | 9 | Complete | — |
-| PM-02 | 9 | Complete | — |
-| PM-03 | 9 | Complete | — |
-| CSV-01 | 9 | Complete | — |
-| CSV-02 | 9 | Complete | — |
-| CSV-03 | 9 | Complete | — |
-| CSV-04 | 9 | Complete | — |
-| AUTH-01 | 10 | Complete (amended) | Failure log replaces the throttle — see the requirement for the reversal |
-| AUTH-02 | 10 | Complete | smoke: "a successful sign-in adds no failure entry" |
-| AUTH-03 | 10 | Superseded | No throttle exists to constrain; see the requirement |
-
-Status legend: Pending · Complete (verified by the smoke suite) · 🖥 additionally verified on
-Windows hardware.
+| NAV-01 | 11 | Pending | — |
+| NAV-02 | 11 | Pending | — |
+| NAV-03 | 11 | Pending | — |
+| NAV-04 | 11 | Pending | — |
+| DASH-01 | 12 | Pending | — |
+| DASH-02 | 12 | Pending | — |
+| DASH-03 | 12 | Pending | — |
+| DASH-04 | 12 | Pending | — |
+| DASH-05 | 12 | Pending | — |
+| SCREEN-01 | 13 | Pending | — |
+| SCREEN-02 | 13 | Pending | — |
+| SCREEN-03 | 13 | Pending | — |
+| SCREEN-04 | 13 | Pending | — |

@@ -8,26 +8,26 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 **A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.**
 
-## Current Milestone: v1.1 Operable
+## Current Milestone: v2.0 Dashboard
 
-**Goal:** Complete the operational coverage of a shipped, working application — every entity
-editable, stock that can go up as well as down, and work that belongs to somebody.
+**Goal:** Change how the application presents what it already knows — a sidebar that
+holds seven screens without moving, a dashboard that answers "what needs attention?"
+on sign-in, and one visual language across every screen.
 
-**Starting point:** v1.0 is a working application in daily-use terms: it runs offline on Windows,
-persists through power loss, enforces authentication and roles, and tracks machines, work orders,
-parts and recurring maintenance. What it lacks is *completeness of operations* — several records
-can be created but not corrected, and one input is silently discarded.
+**Starting point:** v1.1 is a complete, working application. Every entity is CRUD,
+dates are honoured, exports are real CSV, roles are enforced. What it lacks is a front
+door: seven screens behind a row of tabs, no landing page, and the four numbers that
+describe the workshop obtainable only by visiting four pages and counting.
 
 **Target features:**
-- Restock, edit and delete a part (today `qty` only ever decreases and a typo is permanent)
-- Assign a work order to a technician, and edit a work order after creation
-- Fix `mark done` silently ignoring a supplied date (`req.body` is never assigned)
-- Per-part reorder level replacing the hardcoded `qty < 5`
-- CSV export for work orders and parts
-- Login throttling
+- A persistent, collapsible sidebar replacing the top tabs, showing only permitted screens
+- A dashboard as the landing page for everyone, with counts and the items needing action
+- One visual language across Due soon, Machines, Work orders, Maintenance, Spare parts, Users and Backup
+- Honest empty states, and destructive actions that state their consequence
 
-**Accepted debt:** no audit log, no concurrency control — both deferred with reasons in
-REQUIREMENTS.md.
+**Accepted cost:** this is the largest presentation change so far. Both new browser
+surfaces (the shell and the dashboard) must be separate modules, because the
+readability constraint is the one this milestone is most likely to break.
 
 ## Requirements
 

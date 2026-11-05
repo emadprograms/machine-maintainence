@@ -11,7 +11,7 @@
 - Title, priority, owner and notes are editable after creation, while the technician boundary that v1.0 established is re-asserted in the same test block.
 - A completion date is stored, validated, or refused; req.body was assigned at the source
 - Work orders and parts export as RFC 4180 CSV that opens in Excel and matches the screen
-- Failed logins are throttled per source by arithmetic on timestamps, so the block expires without anything having to clear it
+- Failed logins were throttled per source, then the throttle was removed by decision in favour of recording failures; see the v1.1 audit amendment
 
 ---
 
