@@ -1,6 +1,6 @@
 ---
 phase: MM-07-parts-become-maintainable
-verified: 2026-11-05T10:10:00Z
+verified: 2026-11-05T11:35:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -13,7 +13,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:2dbb9c0dc4dd0d5f69468a69a8d89eca21caca5fb081e44c6e6ddd83f1499345"
+covered_digest: "v4:sha256:7af3036951bb7f1a264e00a7e17ea6b01f748348ba80e5b44a5d397225bf4ae2"
 behavior_unverified: 0
 ---
 
@@ -98,3 +98,34 @@ re-stamped:
   phase 7 behaviour is affected.
 
 Verdict unchanged: passed.
+
+---
+
+## Re-verification after phase 9
+
+Phase 9 changed all five files this phase covers (`server.js`, `db.js`,
+`public/app.js`, `public/index.html`, `scripts/smoke-test.js`), so the report went
+stale by design rather than by accident. Re-verified rather than re-stamped.
+
+**What phase 9 changed underneath this phase:** `readBody()` now caches its
+promise and `route()` assigns `req.body` for methods that carry a body; the
+parts list route reads `?low=`; the CSV export reuses the parts WHERE-builder;
+`closed_at` uses a new `nowStamp()`.
+
+**Re-probed on a fresh database (:3671):**
+
+| Must-have | Result |
+|---|---|
+| `reorder_level` is stored and editable | `PUT` → 1 |
+| A single-field `PUT` does not blank other fields | `{"qty":50}` left `name` = Bearing |
+| Negative and non-numeric quantities refused | `-1` → 400, `"abc"` → 400 |
+| `id` cannot be rewritten by a body | sent `{"id":99}` → row still 1 |
+| Low-stock filter | 1 row at/below reorder; 0 after qty raised above it |
+| Delete | 200 |
+
+**Suite:** 118 checks, 0 failures, unchanged for this phase's assertions. The
+low-stock filter is now additionally covered by a CSV export assertion.
+
+**One probe error worth recording:** the first re-check used `PATCH
+/api/parts/1` and got 404. The route is `PUT`, as planned and as the UI sends.
+The 404 was the probe's mistake, not a regression — no code changed.

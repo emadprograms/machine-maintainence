@@ -1,6 +1,6 @@
 ---
 phase: MM-08-work-belongs-to-somebody
-verified: 2026-11-05T10:00:00Z
+verified: 2026-11-05T11:35:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -13,7 +13,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:a5fe4c6dd8c170778d01ee681053b9e17e7e613495400a3f87a8329cc74ea38f"
+covered_digest: "v4:sha256:0fbf4230918ced0b05f3872f5e470add8f3620cd4e0af00cf355959b7f7d687a"
 behavior_unverified: 0
 ---
 
@@ -79,3 +79,30 @@ route still returns 403.
 ## Overall Verdict
 
 PASSED — every must-have has automated evidence.
+
+---
+
+## Re-verification after phase 9
+
+Phase 9 changed all five files this phase covers. Re-verified rather than
+re-stamped.
+
+**What phase 9 changed underneath this phase:** the work-order list route now
+applies a `?status=` filter through a shared WHERE-builder that the CSV export
+also uses; `closed_at` uses `nowStamp()`; `route()` now assigns `req.body`.
+
+**Re-probed on a fresh database (:3671):**
+
+| Must-have | Result |
+|---|---|
+| Assignment on create | `assigned_to: 2` |
+| Owner name resolved in the list | `assignee_name` = 'Sam T' |
+| Unassign | `assigned_to: null` |
+| Invalid owner is a readable 400 | `That person does not exist` |
+| Technician blocked from the staff directory | `/api/users` → 403 |
+| Technician's assignable list is narrow | keys exactly `['id','name']` |
+| Technician may edit a work order | `PATCH` → 200 |
+
+**Suite:** 118 checks, 0 failures. The shared filter builder introduced by phase
+9 does not drop the `LEFT JOIN` that keeps a departed technician's name on the
+job — asserted by "a disabled owner is still named on the job".
