@@ -25,11 +25,11 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 
 ### Parts (PART)
 
-- [ ] **PART-01** — User can change the stock quantity of an existing part, raising or lowering it
-- [ ] **PART-02** — User can edit a part's name, reference, supplier and unit price after creation
-- [ ] **PART-03** — User can delete a part that has never been used on a work order
-- [ ] **PART-04** — Deleting a part that *has* been used is refused with a message naming the jobs it appears on, not a raw foreign-key error
-- [ ] **PART-05** — Each part carries its own reorder level; the low-stock badge reflects that level rather than a fixed threshold of 5
+- [x] **PART-01** — User can change the stock quantity of an existing part, raising or lowering it
+- [x] **PART-02** — User can edit a part's name, reference, supplier and unit price after creation
+- [x] **PART-03** — User can delete a part that has never been used on a work order
+- [x] **PART-04** — Deleting a part that *has* been used is refused with a message naming the jobs it appears on, not a raw foreign-key error
+- [x] **PART-05** — Each part carries its own reorder level; the low-stock badge reflects that level rather than a fixed threshold of 5
 
 ### Work orders (WO)
 
@@ -76,12 +76,27 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 
 ## Traceability
 
-| Phase | Requirements |
-|---|---|
-| 7 — Parts become maintainable | PART-01 … PART-05 |
-| 8 — Work belongs to somebody | WO-01 … WO-04 |
-| 9 — Honest dates and real exports | PM-01 … PM-03, CSV-01 … CSV-04 |
-| 10 — Login hardening | AUTH-01 … AUTH-03 |
+| REQ-ID | Phase | Status | Evidence |
+|---|---|---|---|
+| PART-01 | 7 | Complete | `PUT /api/parts/:id`; smoke "stock can be raised back up" |
+| PART-02 | 7 | Complete | smoke "part can be renamed after creation", "renaming does not disturb the stock" |
+| PART-03 | 7 | Complete | smoke "unused part deletes cleanly", "deleted part disappears from the list" |
+| PART-04 | 7 | Complete | smoke "the refusal names the work order", "the refusal does not leak SQL" |
+| PART-05 | 7 | Complete | smoke "two parts at the same qty carry different levels", "inclusive at the boundary" |
+| WO-01 | 8 | Pending | — |
+| WO-02 | 8 | Pending | — |
+| WO-03 | 8 | Pending | — |
+| WO-04 | 8 | Pending | — |
+| PM-01 | 9 | Pending | — |
+| PM-02 | 9 | Pending | — |
+| PM-03 | 9 | Pending | — |
+| CSV-01 | 9 | Pending | — |
+| CSV-02 | 9 | Pending | — |
+| CSV-03 | 9 | Pending | — |
+| CSV-04 | 9 | Pending | — |
+| AUTH-01 | 10 | Pending | — |
+| AUTH-02 | 10 | Pending | — |
+| AUTH-03 | 10 | Pending | — |
 
-Status legend: `[ ]` not started · `[x]` verified by the smoke suite · 🖥 verified on Windows
-hardware.
+Status legend: Pending · Complete (verified by the smoke suite) · 🖥 additionally verified on
+Windows hardware.
