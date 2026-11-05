@@ -1,0 +1,87 @@
+# Requirements: Machine Maintenance — v1.1 Operable
+
+**Milestone:** v1.1 Operable
+**Status:** Defining — opened 2026-11-05
+**Context:** v1.0 shipped all eleven of its requirements (archived in
+`.planning/milestones/v1.0-REQUIREMENTS.md`). This milestone closes the gap between "records
+can be created" and "a workshop can run on it".
+
+## Why this milestone exists
+
+Every gap below was found by probing the running v1.0 build, not by reading the code:
+
+| Probe | v1.0 behaviour |
+|---|---|
+| `PUT /api/parts/:id` | **404 — no route exists.** Stock can only decrease. |
+| `DELETE /api/parts/:id` | **404 — no route exists.** A mistyped part is permanent. |
+| `POST /api/pm/:id/done` with `{"on": "2026-01-15"}` | Stored today's date instead, returned 200. `req.body` is never assigned anywhere in `server.js`, so the field is silently dropped. |
+
+The consequence is a ratchet: `parts.qty` decrements when a part is used on a job and nothing
+increments it. Once a part reaches zero it is unusable forever, and the only workaround is a
+duplicate row with the same name and its own stock count. Reporting features were therefore
+deferred: a low-stock alert would fire about a number nobody can correct.
+
+## v1.1 Requirements
+
+### Parts (PART)
+
+- [ ] **PART-01** — User can change the stock quantity of an existing part, raising or lowering it
+- [ ] **PART-02** — User can edit a part's name, reference, supplier and unit price after creation
+- [ ] **PART-03** — User can delete a part that has never been used on a work order
+- [ ] **PART-04** — Deleting a part that *has* been used is refused with a message naming the jobs it appears on, not a raw foreign-key error
+- [ ] **PART-05** — Each part carries its own reorder level; the low-stock badge reflects that level rather than a fixed threshold of 5
+
+### Work orders (WO)
+
+- [ ] **WO-01** — User can assign a work order to a named user, and reassign or unassign it
+- [ ] **WO-02** — An assigned work order shows who owns it in the list and on the machine's history
+- [ ] **WO-03** — User can edit a work order's title, notes and priority after creation
+- [ ] **WO-04** — A technician can edit work orders but still cannot delete machines or manage users (v1.0's role boundary is preserved)
+
+### Preventive maintenance (PM)
+
+- [ ] **PM-01** — "Mark done" honours a supplied completion date instead of silently using today
+- [ ] **PM-02** — An invalid or unparseable completion date is rejected with a 400 naming the field, never silently substituted
+- [ ] **PM-03** — A completion date in the future is refused, because it would move `next_due` beyond a maintenance cycle that has not happened
+
+### Reporting (CSV)
+
+- [ ] **CSV-01** — User can download the work-order list as a CSV file that opens in Excel without a manual import step
+- [ ] **CSV-02** — User can download the parts list (with stock, reorder level and unit price) as CSV
+- [ ] **CSV-03** — A CSV export preserves the filters currently applied in the UI, so what is downloaded matches what is on screen
+- [ ] **CSV-04** — Exported text is quoted and escaped correctly, so a title containing a comma, quote or newline does not corrupt the columns
+
+### Authentication (AUTH)
+
+- [ ] **AUTH-01** — Repeated failed logins from the same source are throttled, and the throttle is stated in the error message
+- [ ] **AUTH-02** — A successful login clears that source's failure count
+- [ ] **AUTH-03** — Throttling cannot be used to lock a legitimate user out permanently; the block expires on its own
+
+## Future Requirements (deferred, with reasons)
+
+| Requirement | Why deferred |
+|---|---|
+| Audit log — who changed what, when | Real value, but attribution on work orders (WO-01/WO-02) covers the dominant daily need. A full append-only log touches every write path and belongs in its own milestone. |
+| Concurrency control / conflict resolution | Last-write-wins is acceptable for a workshop of 3–5 people on a LAN. Documented as a limitation rather than engineered around. |
+| Service history table (every completed PM with date and user) | Desirable, but it changes PM from "a schedule" to "a log plus a schedule". Larger than one milestone's worth of schema change; revisit once WO edit/assign lands. |
+| Low-stock *alerting* (dashboard banner, digest file) | The data must be correctable first (PART-01, PART-05). Alerting on unfixable numbers is noise. This is the natural headline for v1.2. |
+| Per-machine work-order history view | Depends on WO-01/WO-02 so the history can say who did the work. Revisit in v1.2. |
+
+## Out of Scope (v1.1)
+
+- **Multi-user real-time updates** — no websockets; the app is a LAN page that refreshes on action.
+- **Password reset by email** — the LAN has no mail relay. An admin resets a password; that exists.
+- **Bulk CSV import** — export first, learn the real column shape from use, import later.
+- **Anything needing internet** — unchanged from v1.0; the offline audit still gates every release.
+
+## Traceability
+
+| Phase | Requirements |
+|---|---|
+| 7 — Parts become maintainable | PART-01 … PART-05 |
+| 8 — Work belongs to somebody | WO-01 … WO-04 |
+| 9 — Honest dates and real exports | PM-01 … PM-03, CSV-01 … CSV-04 |
+| 10 — Login hardening | AUTH-01 … AUTH-03 |
+
+Status legend: `[ ]` not started · `[x]` verified by the smoke suite · 🖥 verified on Windows
+hardware.
