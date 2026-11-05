@@ -33,10 +33,10 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 
 ### Work orders (WO)
 
-- [ ] **WO-01** — User can assign a work order to a named user, and reassign or unassign it
-- [ ] **WO-02** — An assigned work order shows who owns it in the list and on the machine's history
-- [ ] **WO-03** — User can edit a work order's title, notes and priority after creation
-- [ ] **WO-04** — A technician can edit work orders but still cannot delete machines or manage users (v1.0's role boundary is preserved)
+- [x] **WO-01** — User can assign a work order to a named user, and reassign or unassign it
+- [x] **WO-02** — An assigned work order shows who owns it in the list and on the machine's history
+- [x] **WO-03** — User can edit a work order's title, notes and priority after creation
+- [x] **WO-04** — A technician can edit work orders but still cannot delete machines or manage users (v1.0's role boundary is preserved)
 
 ### Preventive maintenance (PM)
 
@@ -83,10 +83,10 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 | PART-03 | 7 | Complete | smoke "unused part deletes cleanly", "deleted part disappears from the list" |
 | PART-04 | 7 | Complete | smoke "the refusal names the work order", "the refusal does not leak SQL" |
 | PART-05 | 7 | Complete | smoke "two parts at the same qty carry different levels", "inclusive at the boundary" |
-| WO-01 | 8 | Pending | — |
-| WO-02 | 8 | Pending | — |
-| WO-03 | 8 | Pending | — |
-| WO-04 | 8 | Pending | — |
+| WO-01 | 8 | Complete | `POST`/`PATCH` accept `assigned_to`; smoke "can be assigned", "can be reassigned", "can be unassigned" |
+| WO-02 | 8 | Complete | smoke "the list resolves the owner name", "a disabled owner is still named on the job" |
+| WO-03 | 8 | Complete | smoke "title can be edited", "editing the title leaves the status alone", "empty title refused" |
+| WO-04 | 8 | Complete | smoke "technician can edit a work order" + 403 on users and machine delete |
 | PM-01 | 9 | Pending | — |
 | PM-02 | 9 | Pending | — |
 | PM-03 | 9 | Pending | — |
