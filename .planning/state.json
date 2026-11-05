@@ -27,12 +27,17 @@
       "number": "5",
       "name": "Preventive maintenance",
       "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Windows portability & offline proof",
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd-new-milestone",
-    "label": "Start a new milestone",
-    "reason": "All phases complete — start a new milestone"
+    "command": "/gsd-progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-11-05T08:01:20.087Z"
+  "updated_at": "2026-11-05T08:44:42.875Z"
 }

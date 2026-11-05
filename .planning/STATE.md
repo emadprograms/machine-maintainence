@@ -2,18 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 milestone_name: Lean core, offline, on Windows
-current_phase: 6
-current_phase_name: Windows portability & offline proof
-status: completed
-last_updated: "2026-11-05T08:01:20.077Z"
+status: Awaiting next milestone
+last_updated: "2026-11-05T08:44:42.861Z"
 last_activity: 2026-11-05
-last_activity_desc: Phase 6 complete
-state_head: 7010ade22bb8483ec8493fbd13a499c52be7fb59
+last_activity_desc: Milestone v1.0 completed and archived
+state_head: 88d97627a6a964a2b8f886e1e53199eec4edc142
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 6
   completed_plans: 6
+  percent: 100
+current_phase: 6
+current_phase_name: Windows portability & offline proof
 ---
 
 # Project State
@@ -27,12 +28,10 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 ## Current Position
 
-Phase: 6 of 6 (Windows portability & offline proof)
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-05 — Phase 6 complete
-
-Progress: [██████████] 100% of plans
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-05 — Milestone v1.0 completed and archived
 
 ## Evidence log
 
@@ -100,3 +99,7 @@ Per GSD's `audit-open acknowledge` writer, recorded for disclosure:
 
 Suppression is self-invalidating: editing the UAT or re-running verification resurfaces both.
 Nothing else in the milestone was deferred.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

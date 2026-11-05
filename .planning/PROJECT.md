@@ -12,21 +12,21 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ **REQ-01** — Data persists to a single SQLite file that survives restart, `kill -9` and power loss, with no whole-file rewrite per request — v1.0
+- ✓ **REQ-02** — Login works offline; passwords hashed (scrypt); the signing secret is generated per install, never hardcoded; logout revokes the session — v1.0
+- ✓ **REQ-03** — Only an admin can create users; no public self-registration — v1.0
+- ✓ **REQ-04** — Machines can be added, edited, retired and listed — v1.0
+- ✓ **REQ-05** — Work orders/faults can be created against a machine and moved open → in progress → done — v1.0
+- ✓ **REQ-06** — Spare parts have stock levels; using a part on a job decrements stock in one transaction — v1.0
+- ✓ **REQ-07** — Recurring preventive maintenance: task + interval in days + next due date; "due soon" view; mark-done rolls the date forward — v1.0
+- ✓ **REQ-08** — Runs on Windows with no internet: no CDN, no fonts, no external APIs, no npm packages at runtime — v1.0 (offline audit + real browser)
+- ✓ **REQ-09** — Portable: copy the folder, run a `.bat`, open a browser — v1.0 (Windows 11, Node 26.3.0)
+- ✓ **REQ-10** — One-command backup of the database to a dated file — v1.0
+- ✓ **REQ-11** — Adding a new field or table is documented and takes one edit in one file — v1.0
 
 ### Active
 
-- [ ] **REQ-01** — Data persists to a single SQLite file that survives restart, `kill -9` and power loss, with no whole-file rewrite per request
-- [ ] **REQ-02** — Login works offline; passwords hashed (scrypt); the signing secret is generated per install, never hardcoded; logout revokes the session
-- [ ] **REQ-03** — Only an admin can create users; no public self-registration
-- [ ] **REQ-04** — Machines can be added, edited, retired and listed
-- [ ] **REQ-05** — Work orders/faults can be created against a machine and moved open → in progress → done
-- [ ] **REQ-06** — Spare parts have stock levels; using a part on a job decrements stock in one transaction
-- [ ] **REQ-07** — Recurring preventive maintenance: task + interval in days + next due date; "due soon" view; mark-done rolls the date forward
-- [ ] **REQ-08** — Runs on Windows with no internet: no CDN, no fonts, no external APIs, no npm packages at runtime
-- [ ] **REQ-09** — Portable: copy the folder, run a `.bat`, open a browser
-- [ ] **REQ-10** — One-command backup of the database to a dated file
-- [ ] **REQ-11** — Adding a new field or table is documented and takes one edit in one file
+(None — v1.0 shipped all eleven. v1.1 scope to be set with `/gsd-new-milestone`.)
 
 ### Out of Scope
 
@@ -39,6 +39,27 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 - Email / push notifications — requires an internet mail relay or HTTPS; replaced by an in-app "due soon" page plus an optional scheduled backup/digest task
 
 ## Context
+
+- **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
+  code plus ~370 lines of test code. All eleven requirements validated; archived under
+  `.planning/milestones/v1.0-*`.
+- **Codebase now:** `starter/` — `db.js` (142), `auth.js` (48), `server.js` (366),
+  `public/index.html` (216), `public/app.js` (269), plus `scripts/smoke-test.js` (265,
+  **47 checks**) and `scripts/audit-offline.js` (151). 7 tables (users, equipment,
+  work_orders, parts, work_order_parts, pm_schedule + schema versioning via `ensureColumn`).
+- **Test suite:** 47 passing checks including a `SIGKILL` durability test and a stock-rollback
+  test; offline audit reports `OFFLINE-SAFE`. Verified under `PATH=/nonexistent` so no Unix
+  shell tool is assumed.
+- **Known technical debt:** sessions live in process memory, so a restart signs everyone out;
+  concurrent edits are last-write-wins (single process, never tested with two browsers);
+  `node:sqlite` is still experimental on Node 22, so every entry point passes
+  `--no-warnings=ExperimentalWarning`.
+- **Bugs found and fixed:** 11, logged in `.planning/STATE.md`. Three were only reachable
+  through testing rather than reading — an unauthenticated-`GET` guard that never ran, the
+  admin self-disable lockout, and a technician-readable staff list found by clicking through
+  the running demo after the milestone was already closed.
+- **Not verified anywhere:** `EBUSY` cleanup timing on Windows (written for `cmd.exe`
+  semantics, exercised only via `PATH=/nonexistent` on Linux).
 
 - Source of the review that motivates this rebuild: `CODE_REVIEW.md` (verified findings, tags `[read]` / `[ran]`).
 - User profile: knows Python and basic web concepts; not experienced with React or TypeScript; will modify the app with AI assistance.
@@ -63,9 +84,16 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 | Decision | Rationale | Status |
 |---|---|---|
-| Node built-in `node:sqlite` instead of `sql.js` | Real transactions, WAL, FK/CHECK enforcement, no whole-file export per write; removes the reviewed repo's biggest flaw | Accepted (verified working on Node 22.22) |
-| Built-in `node:http` instead of Express | One less dependency; the routing table in `server.js` is ~20 lines | Accepted |
-| Plain JavaScript, no TypeScript | User is a beginner; no build step; fewer moving parts when copying to an offline machine | Accepted |
-| One `index.html` instead of React | Readable end-to-end, no bundler, no framework version drift | Accepted |
-| Cookie session instead of `localStorage` token | `HttpOnly` cookie cannot be read by injected script; logout can revoke server-side | Accepted |
-| `node:sqlite` is experimental in Node 22 | Suppress with `--no-warnings=ExperimentalWarning`; documented as the one upgrade risk | Accepted, documented |
+| Node built-in `node:sqlite` instead of `sql.js` | Real transactions, WAL, FK/CHECK enforcement, no whole-file export per write; removes the reviewed repo's biggest flaw | ✓ Good — verified on Node 22.22 and 26.3.0 |
+| Built-in `node:http` instead of Express | One less dependency; the routing table in `server.js` is ~20 lines | ✓ Good — 300+ lines of routes, still readable |
+| Plain JavaScript, no TypeScript | User is a beginner; no build step; fewer moving parts when copying to an offline machine | ✓ Good — whole app copied to Windows as plain files |
+| One `index.html` instead of React | Readable end-to-end, no bundler, no framework version drift | ✓ Good |
+| Cookie session instead of `localStorage` token | `HttpOnly` cookie cannot be read by injected script; logout can revoke server-side | ✓ Good, with one limit: in-memory store means a restart signs everyone out |
+| `node:sqlite` is experimental in Node 22 | Suppress with `--no-warnings=ExperimentalWarning`; documented as the one upgrade risk | ⚠️ Revisit on each Node upgrade |
+| Sessions in process memory instead of a sessions table | Simplest correct option; SQLite holds durable business data, not transient auth | ✓ Good — documented limitation, no data loss |
+| `ensureColumn()` as the entire migration mechanism | Proven pattern from the reviewed repo; one line per added field, no migration framework | ✓ Good — survived 11 bug-fix rounds |
+| Pure-JavaScript offline scan instead of shelling out | `grep` does not exist in `cmd.exe`; shelling out made the suite fail on the one platform it exists to prove | ✓ Good — caught by the Windows UAT |
+| Smoke test runs under `PATH=/nonexistent` in CI-style checks | Simulates the Windows shell more faithfully than trusting that a command exists | ✓ Good |
+
+---
+*Last updated: 2026-11-05 after v1.0 milestone*
