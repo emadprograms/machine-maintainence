@@ -51,17 +51,28 @@ const send = (res, status, body) => {
 // leaks "Cannot read properties of null" to the user (found in review of 7).
 class BadBody extends Error {}
 
-const readBody = (req) => new Promise((resolve, reject) => {
-  let data = '';
-  req.on('data', (c) => {
-    data += c;
-    if (data.length > 1_000_000) req.destroy();   // 1 MB cap: no giant photo payloads
+// A request stream can only be read once, so the parse promise is cached on the
+// request. That lets route() populate `req.body` for every request while the
+// existing handlers keep calling readBody(req) and get the same object back.
+const readBody = (req) => {
+  if (req._body) return req._body;
+  req._body = new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 1_000_000) req.destroy();   // 1 MB cap: no giant photo payloads
+    });
+    req.on('end', () => {
+      if (!data) return resolve({});
+      try { resolve(JSON.parse(data)); } catch { reject(new BadBody('invalid JSON')); }
+    });
   });
-  req.on('end', () => {
-    if (!data) return resolve({});
-    try { resolve(JSON.parse(data)); } catch { reject(new BadBody('invalid JSON')); }
-  });
-});
+  return req._body;
+};
+
+// Only methods that can carry a body. A GET's stream is already at EOF, so
+// attaching listeners to it would wait for an 'end' that has already fired.
+const HAS_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** Wraps a handler so one bad request can never kill the server. */
 const route = (fn, opts = {}) => async (req, res) => {
@@ -71,6 +82,10 @@ const route = (fn, opts = {}) => async (req, res) => {
     const user = currentUser(req);
     if (!user && !opts.public) return send(res, 401, { error: 'Please sign in' });
     req.user = user;
+    // Handlers may read req.body directly. Before phase 9 nothing assigned it,
+    // so `req.body?.on` was silently always undefined — the bug this phase exists
+    // to fix. Populating it here means the next handler cannot repeat that.
+    if (HAS_BODY.has(req.method)) req.body = await readBody(req);
     await fn(req, res);
   } catch (err) {
     if (err instanceof BadBody) {
@@ -107,6 +122,25 @@ function stockValue(raw, fallback) {
   return { value: n };
 }
 
+/** The current moment in the same format SQLite's datetime('now') writes, so a
+ *  column holding both reads consistently and sorts as text. */
+function nowStamp() {
+  return new Date().toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/** A calendar date as YYYY-MM-DD, or an error naming the field.
+ *  Round-trips through Date so 2026-02-30 is refused rather than rolled into March. */
+function parseDay(raw, field = 'date') {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return { error: `${field} must be a date written as YYYY-MM-DD` };
+  }
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) {
+    return { error: `${field} is not a real calendar date` };
+  }
+  return { value: raw };
+}
+
 /** A user id to own a job, or null to unassign. Validated against the table so a
  *  bad id is a sentence, not "FOREIGN KEY constraint failed". */
 function assigneeValue(raw) {
@@ -124,6 +158,57 @@ function priceValue(raw) {
   if (!Number.isFinite(n)) return { error: 'Unit price must be a number' };
   if (n < 0) return { error: 'Unit price cannot be negative' };
   return { value: n };
+}
+
+// ------------------------------------------------------------------- CSV
+/** RFC 4180. A cell is quoted when it contains a comma, a quote, a line break or
+ *  leading/trailing space; internal quotes are doubled. Applied to every cell
+ *  rather than only the ones that look dangerous — the branch that decides is
+ *  the branch that eventually gets it wrong. */
+function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  let text = String(value);
+  // A leading =, +, - or @ is executed as a formula by Excel and Sheets.
+  // Prefixing with an apostrophe keeps the text and defuses it.
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  if (/[",\r\n]/.test(text) || /^\s|\s$/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function toCsv(rows, columns) {
+  const line = (cells) => cells.map(csvCell).join(',');
+  const body = rows.map((row) => line(columns.map((c) => row[c.key])));
+  return [line(columns.map((c) => c.label)), ...body].join('\r\n') + '\r\n';
+}
+
+/** Everything a CSV download needs, including the BOM Excel wants. */
+function sendCsv(res, filename, rows, columns) {
+  const body = '\uFEFF' + toCsv(rows, columns);
+  res.writeHead(200, {
+    'content-type': 'text/csv; charset=utf-8',
+    'content-disposition': `attachment; filename="${filename}"`,
+    'content-length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+// The WHERE clauses live here so the list route and the export route cannot
+// drift apart. A separate export query is how "the file does not match the
+// screen" gets shipped (CSV-03).
+function workOrderFilter(query) {
+  const where = [];
+  const params = [];
+  if (query.status) { where.push('w.status = ?'); params.push(String(query.status)); }
+  if (query.equipment_id) { where.push('w.equipment_id = ?'); params.push(Number(query.equipment_id)); }
+  if (query.assigned_to) { where.push('w.assigned_to = ?'); params.push(Number(query.assigned_to)); }
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+function partsFilter(query) {
+  if (query.low) return { sql: 'WHERE p.qty <= p.reorder_level', params: [] };
+  return { sql: '', params: [] };
 }
 
 // ------------------------------------------------------------------ API
@@ -187,13 +272,17 @@ const api = {
   // ---- work orders
   // The owner's name is resolved here, with no filter on `active`: a person who
   // has left still has to render on the jobs they owned (WO-02).
-  'GET /api/work-orders': route(async (_req, res) => send(res, 200, all(`
-    SELECT w.*, e.name AS equipment_name, u.name AS assignee_name
-    FROM work_orders w
-    JOIN equipment e ON e.id = w.equipment_id
-    LEFT JOIN users u ON u.id = w.assigned_to
-    ORDER BY CASE w.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
-             w.created_at DESC`))),
+  'GET /api/work-orders': route(async (req, res) => {
+    const f = workOrderFilter(req.query);
+    send(res, 200, all(`
+      SELECT w.*, e.name AS equipment_name, u.name AS assignee_name
+      FROM work_orders w
+      JOIN equipment e ON e.id = w.equipment_id
+      LEFT JOIN users u ON u.id = w.assigned_to
+      ${f.sql}
+      ORDER BY CASE w.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+               w.created_at DESC`, ...f.params));
+  }),
 
   'POST /api/work-orders': route(async (req, res) => {
     const b = await readBody(req);
@@ -224,13 +313,16 @@ const api = {
          WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
       b.status ?? before.status, b.priority ?? before.priority, b.notes ?? before.notes,
-      (b.status ?? before.status) === 'done' ? new Date().toISOString() : null,
+      (b.status ?? before.status) === 'done' ? (before.closed_at ?? nowStamp()) : null,
       owner.value, id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 
   // ---- spare parts
-  'GET /api/parts': route(async (_req, res) => send(res, 200, all('SELECT * FROM parts ORDER BY name'))),
+  'GET /api/parts': route(async (req, res) => {
+    const f = partsFilter(req.query);
+    send(res, 200, all(`SELECT p.* FROM parts p ${f.sql} ORDER BY p.name`, ...f.params));
+  }),
 
   'POST /api/parts': route(async (req, res) => {
     const b = await readBody(req);
@@ -367,7 +459,26 @@ const api = {
   'POST /api/pm/:id/done': route(async (req, res) => {
     const row = get('SELECT * FROM pm_schedule WHERE id = ?', id(req.params.id));
     if (!row) return send(res, 404, { error: 'Schedule not found' });
-    const base = req.body?.on || new Date().toISOString().slice(0, 10);
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Absent means "it was done today" — that default is fine. Present means the
+    // caller said something specific, and it must be used or refused, never
+    // quietly swapped for today (v1.0 did exactly that: HTTP 200, value ignored).
+    let base = today;
+    if (req.body?.on !== undefined && req.body.on !== null && req.body.on !== '') {
+      const parsed = parseDay(req.body.on, 'on');
+      if (parsed.error) return send(res, 400, { error: parsed.error });
+      if (parsed.value > today) {
+        return send(res, 400, { error: 'A maintenance task cannot be completed in the future' });
+      }
+      if (row.last_done && parsed.value < row.last_done) {
+        return send(res, 400, {
+          error: `This was last done on ${row.last_done}; a completion date cannot be earlier than that`,
+        });
+      }
+      base = parsed.value;
+    }
+
     run(`UPDATE pm_schedule
          SET last_done = ?, next_due = date(?, '+' || interval_days || ' days')
          WHERE id = ?`, base, base, id(req.params.id));
@@ -438,6 +549,45 @@ const api = {
       b.name ?? target.name, b.role ?? target.role,
       b.active === undefined ? target.active : (b.active ? 1 : 0), target.id);
     send(res, 200, get('SELECT id, name, email, role, active FROM users WHERE id = ?', target.id));
+  }),
+
+  // ---- CSV export. Same filter builders as the list routes above, so the file
+  // matches the screen by construction rather than by two queries agreeing.
+  'GET /api/export/work-orders.csv': route(async (req, res) => {
+    const f = workOrderFilter(req.query);
+    const rows = all(`
+      SELECT w.id, w.title, w.status, w.priority, w.created_at, w.closed_at,
+             e.name AS equipment, u.name AS owner
+      FROM work_orders w
+      JOIN equipment e ON e.id = w.equipment_id
+      LEFT JOIN users u ON u.id = w.assigned_to
+      ${f.sql} ORDER BY w.created_at DESC`, ...f.params);
+    sendCsv(res, 'work-orders.csv', rows, [
+      { key: 'id', label: 'ID' },
+      { key: 'equipment', label: 'Machine' },
+      { key: 'title', label: 'Problem' },
+      { key: 'owner', label: 'Owner' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'status', label: 'Status' },
+      { key: 'created_at', label: 'Created' },
+      { key: 'closed_at', label: 'Closed' },
+    ]);
+  }),
+
+  'GET /api/export/parts.csv': route(async (req, res) => {
+    const f = partsFilter(req.query);
+    const rows = all(`
+      SELECT p.id, p.name, p.reference, p.qty, p.reorder_level, p.unit_price, p.supplier
+      FROM parts p ${f.sql} ORDER BY p.name`, ...f.params);
+    sendCsv(res, 'spare-parts.csv', rows, [
+      { key: 'id', label: 'ID' },
+      { key: 'name', label: 'Name' },
+      { key: 'reference', label: 'Reference' },
+      { key: 'qty', label: 'In stock' },
+      { key: 'reorder_level', label: 'Reorder at' },
+      { key: 'unit_price', label: 'Unit price' },
+      { key: 'supplier', label: 'Supplier' },
+    ]);
   }),
 
   // ---- backup (same idea as the repo's /tmp problem, solved properly)

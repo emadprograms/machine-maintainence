@@ -128,7 +128,8 @@ let editingWork = null;
 let assignable = [];          // { id, name } — fetched once per session
 
 async function loadWork() {
-  workCache = await api('/work-orders');
+  const status = $('#wo-status-filter')?.value;
+  workCache = await api(`/work-orders${status ? `?status=${encodeURIComponent(status)}` : ''}`);
   if (!assignable.length) {
     try { assignable = await api('/users/assignable'); } catch { assignable = []; }
   }
@@ -222,7 +223,8 @@ function stockCell(p) {
 }
 
 async function loadParts() {
-  partsCache = await api('/parts');
+  const low = $('#low-stock-filter')?.checked;
+  partsCache = await api(`/parts${low ? '?low=1' : ''}`);
   $('#parts-rows').innerHTML = partsCache.map((p) => (p.id === editingPart
     ? `<tr>
         <td><input id="edit-name-${p.id}" value="${esc(p.name)}" /></td>
@@ -322,7 +324,8 @@ async function loadPm() {
     <tr>
       <td>${esc(p.equipment_name)}</td><td>${esc(p.task)}</td><td>${p.interval_days} d</td>
       <td>${esc(p.last_done || '—')}</td><td>${esc(p.next_due)} ${dueKind(p.days_left)}</td>
-      <td><button class="small" onclick="pmDone(${p.id})">Mark done</button></td>
+      <td><input type="date" id="pm-on-${p.id}" value="${esc(today())}" title="The day it was done" />
+        <button class="small" onclick="pmDone(${p.id})">Mark done</button></td>
     </tr>`).join('') || '<tr><td colspan="6" class="muted">No schedules yet.</td></tr>';
 }
 
@@ -341,8 +344,36 @@ async function addPm() {
 }
 
 async function pmDone(id) {
-  try { await api(`/pm/${id}/done`, { method: 'POST', body: '{}' }); loadPm(); }
-  catch (e) { alert(e.message); }
+  // Send the date the technician actually chose. Sending {} was how the field
+  // silently meant "today" no matter what it said.
+  const on = $(`#pm-on-${id}`).value;
+  try {
+    await api(`/pm/${id}/done`, { method: 'POST', body: JSON.stringify({ on }) });
+    loadPm();
+  } catch (e) { alert(e.message); }
+}
+
+function today() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// ------------------------------------------------------------------ export
+// window.location rather than fetch: the server already sets
+// content-disposition, and letting the browser handle it avoids holding the
+// whole file in memory and gives the user their normal download UI.
+// Each export takes its own page's filter and nothing else. Reading every
+// filter on the page would append one page's setting to the other page's file
+// and rely on the server ignoring it — a habit that hides real bugs.
+function downloadWorkOrders() {
+  const status = $('#wo-status-filter')?.value;
+  window.location = `/api/export/work-orders.csv${status ? `?status=${encodeURIComponent(status)}` : ''}`;
+}
+
+function downloadParts() {
+  const low = $('#low-stock-filter')?.checked;
+  window.location = `/api/export/parts.csv${low ? '?low=1' : ''}`;
 }
 
 // ----------------------------------------------------------------- backup

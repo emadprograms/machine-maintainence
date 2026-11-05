@@ -36,6 +36,7 @@
     border-radius: 8px; background: #fff; width: 100%;
   }
   row, .form-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   .actions { display: flex; gap: 8px; align-items: center; }
   button.primary { background: var(--brand); color: #fff; border: none; padding: 9px 16px; border-radius: 8px; cursor: pointer; }
   button.small { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
@@ -129,6 +130,15 @@
       </div>
       <div class="card">
         <h2>Work orders</h2>
+        <div class="form-grid">
+          <select id="wo-status-filter" onchange="loadWork()">
+            <option value="">Any status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="done">Done</option>
+          </select>
+          <button class="small" onclick="downloadWorkOrders()">Download CSV</button>
+        </div>
         <table><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead>
           <tbody id="work-rows"></tbody></table>
       </div>
@@ -151,6 +161,11 @@
       </div>
       <div class="card">
         <h2>Spare parts</h2>
+        <div class="form-grid">
+          <label class="inline"><input type="checkbox" id="low-stock-filter" onchange="loadParts()" />
+            Only parts at or below the reorder level</label>
+          <button class="small" onclick="downloadParts()">Download CSV</button>
+        </div>
         <table><thead><tr><th>Name</th><th>Reference</th><th>In stock</th><th>Unit price</th><th>Reorder at</th><th></th></tr></thead>
           <tbody id="parts-rows"></tbody></table>
       </div>
@@ -171,7 +186,7 @@
       </div>
       <div class="card">
         <h2>All schedules</h2>
-        <table><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th>Last done</th><th>Next due</th><th></th></tr></thead>
+        <table><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th>Last done</th><th>Next due</th><th>Mark done on</th></tr></thead>
           <tbody id="pm-rows"></tbody></table>
       </div>
     </section>

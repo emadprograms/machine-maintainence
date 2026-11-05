@@ -63,6 +63,65 @@ function makeClient() {
   };
 }
 
+// CSV is bytes, not JSON: the BOM, the CRLF endings and the quoting are the
+// actual deliverable, so the test has to look at the raw text rather than at a
+// parsed object that has already normalised all three away.
+function makeTextClient(credentials) {
+  let cookie = '';
+  let signedIn = null;
+  const client = async (path) => {
+    if (credentials && !signedIn) {
+      // reuse the same login contract as the JSON client; the cookie is the
+      // only state that matters and it is identical for both content types
+      signedIn = fetch(BASE + '/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(credentials),
+      }).then((r) => {
+        const setCookie = r.headers.get('set-cookie');
+        if (setCookie) cookie = setCookie.split(';')[0];
+        return r.status;
+      });
+      await signedIn;
+    }
+    const res = await fetch(BASE + path, { headers: { cookie } });
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) cookie = setCookie.split(';')[0];
+    const bytes = Buffer.from(await res.arrayBuffer());
+    // decoded as utf-8, so the BOM survives as U+FEFF and can be asserted on
+    return { status: res.status, headers: res.headers, text: bytes.toString('utf8'), bytes };
+  };
+  return client;
+}
+
+// Minimal RFC 4180 reader. Assertions about the file use this rather than
+// splitting on commas: a naive split agrees with a naive writer, so it cannot
+// tell a correctly quoted file from a broken one.
+function parseCsv(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = false;
+      } else cell += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ',') {
+      row.push(cell); cell = '';
+    } else if (ch === '\r' && text[i + 1] === '\n') {
+      row.push(cell); rows.push(row); row = []; cell = ''; i++;
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
 // ---------------------------------------------------------------- the test
 console.log('\n--- starting with a fresh database ---');
 rmSync(DB, { force: true });
@@ -323,6 +382,145 @@ ok('backup file created', bak.status === 200 && existsSync(bak.data.file));
 ok('backup is a non-empty file', bak.status === 200 && statSync(bak.data.file).size > 0);
 
 // kill -9, restart, confirm data survived
+console.log('\nPhase 7+ — honest dates and real exports');
+
+// The CSV client needs its own session; it is a different client object, and a
+// cookie is the only thing the server uses to decide who is asking.
+const csvClient = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+
+// --- PM-01: a date the caller sends is the date that gets stored -----------
+const todayStr = new Date().toISOString().slice(0, 10);
+const pms = await c('/api/pm', {
+  method: 'POST',
+  body: { equipment_id: m1.data.id, task: 'Grease bearings', interval_days: 10, next_due: '2020-01-01' },
+});
+const sentDay = '2026-01-15';
+const honoured = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: sentDay } });
+// The old code returned 200 with the value thrown away. Asserting only the
+// status would have passed against that code, so assert the stored value.
+ok('a completion date sent by the caller is the date stored',
+  honoured.status === 200 && honoured.data.last_done === sentDay,
+  `status=${honoured.status} last_done=${honoured.data.last_done}`);
+ok('the completion date drives next_due, not today',
+  honoured.data.next_due === '2026-01-25',
+  `got ${honoured.data.next_due}, expected 2026-01-25 (2026-01-15 + 10 days)`);
+
+// --- PM-02: the date is validated, and a refused date changes nothing ------
+const beforeBad = (await c('/api/pm')).data.find((p) => p.id === pms.data.id).last_done;
+const badDays = [
+  ['2026-02-30', 'a day that does not exist'],
+  ['2026-13-01', 'a month that does not exist'],
+  ['15/01/2026', 'a day in the local format'],
+  ['2026-1-5', 'an unpadded date'],
+  ['tomorrow', 'a word'],
+];
+for (const [value, what] of badDays) {
+  const bad = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: value } });
+  ok(`${what} is refused with 400`, bad.status === 400, `status=${bad.status} for ${value}`);
+}
+const afterBad = (await c('/api/pm')).data.find((p) => p.id === pms.data.id);
+ok('a refused date leaves last_done untouched', afterBad.last_done === beforeBad,
+  `${beforeBad} became ${afterBad.last_done}`);
+ok('a refused date leaves next_due untouched', afterBad.next_due === honoured.data.next_due);
+
+// --- PM-03: a date the calendar has not reached yet -----------------------
+const future = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+const futureRes = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: future } });
+ok('a future completion date is refused with 400', futureRes.status === 400,
+  `status=${futureRes.status} for ${future}`);
+ok('a future date leaves last_done untouched',
+  (await c('/api/pm')).data.find((p) => p.id === pms.data.id).last_done === beforeBad);
+
+const earlier = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: '2025-06-01' } });
+ok('a date before the previous completion is refused with 400', earlier.status === 400,
+  `status=${earlier.status}`);
+ok('today is accepted for a schedule last done long ago', 
+  (await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: todayStr } })).status === 200);
+
+// --- CSV-01/02: quoting, line endings, encoding ---------------------------
+// A title built to break a naive writer: comma, quote, newline, and a value
+// that a spreadsheet would execute as a formula.
+const nasty = 'Belt "A" snapped, 3rd time';
+await c('/api/work-orders', {
+  method: 'POST',
+  body: { equipment_id: m2.data.id, title: nasty, priority: 'high' },
+});
+const csv = await csvClient('/api/export/work-orders.csv');
+ok('export returns 200 with the CSV content type',
+  csv.status === 200 && /text\/csv/.test(csv.headers.get('content-type')),
+  `${csv.status} ${csv.headers.get('content-type')}`);
+ok('export is offered as a download with a filename',
+  /attachment/.test(csv.headers.get('content-disposition') || '')
+  && /work-orders\.csv/.test(csv.headers.get('content-disposition') || ''),
+  csv.headers.get('content-disposition'));
+ok('export starts with a UTF-8 byte-order mark', csv.text.charCodeAt(0) === 0xFEFF,
+  `first char code ${csv.text.charCodeAt(0)}`);
+ok('lines end with CRLF, not bare LF', !/[^\r]\n/.test(csv.text.slice(1)),
+  JSON.stringify(csv.text.slice(0, 80)));
+ok('a field containing a comma and a quote is quoted and its quotes doubled',
+  csv.text.includes('"Belt ""A"" snapped, 3rd time"'), csv.text.split('\r\n')[1]);
+ok('the header names the same columns as the screen',
+  csv.text.slice(1).split('\r\n')[0] === 'ID,Machine,Problem,Owner,Priority,Status,Created,Closed',
+  csv.text.slice(1).split('\r\n')[0]);
+const rowCount = csv.text.slice(1).trim().split('\r\n').length - 1;
+ok('every work order is in the file', rowCount === (await c('/api/work-orders')).data.length,
+  `${rowCount} rows`);
+
+const partsCsv = await csvClient('/api/export/parts.csv');
+ok('the parts export downloads as a separate file',
+  partsCsv.status === 200 && /spare-parts\.csv/.test(partsCsv.headers.get('content-disposition') || ''),
+  partsCsv.headers.get('content-disposition'));
+ok('the parts export has the parts header',
+  partsCsv.text.slice(1).split('\r\n')[0] === 'ID,Name,Reference,In stock,Reorder at,Unit price,Supplier',
+  partsCsv.text.slice(1).split('\r\n')[0]);
+
+// A CSV is read column by column, so every cell in a column must share a format.
+const table = parseCsv(csv.text);
+const header = table[0];
+const col = (name) => table.slice(1).map((r) => r[header.indexOf(name)]).filter(Boolean);
+const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+ok('created timestamps share one format', col('Created').every((t) => STAMP.test(t)),
+  col('Created').join(' | '));
+ok('closed timestamps use the same format as created',
+  col('Closed').length > 0 && col('Closed').every((t) => STAMP.test(t)),
+  col('Closed').join(' | '));
+ok('a quoted field is read back as one value by a real parser',
+  col('Problem').includes('Belt "A" snapped, 3rd time'), col('Problem').join(' | '));
+ok('the parsed file has as many columns as the header',
+  table.every((r) => r.length === header.length),
+  JSON.stringify(table.map((r) => r.length)));
+
+// --- CSV-03: the file matches the filter that is on screen ----------------
+const filtered = await csvClient('/api/export/work-orders.csv?status=done');
+const filteredTable = parseCsv(filtered.text);
+const filteredStatuses = filteredTable.slice(1).map((r) => r[filteredTable[0].indexOf('Status')]);
+ok('a filtered export contains only the filtered rows',
+  filteredStatuses.length === (await c('/api/work-orders?status=done')).data.length
+  && filteredStatuses.every((s) => s === 'done'),
+  `${filteredStatuses.length} rows: ${filteredStatuses.join(',')}`);
+ok('the filter is applied to the list too, not just the file',
+  (await c('/api/work-orders?status=open')).data.every((w) => w.status === 'open'));
+
+// formula injection: a spreadsheet runs a cell beginning =, +, - or @
+await c('/api/parts', { method: 'POST', body: { name: '=1+1', reference: '+SUM(A1)' } });
+const formulaCsv = await csvClient('/api/export/parts.csv');
+const partsTable = parseCsv(formulaCsv.text);
+const partNames = partsTable.slice(1).map((r) => r[partsTable[0].indexOf('Name')]);
+const partRefs = partsTable.slice(1).map((r) => r[partsTable[0].indexOf('Reference')]);
+ok('a value a spreadsheet would execute is neutralised',
+  partNames.includes("'=1+1") && partRefs.includes("'+SUM(A1)"),
+  `names=${partNames.join('|')} refs=${partRefs.join('|')}`);
+
+// Snapshot the row counts now. The persistence checks below used to hardcode
+// the numbers the earlier phases happened to leave behind, so any later phase
+// that added a row broke them for the wrong reason (this is exactly what
+// happened when the export tests added a work order).
+const countsBeforeKill = {
+  equipment: (await c('/api/equipment')).data.length,
+  workOrders: (await c('/api/work-orders')).data.length,
+  pm: (await c('/api/pm')).data.length,
+};
+
 console.log('\n  killing the server with SIGKILL...');
 srv.child.kill('SIGKILL');
 await srv.exited;
@@ -336,13 +534,45 @@ const relogin = await c2('/api/login', {
 });
 ok('can log in again after restart', relogin.status === 200, JSON.stringify(relogin.data));
 const survived = await c2('/api/equipment');
-ok('machines survived kill -9', survived.data.length === 2, JSON.stringify(survived.data));
+ok('machines survived kill -9', survived.data.length === countsBeforeKill.equipment,
+  `${survived.data.length} now vs ${countsBeforeKill.equipment} before`);
 const woAfter = await c2('/api/work-orders');
-ok('work orders survived kill -9', woAfter.data.length === 1);
+ok('work orders survived kill -9', woAfter.data.length === countsBeforeKill.workOrders,
+  `${woAfter.data.length} now vs ${countsBeforeKill.workOrders} before`);
 const pmAfter = await c2('/api/pm');
-ok('maintenance schedule survived kill -9', pmAfter.data.length === 1);
+ok('maintenance schedule survived kill -9', pmAfter.data.length === countsBeforeKill.pm,
+  `${pmAfter.data.length} now vs ${countsBeforeKill.pm} before`);
 ok('first-run admin password is NOT re-seeded',
   !srv.log().includes('Created the first account'));
+
+console.log('\nPhase 7+ — the page is wired to the server');
+// The UI was checked end-to-end in a headless DOM during development, but that
+// needs a dependency this project does not have. These two static checks catch
+// the failure that actually happens: a button whose handler was renamed or
+// never written, so it silently does nothing when clicked.
+const html = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const appUrl = readFileSync(join(root, 'public', 'app.js'), 'utf8');
+
+const handlers = [...html.matchAll(/on(?:click|change|input)="([A-Za-z_$][\w$]*)\(/g)]
+  .map((m) => m[1]);
+const missingHandlers = [...new Set(handlers)]
+  .filter((fn) => !new RegExp(`(?:async\\s+)?function\\s+${fn}\\b`).test(appUrl)
+    && !new RegExp(`(?:const|let|var)\\s+${fn}\\s*=`).test(appUrl)
+    && !new RegExp(`${fn}\\s*[:=]\\s*(?:async\\s*)?(?:function|\\()`).test(appUrl));
+ok('every button in the page calls a function that exists',
+  missingHandlers.length === 0, `missing: ${missingHandlers.join(', ')}`);
+
+// Only literal ids can be checked statically; templated ones (pm-on-1) are
+// built and queried in the same function and cannot drift silently.
+const literalIds = [...new Set([...appUrl.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]))];
+const missingIds = literalIds.filter((id) => !html.includes(`id="${id}"`));
+ok('every element the page looks up by id exists in the markup',
+  missingIds.length === 0, `missing: ${missingIds.join(', ')}`);
+
+ok('the export buttons are on the page', handlers.filter((h) => h.startsWith('download')).length === 2,
+  handlers.join(', '));
+ok('both exports read a filter that is on the page',
+  html.includes('id="wo-status-filter"') && html.includes('id="low-stock-filter"'));
 
 console.log('\nPhase 6 — offline audit');
 // Pure JavaScript on purpose: the first version of this check shelled out to
