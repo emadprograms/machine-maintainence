@@ -6,7 +6,7 @@ status: Awaiting next milestone
 last_updated: "2026-11-05T08:44:42.861Z"
 last_activity: 2026-11-05
 last_activity_desc: Milestone v1.0 completed and archived
-state_head: 88d97627a6a964a2b8f886e1e53199eec4edc142
+state_head: f91ef1fa56fe2d2572d583f1e0b6301f1f6b0fc7
 progress:
   total_phases: 6
   completed_phases: 6
@@ -24,14 +24,17 @@ current_phase_name: Windows portability & offline proof
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** Milestone v1.0 shipped. All six phases verified, including the Windows UAT.
+**Current focus:** v1.0 is closed and archived. Next up is scoping v1.1.
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: — (no active milestone; v1.0 archived to `.planning/milestones/v1.0-phases/`)
 Plan: —
 Status: Awaiting next milestone
 Last activity: 2026-11-05 — Milestone v1.0 completed and archived
+
+**Resume with:** `/gsd-new-milestone` to scope v1.1. The v1.0 record is complete and
+self-contained; nothing needs carrying forward beyond the three open items below.
 
 ## Evidence log
 
@@ -84,7 +87,7 @@ Last activity: 2026-11-05 — Milestone v1.0 completed and archived
 
 None. Milestone shipped.
 
-## Deferred Items (resolved — kept as a record)
+## Deferred Items (from the v1.0 close — all resolved)
 
 Both items below were acknowledged at the earlier close attempt and have since been
 **resolved** by the Windows UAT, not carried forward. `audit-open` now reports all clear
