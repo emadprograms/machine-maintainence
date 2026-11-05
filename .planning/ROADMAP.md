@@ -98,23 +98,43 @@ rather than inventing a second definition of "soon".
 - [ ] 12-02: Landing behaviour, empty states, links through to full lists, assertions
 
 ### Phase 13: One visual language
-**Goal**: Seven screens that look like one application rather than seven.
+**Goal**: Seven screens that look like one modern application rather than seven
+bare tables wrapped in cards.
 **Depends on**: Phase 12
-**Requirements**: SCREEN-01, SCREEN-02, SCREEN-03, SCREEN-04
+**Requirements**: SCREEN-01, SCREEN-02, SCREEN-03, SCREEN-04, SCREEN-05
 **Success Criteria** (what must be TRUE):
-  1. Headings, tables, buttons and spacing are consistent across all seven screens — the same thing looks the same everywhere
-  2. Every list has an empty state that names the screen's purpose, and offers the action where one exists
-  3. Every destructive action states its consequence before it happens, in words specific to that action
-  4. No primary action requires horizontal scrolling at laptop width
+  1. Every screen opens with a **page header**: its name, a one-line statement of
+     what the screen is for, and its primary action on the right — not a create
+     form occupying the top of the page
+  2. Creating a record is behind a **"New …" button** that reveals the form, so the
+     list is what you see first; the form opens, submits, and closes
+  3. Every list carries a **summary line** above it ("12 machines · 2 down") so the
+     screen answers its own question without counting rows
+  4. Table rows have **row hover, a heavier first column, muted secondary text and
+     right-aligned numerics**; no cell is bare unstyled text
+  5. Empty states are designed, not a muted table row: they name the screen's
+     purpose and offer the action inline
+  6. One consistent **spacing and radius scale** across cards, forms and tables —
+     the same thing looks the same on every screen
+  7. Destructive actions state their consequence in the confirmation, in words
+     specific to that action ("Delete Bearing 6204? It is not used on any job.")
 
 **Notes**: This is the phase most likely to break working behaviour, because it
 touches all seven screens at once. The smoke suite's wiring checks (every handler
-exists, every looked-up id exists) exist for exactly this and should be extended
-to the new shell.
+exists, every looked-up id exists) exist for exactly this and must be extended to
+the new shell and the collapsible forms.
+
+**What "modern" means here, concretely** — the current app is 35 lines of CSS and
+each screen is two stacked cards. The fixes are hierarchy, not decoration:
+- a page header per screen replaces the lone `<h2>`
+- the create form moves behind a button instead of sitting above the list
+- rows gain hover, weight and alignment so the eye has somewhere to land
+- numbers are tabular and right-aligned; dates are not ISO soup
+- empty and error states are written as sentences
 
 `node --check` misses template-literal errors inside `innerHTML`; the suite's
 "every button calls a function that exists" check is the real guard.
 
 **Plans**:
-- [ ] 13-01: Shared presentation — a small set of reusable render helpers and the page heading pattern
-- [ ] 13-02: Apply across all seven screens, empty states, destructive-action wording, end-to-end pass
+- [ ] 13-01: Design primitives in CSS — spacing/radius scale, page header, toolbar, table treatment, designed empty state, button hierarchy
+- [ ] 13-02: Apply across all seven screens — page headers, create-behind-button, summary lines, row treatment, destructive wording, end-to-end pass

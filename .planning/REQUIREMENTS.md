@@ -37,10 +37,11 @@ makes the navigation move depending on who signed in.
 
 ### Screens (SCREEN)
 
-- [ ] **SCREEN-01** — Due soon, Machines, Work orders, Maintenance, Spare parts, Users and Backup share one visual language: consistent headings, table styling, empty states and action placement
-- [ ] **SCREEN-02** — Every list has a defined empty state that names what the screen is for and, where the user can act, offers the action
-- [ ] **SCREEN-03** — Every destructive action states its consequence before it happens
-- [ ] **SCREEN-04** — The app is usable at a laptop width and does not require horizontal scrolling to reach a primary action
+- [ ] **SCREEN-01** — Due soon, Machines, Work orders, Maintenance, Spare parts, Users and Backup share one visual language: consistent page headers, table styling, empty states and action placement
+- [ ] **SCREEN-02** — Every screen opens with a page header — its name, a one-line purpose, and its primary action — and the list is the first thing visible, not a create form
+- [ ] **SCREEN-03** — Every list has a designed empty state that names the screen's purpose and, where the user can act, offers the action inline
+- [ ] **SCREEN-04** — Every destructive action states its consequence before it happens, in words specific to that action
+- [ ] **SCREEN-05** — The app is usable at a laptop width and does not require horizontal scrolling to reach a primary action
 
 ## Constraints (unchanged, and binding)
 
@@ -78,3 +79,4 @@ makes the navigation move depending on who signed in.
 | SCREEN-02 | 13 | Pending | — |
 | SCREEN-03 | 13 | Pending | — |
 | SCREEN-04 | 13 | Pending | — |
+| SCREEN-05 | 13 | Pending | — |
