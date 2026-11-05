@@ -1,6 +1,6 @@
 ---
 phase: MM-07-parts-become-maintainable
-verified: 2026-11-05T11:35:00Z
+verified: 2026-11-05T12:05:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -13,7 +13,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:7af3036951bb7f1a264e00a7e17ea6b01f748348ba80e5b44a5d397225bf4ae2"
+covered_digest: "v4:sha256:a66621119464eb076f93c79cce6daf20c01ca69977404a54584cd91f07798074"
 behavior_unverified: 0
 ---
 
@@ -129,3 +129,23 @@ low-stock filter is now additionally covered by a CSV export assertion.
 **One probe error worth recording:** the first re-check used `PATCH
 /api/parts/1` and got 404. The route is `PUT`, as planned and as the UI sends.
 The 404 was the probe's mistake, not a regression — no code changed.
+
+---
+
+## Re-verification after phase 10
+
+Phase 10 added `throttle.js`, changed the login route, and added a countdown to
+`public/app.js`; it also changed `scripts/smoke-test.js` (guards) and left
+`server.js` touched. The three files this phase shares all moved, so the report
+went stale again. Re-probed rather than re-stamped.
+
+**Re-probed on a fresh database (:3688), after phase 10 was in place:**
+
+| Must-have | Result |
+|---|---|
+| `reorder_level` stored and editable | `PUT` → 1 |
+| A single-field `PUT` does not blank others | `{"qty":50}` → name Bearing, supplier SKF |
+| Negative quantity refused | 400 |
+| `id` cannot be rewritten by a body | sent `{"id":99}` → row still 1 |
+
+**Suite:** 145 checks, 0 failures; this phase's assertions unchanged and passing.

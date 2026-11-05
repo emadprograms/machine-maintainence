@@ -39,7 +39,7 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 - [x] **Phase 7: Parts become maintainable** — Restock, edit, delete, and a per-part reorder level (PART-01 … PART-05) (completed 2026-11-05)
 - [x] **Phase 8: Work belongs to somebody** — Assign and edit work orders without weakening the role boundary (WO-01 … WO-04) (completed 2026-11-05)
 - [x] **Phase 9: Honest dates and real exports** — Fix the silently-dropped completion date; export work orders and parts to CSV (PM-01 … PM-03, CSV-01 … CSV-04) (completed 2026-11-05)
-- [ ] **Phase 10: Login hardening** — Throttle repeated failed logins, with a block that expires on its own (AUTH-01 … AUTH-03)
+- [x] **Phase 10: Login hardening** — Throttle repeated failed logins, with a block that expires on its own (AUTH-01 … AUTH-03) (completed 2026-11-05)
 
 ## Phase Details
 
@@ -107,4 +107,4 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 **Notes**: In-memory is acceptable at this scale and consistent with v1.0's session store, but the choice must be written down. AUTH-03 rules out a naive "lock the account" design.
 
 **Plans**:
-- [ ] 10-01: Per-source failure counter with a time window, cleared on success; smoke checks including a simulated expiry
+- [x] 10-01: Per-source failure counter with a time window, cleared on success; smoke checks including a simulated expiry

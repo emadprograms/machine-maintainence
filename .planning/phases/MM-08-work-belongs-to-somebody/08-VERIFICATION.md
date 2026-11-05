@@ -1,6 +1,6 @@
 ---
 phase: MM-08-work-belongs-to-somebody
-verified: 2026-11-05T11:35:00Z
+verified: 2026-11-05T12:05:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -13,7 +13,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:0fbf4230918ced0b05f3872f5e470add8f3620cd4e0af00cf355959b7f7d687a"
+covered_digest: "v4:sha256:5cd171a32dd57aa32c97d8b4d04c3eed48171fe675318748d3a25214a77f451d"
 behavior_unverified: 0
 ---
 
@@ -106,3 +106,26 @@ also uses; `closed_at` uses `nowStamp()`; `route()` now assigns `req.body`.
 **Suite:** 118 checks, 0 failures. The shared filter builder introduced by phase
 9 does not drop the `LEFT JOIN` that keeps a departed technician's name on the
 job — asserted by "a disabled owner is still named on the job".
+
+---
+
+## Re-verification after phase 10
+
+Phase 10 changed `server.js` (login route), `public/app.js` (countdown) and
+`scripts/smoke-test.js`. Re-probed rather than re-stamped.
+
+**Re-probed on a fresh database (:3688), after phase 10 was in place:**
+
+| Must-have | Result |
+|---|---|
+| Owner resolved in the list | `assignee_name` = 'Sam T' |
+| Invalid owner is a readable 400 | `That person does not exist` |
+| Technician blocked from the staff directory | `/api/users` → 403 |
+| Technician's assignable list stays narrow | keys exactly `['id','name']` |
+| Technician may still edit a work order | `PATCH` → 200 |
+
+The login throttle does not interfere: the technician signs in as that phase's
+own assertion does, and the phase-9/10 tests share one source without crossing
+the threshold because each successful login clears it.
+
+**Suite:** 145 checks, 0 failures.

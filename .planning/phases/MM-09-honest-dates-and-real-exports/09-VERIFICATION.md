@@ -1,6 +1,6 @@
 ---
 phase: MM-09-honest-dates-and-real-exports
-verified: 2026-11-05T11:20:00Z
+verified: 2026-11-05T12:05:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -12,7 +12,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:11e9c6ac1e61dc601d7631b8d1b02bc98da5477ed454bdff276cc68770654225"
+covered_digest: "v4:sha256:f0a2e9d90576448e877293a95ca3086341a1478785d57b7b362175332a0eddca"
 behavior_unverified: 0
 ---
 
@@ -129,3 +129,25 @@ permanent static check in the smoke suite.
 - The suite on Windows. Line endings in the shipped source are LF with `*.bat`
   pinned to CRLF by `.gitattributes`; the CSV's CRLF is built from `\r\n`
   escapes so a checkout cannot corrupt it.
+
+---
+
+## Re-verification after phase 10
+
+Phase 10 changed `server.js` (login route) and `public/app.js`, and added guards
+to `scripts/smoke-test.js`. Re-probed rather than re-stamped.
+
+**Re-probed on a fresh database (:3688), after phase 10 was in place:**
+
+| Must-have | Result |
+|---|---|
+| A supplied completion date is stored | `{"on":"2026-01-15"}` → `last_done` 2026-01-15 |
+| It drives `next_due` | 2026-01-25 (10-day interval) |
+| `2026-02-30` refused | 400 |
+| CSV carries a BOM | bytes `357 273 277` |
+| Download is offered as a file | `attachment; filename="spare-parts.csv"` |
+| Filtered export | `?low=1` → 200 |
+
+**Suite:** 145 checks, 0 failures. The phase-10 work did not touch the CSV
+writers, the filter builders or the date parser; it touched the login route and
+the client's error handling.

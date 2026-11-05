@@ -53,9 +53,9 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 
 ### Authentication (AUTH)
 
-- [ ] **AUTH-01** — Repeated failed logins from the same source are throttled, and the throttle is stated in the error message
-- [ ] **AUTH-02** — A successful login clears that source's failure count
-- [ ] **AUTH-03** — Throttling cannot be used to lock a legitimate user out permanently; the block expires on its own
+- [x] **AUTH-01** — Repeated failed logins from the same source are throttled, and the throttle is stated in the error message
+- [x] **AUTH-02** — A successful login clears that source's failure count
+- [x] **AUTH-03** — Throttling cannot be used to lock a legitimate user out permanently; the block expires on its own
 
 ## Future Requirements (deferred, with reasons)
 
@@ -94,9 +94,9 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 | CSV-02 | 9 | Complete | — |
 | CSV-03 | 9 | Complete | — |
 | CSV-04 | 9 | Complete | — |
-| AUTH-01 | 10 | Pending | — |
-| AUTH-02 | 10 | Pending | — |
-| AUTH-03 | 10 | Pending | — |
+| AUTH-01 | 10 | Complete | — |
+| AUTH-02 | 10 | Complete | — |
+| AUTH-03 | 10 | Complete | — |
 
 Status legend: Pending · Complete (verified by the smoke suite) · 🖥 additionally verified on
 Windows hardware.
