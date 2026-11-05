@@ -701,6 +701,96 @@ ok('no countdown or retry machinery remains in the client',
 ok('the client has no login timer at all',
   !/setInterval/.test(loginFn.replace(/\/\/[^\n]*/g, '')));
 
+console.log('\nPhase 12 — the dashboard');
+
+// --- the endpoint ---------------------------------------------------------
+const dash = await c2('/api/dashboard');
+ok('the dashboard endpoint answers', dash.status === 200, `status ${dash.status}`);
+const sections = ['work_orders', 'due_soon', 'low_stock', 'machines'];
+ok('it carries four sections', sections.every((k) => dash.data[k]), Object.keys(dash.data).join(','));
+ok('each section has a count, items and a link',
+  sections.every((k) => typeof dash.data[k].count === 'number'
+    && Array.isArray(dash.data[k].items) && /^#[a-z]+$/.test(dash.data[k].href)),
+  JSON.stringify(dash.data.work_orders).slice(0, 120));
+
+// Every href must name a screen that exists, or the card navigates nowhere.
+const dashPageKeys = [...((appUrl.match(/const PAGES = \[[\s\S]*?\n\];/) || [''])[0])
+  .matchAll(/key: '([\w-]+)'/g)].map((m) => m[1]);
+// "Points somewhere real" is too weak: swapping two cards' links still passed.
+// Each section must lead to the screen that owns its rows.
+const expectedHrefs = { work_orders: 'work', due_soon: 'due', low_stock: 'parts', machines: 'equipment' };
+ok('each card links to the screen that owns its rows',
+  sections.every((k) => dash.data[k].href === '#' + expectedHrefs[k]),
+  sections.map((k) => `${k}:${dash.data[k].href}`).join(' '));
+ok('every dashboard link points at a real screen',
+  sections.every((k) => dashPageKeys.includes(dash.data[k].href.slice(1))),
+  sections.map((k) => dash.data[k].href).join(','));
+
+// The count must be the true total while the list is capped. Seeding six
+// low-stock parts is the only way to tell "count" from "items.length".
+for (let i = 0; i < 6; i++) {
+  await c2('/api/parts', { method: 'POST', body: { name: `Dash part ${i}`, qty: 0, reorder_level: 3 } });
+}
+const capped = await c2('/api/dashboard');
+ok('items are capped at five', sections.every((k) => capped.data[k].items.length <= 5),
+  sections.map((k) => `${k}=${capped.data[k].items.length}`).join(' '));
+ok('the count is the true total, not the number of items shown',
+  capped.data.low_stock.count > capped.data.low_stock.items.length
+  && capped.data.low_stock.count >= 6,
+  `count=${capped.data.low_stock.count} items=${capped.data.low_stock.items.length}`);
+
+// A card that disagrees with its screen is worse than no card.
+const openList = (await c2('/api/work-orders')).data.filter((w) => w.status !== 'done');
+ok('the work-order count matches the list it links to',
+  capped.data.work_orders.count === openList.length,
+  `card=${capped.data.work_orders.count} list=${openList.length}`);
+
+// Close one work order. Without this, "open work orders" is never tested against
+// a closed row — every seeded order is open, so a count that forgot the filter
+// would still be right. A mutation proved exactly that.
+const openListForClose = (await c2('/api/work-orders')).data
+  .filter((w) => w.status !== 'done');
+const beforeClose = (await c2('/api/dashboard')).data.work_orders.count;
+if (openListForClose.length) {
+  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done' } });
+}
+const afterClose = (await c2('/api/dashboard')).data.work_orders.count;
+ok('closing a work order drops it from the open count',
+  openListForClose.length === 0 || afterClose === beforeClose - 1,
+  `${beforeClose} -> ${afterClose}`);
+
+
+// --- the payload carries no user data ------------------------------------
+const dashText = JSON.stringify(capped.data);
+ok('the dashboard never carries an email address', !/@/.test(dashText.replace(/[^@]*$/, '')),
+  'a user field leaked into the payload');
+ok('the dashboard carries no password field', !/password/i.test(dashText));
+ok('the dashboard carries no user records',
+  !/(^|\W)(email|role|active)(\W|$)/.test(dashText), 'user-shaped keys present');
+ok('an anonymous dashboard request is refused',
+  (await fetch(BASE + '/api/dashboard')).status === 401);
+
+// --- the screen ----------------------------------------------------------
+const dashSrc = readFileSync(join(root, 'public', 'dashboard.js'), 'utf8');
+ok('the dashboard lives in its own file', !/function renderDashboard/.test(appUrl));
+// Counting calls was not enough: deleting two of them still passed, because the
+// threshold was loose. Each user-controlled field is now named.
+const escapedFields = ['title', 'equipment_name', 'task', 'name', 'status'];
+const unescaped = escapedFields.filter((f) => !new RegExp(`escapeHtml\\([^)]*\\b${f}\\b`).test(dashSrc));
+ok('every user-supplied field is escaped', unescaped.length === 0,
+  unescaped.map((f) => `unescaped: ${f}`).join(', '));
+ok('no user-supplied field reaches innerHTML unescaped',
+  !/\$\{[^}]*\b(item\.(title|name|task|equipment_name|status))[^}]*\}/.test(
+    dashSrc.replace(/escapeHtml\([^)]*\)/g, 'ESC')),
+  'a raw item field is interpolated');
+ok('signing in lands on the dashboard, not due soon',
+  /showPage\('dashboard'\)/.test(appUrl), 'landing page not changed');
+ok('the dashboard is in the page list', dashPageKeys.includes('dashboard'));
+ok('a failed load is distinguished from an empty one',
+  /renderDashboardError/.test(dashSrc) && /Could not load the dashboard/.test(dashSrc)
+  && /dash-empty/.test(dashSrc));
+ok('a card with more items than shown says so', /and \$\{count - items\.length\} more/.test(dashSrc));
+
 console.log('\nPhase 11 — the shell');
 
 const shellSrc = readFileSync(join(root, 'public', 'shell.js'), 'utf8');

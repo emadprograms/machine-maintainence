@@ -5,6 +5,7 @@ const $ = (s) => document.querySelector(s);
 // classic script because the markup uses inline onclick handlers, which need
 // globals; the module is loaded once here and reached through window.shell.
 const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
+const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ---------------------------------------------------------------- helpers
@@ -33,7 +34,7 @@ function showApp(user) {
   $('#app').classList.remove('hidden');
   $('#who').textContent = `${user.name} (${user.role})`;
   buildTabs(user);
-  showPage('due');
+  showPage('dashboard');
 }
 async function login() {
   $('#login-error').textContent = '';
@@ -52,6 +53,7 @@ async function logout() {
 
 // ------------------------------------------------------------------ tabs
 const PAGES = [
+  { key: 'dashboard', label: 'Dashboard' },
   { key: 'due', label: 'Due soon' },
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
@@ -78,6 +80,7 @@ function showPage(key) {
   if (window.shell) window.shell.markCurrent(key);
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
   const loaders = {
+    dashboard: loadDashboard,
     due: loadDue, equipment: loadEquipment, work: loadWork,
     pm: loadPm, parts: loadParts, users: loadUsers,
   };
@@ -314,6 +317,21 @@ function dueKind(days) {
   if (days < 0) return badge(`${-days} days overdue`, 'red');
   if (days === 0) return badge('today', 'amber');
   return badge(`in ${days} days`, days <= 7 ? 'amber' : 'grey');
+}
+
+async function loadDashboard() {
+  const host = $('#dashboard-body');
+  if (!host) return;
+  try {
+    const data = await api('/dashboard');
+    const dash = await dashReady;
+    dash.renderDashboard(host, data);
+  } catch (e) {
+    // A failed load must not render as four zeroes — that reads as "all clear",
+    // which is the one thing a dashboard must never say wrongly.
+    const dash = await dashReady;
+    dash.renderDashboardError(host, e.message);
+  }
 }
 
 async function loadDue() {

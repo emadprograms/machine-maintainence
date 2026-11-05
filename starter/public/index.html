@@ -56,6 +56,27 @@
   .side-toggle { margin-top: auto; }
   #sidebar.collapsed .side-toggle svg { transform: rotate(180deg); }
   :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ---- dashboard ---- */
+  .dash-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .dash-card { display: flex; flex-direction: column; margin-bottom: 0; }
+  .dash-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .dash-label { font-size: 13px; color: var(--soft); font-weight: 500; }
+  .dash-count { font-size: 30px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .dash-card.has-items .dash-count { color: var(--brand); }
+  .dash-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .dash-list li { display: flex; flex-direction: column; gap: 1px; }
+  .dash-item-main { font-size: 14px; }
+  .dash-item-meta { font-size: 12px; color: var(--soft); }
+  .dash-empty { color: var(--soft); font-size: 13px; margin: 0 0 12px; }
+  .dash-more { color: var(--soft); font-size: 12px; margin: 0 0 12px; }
+  .dash-link {
+    margin-top: auto; align-self: flex-start; border: 0; background: none;
+    color: var(--brand); font: inherit; font-size: 13px; font-weight: 500;
+    padding: 6px 0; cursor: pointer; text-align: left;
+  }
+  .dash-link:hover { text-decoration: underline; }
+  .dash-error { border-color: #f5c2c0; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
   .card h2 { font-size: 15px; margin: 0 0 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -108,7 +129,10 @@
     <aside id="sidebar"></aside>
     <main>
     <!-- Due soon -->
-    <section data-page="due">
+    <section data-page="dashboard" class="hidden">
+      <div id="dashboard-body"></div>
+    </section>
+    <section data-page="due" class="hidden">
       <div class="card">
         <h2>Due soon</h2>
         <div class="actions" style="margin-bottom:12px">

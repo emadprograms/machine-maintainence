@@ -457,6 +457,57 @@ const api = {
     ORDER BY p.next_due`))),
 
   // "Due soon": due within N days, or already overdue.
+  // ---- dashboard. One request, four answers.
+  //
+  // The alternative was four existing list calls and a client that counts. That
+  // puts the answer in the one place this project cannot test — the smoke suite
+  // has no DOM — and ships four payloads to render four numbers. Every query here
+  // reuses a predicate the owning screen already uses, so a card cannot disagree
+  // with the list it links to.
+  'GET /api/dashboard': route(async (_req, res) => {
+    const DUE_DAYS = 7;      // the first option on the Due soon screen
+    const CAP = 5;           // enough to act on; the card links to the rest
+
+    const openWork = workOrderFilter({});
+    const openFilter = openWork.sql
+      ? `${openWork.sql} AND w.status <> 'done'`
+      : `WHERE w.status <> 'done'`;
+
+    const work = all(`
+      SELECT w.id, w.title, w.priority, w.status, e.name AS equipment_name
+      FROM work_orders w JOIN equipment e ON e.id = w.equipment_id
+      ${openFilter}
+      ORDER BY CASE w.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+               w.created_at ASC`);
+    const dueRows = all(`
+      SELECT p.id, p.task, p.next_due, e.name AS equipment_name,
+             CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
+      FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
+      WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days')
+      ORDER BY p.next_due`, DUE_DAYS);
+    const lowRows = all(`
+      SELECT part.id, part.name, part.qty, part.reorder_level
+      FROM parts part WHERE part.qty <= part.reorder_level
+      ORDER BY (part.qty - part.reorder_level) ASC`);
+    const downRows = all(
+      `SELECT id, name, status FROM equipment WHERE status = 'down' ORDER BY name`);
+
+    // The count is always the true total; only the list is capped. Capping the
+    // count as well would make a card say "5" when 40 parts are low.
+    const section = (rows, items, href) => ({
+      count: rows.length,
+      items: items.slice(0, CAP),
+      href,
+    });
+
+    send(res, 200, {
+      work_orders: section(work, work, '#work'),
+      due_soon: section(dueRows, dueRows, '#due'),
+      low_stock: section(lowRows, lowRows, '#parts'),
+      machines: section(downRows, downRows, '#equipment'),
+    });
+  }),
+
   'GET /api/pm/due': route(async (req, res) => {
     const days = Number(req.query.days) || 7;
     send(res, 200, all(`
