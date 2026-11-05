@@ -8,6 +8,23 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 **A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.**
 
+## Current Milestone: v1.1 Operable
+
+**Goal:** Turn a demo that can only add records into a tool a workshop can actually run day to
+day — every entity editable, stock that can go up as well as down, and work that belongs to
+somebody.
+
+**Target features:**
+- Restock, edit and delete a part (today `qty` only ever decreases and a typo is permanent)
+- Assign a work order to a technician, and edit a work order after creation
+- Fix `mark done` silently ignoring a supplied date (`req.body` is never assigned)
+- Per-part reorder level replacing the hardcoded `qty < 5`
+- CSV export for work orders and parts
+- Login throttling
+
+**Accepted debt:** no audit log, no concurrency control — both deferred with reasons in
+REQUIREMENTS.md.
+
 ## Requirements
 
 ### Validated
@@ -26,7 +43,8 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 ### Active
 
-(None — v1.0 shipped all eleven. v1.1 scope to be set with `/gsd-new-milestone`.)
+Tracked in `.planning/REQUIREMENTS.md` for v1.1 (IDs `PART-*`, `WO-*`, `PM-*`, `CSV-*`,
+`AUTH-*`). v1.0's eleven requirements above are all validated and archived.
 
 ### Out of Scope
 
@@ -75,7 +93,10 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 - **Runtime:** Node.js 22+ (for `node:sqlite`), no other runtime dependency. No `npm install` at runtime.
 - **Database:** SQLite in WAL mode, single file under `data/`, path overridable with `MM_DB`.
-- **Code size:** target ≤ ~1,200 lines total including HTML/CSS/JS.
+- **Code size:** no hard line target (the v1.0 figure of ≤ ~1,200 was dropped at the
+  v1.1 boundary, since v1.0 shipped at 1,041 and v1.1 adds CRUD to every entity). The bar
+  is qualitative and binding: **a beginner can still read every file in one sitting**, and
+  any single file over ~600 lines is a signal to split it.
 - **Portability:** No native modules, no compiled artifacts, no platform-specific binaries in the repo.
 - **Language:** English UI (the reviewed repo was French; the user works in English).
 - **Security bar:** GSD security ASVS level 1, block on `high`.
@@ -95,5 +116,22 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 | Pure-JavaScript offline scan instead of shelling out | `grep` does not exist in `cmd.exe`; shelling out made the suite fail on the one platform it exists to prove | ✓ Good — caught by the Windows UAT |
 | Smoke test runs under `PATH=/nonexistent` in CI-style checks | Simulates the Windows shell more faithfully than trusting that a command exists | ✓ Good |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-11-05 after v1.0 milestone*
+*Last updated: 2026-11-05 — v1.1 milestone opened*

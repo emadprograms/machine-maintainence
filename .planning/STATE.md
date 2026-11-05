@@ -1,20 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.0
-milestone_name: Lean core, offline, on Windows
-status: Awaiting next milestone
-last_updated: "2026-11-05T08:44:42.861Z"
+milestone: v1.1
+milestone_name: Operable
+status: planning
+last_updated: "2026-11-05T08:52:30.734Z"
 last_activity: 2026-11-05
-last_activity_desc: Milestone v1.0 completed and archived
-state_head: f91ef1fa56fe2d2572d583f1e0b6301f1f6b0fc7
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
-current_phase: 6
-current_phase_name: Windows portability & offline proof
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,13 +24,10 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 ## Current Position
 
-Phase: — (no active milestone; v1.0 archived to `.planning/milestones/v1.0-phases/`)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-05 — Milestone v1.0 completed and archived
-
-**Resume with:** `/gsd-new-milestone` to scope v1.1. The v1.0 record is complete and
-self-contained; nothing needs carrying forward beyond the three open items below.
+Status: Defining requirements
+Last activity: 2026-11-05 — Milestone v1.1 started
 
 ## Evidence log
 
