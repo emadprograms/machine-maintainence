@@ -701,6 +701,39 @@ ok('no countdown or retry machinery remains in the client',
 ok('the client has no login timer at all',
   !/setInterval/.test(loginFn.replace(/\/\/[^\n]*/g, '')));
 
+console.log('\nPhase 11 — the shell');
+
+const shellSrc = readFileSync(join(root, 'public', 'shell.js'), 'utf8');
+const indexSrc = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+
+ok('the tab row is gone', !/id="tabs"/.test(indexSrc) && !/id="tabs"/.test(appUrl));
+ok('the sidebar exists in the markup', /id="sidebar"/.test(indexSrc));
+ok('the shell lives in its own file, not in app.js',
+  existsSync(join(root, 'public', 'shell.js')) && !/function renderShell/.test(appUrl));
+
+// The sidebar and the screens must come from one list, or the navigation will
+// eventually offer a screen that does not exist.
+const pagesBlock = (appUrl.match(/const PAGES = \[[\s\S]*?\n\];/) || [''])[0];
+const pageKeys = [...pagesBlock.matchAll(/key: '([\w-]+)'/g)].map((m) => m[1]);
+const sectionKeys = [...indexSrc.matchAll(/<section data-page="([\w-]+)"/g)].map((m) => m[1]);
+ok('every page has a matching section', pageKeys.every((k) => sectionKeys.includes(k)),
+  `pages=${pageKeys.join(',')} sections=${sectionKeys.join(',')}`);
+ok('every section has a matching page', sectionKeys.every((k) => pageKeys.includes(k)),
+  `sections=${sectionKeys.join(',')}`);
+ok('the sidebar filters on the same adminOnly flag',
+  /adminOnly/.test(appUrl) && /p\.adminOnly/.test(appUrl),
+  'role filtering must reuse PAGES, not a second list');
+
+ok('the collapsed state is read defensively', /try \{[\s\S]{0,120}localStorage\.getItem/.test(shellSrc));
+ok('the collapsed state is written defensively', /try \{[\s\S]{0,140}localStorage\.setItem/.test(shellSrc));
+ok('the current screen is announced with aria-current', /aria-current/.test(shellSrc));
+ok('every entry carries an accessible name', /aria-label="\$\{p\.label\}"/.test(shellSrc));
+ok('the toggle reports its state with aria-expanded', /aria-expanded/.test(shellSrc));
+ok('icons are inline svg, not files or a font',
+  /<svg/.test(shellSrc) && !/\.(png|svg|woff)\b/.test(shellSrc));
+ok('no external URL was added to the shell',
+  !/https?:\/\//.test(shellSrc.replace(/\/\/[^\n]*/g, '')));
+
 console.log('\nPhase 6 — offline audit');
 // Pure JavaScript on purpose: the first version of this check shelled out to
 // `grep ... || true`, which does not exist on Windows (found by the Windows UAT,

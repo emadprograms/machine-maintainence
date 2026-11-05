@@ -1,5 +1,10 @@
 // Front-end: fetch calls + a little rendering. No framework, no build step.
 const $ = (s) => document.querySelector(s);
+
+// The shell lives in its own module (see public/shell.js for why). app.js stays a
+// classic script because the markup uses inline onclick handlers, which need
+// globals; the module is loaded once here and reached through window.shell.
+const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ---------------------------------------------------------------- helpers
@@ -58,15 +63,19 @@ const PAGES = [
 let currentPage = 'due';
 
 function buildTabs(user) {
-  $('#tabs').innerHTML = PAGES
-    .filter((p) => !p.adminOnly || user.role === 'admin')
-    .map((p) => `<button data-tab="${p.key}" onclick="showPage('${p.key}')">${p.label}</button>`)
-    .join('');
+  // Same PAGES array and the same adminOnly filter as before — the sidebar is a
+  // different rendering of the one list of screens, never a second list.
+  const visible = PAGES.filter((p) => !p.adminOnly || user.role === 'admin');
+  shellReady.then((shell) => shell.renderShell({
+    pages: visible,
+    current: currentPage,
+    onNavigate: showPage,
+  }));
 }
 
 function showPage(key) {
   currentPage = key;
-  $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === key));
+  if (window.shell) window.shell.markCurrent(key);
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
   const loaders = {
     due: loadDue, equipment: loadEquipment, work: loadWork,
