@@ -20,7 +20,7 @@ preventive maintenance) in ~1,040 lines of plain JavaScript with zero dependenci
 **Stats:**
 - 24 files created/modified
 - ~1,040 lines of application code, ~370 lines of test code
-- 6 phases, 6 plans, 24 tasks
+- 6 phases, 6 plans, 22 tasks
 - 1 day from start to close
 
 **Known verification overrides:** none. The two items acknowledged earlier (the Windows UAT

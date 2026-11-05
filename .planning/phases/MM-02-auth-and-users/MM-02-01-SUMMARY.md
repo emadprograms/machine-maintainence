@@ -1,6 +1,7 @@
 ---
 phase: MM-02-auth-and-users
 plan: 1
+one-liner: "Closed all three of the reviewed repo's security holes: a per-install signing secret replaces the hardcoded one, logout revokes server-side, and no public registration route exists at all."
 subsystem: auth
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -54,3 +55,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Ready for phase 3.
+
+## Performance
+**Tasks:** 6. One plan, executed as 6 sequenced tasks, all marked complete.

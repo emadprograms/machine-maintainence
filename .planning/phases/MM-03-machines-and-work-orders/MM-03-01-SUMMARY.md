@@ -1,6 +1,7 @@
 ---
 phase: MM-03-machines-and-work-orders
 plan: 1
+one-liner: "Machine and work-order CRUD with real status transitions and closed_at, where a bogus machine id returns a readable 400 instead of a 500 leaking SQL text."
 subsystem: crud
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -47,3 +48,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Ready for phase 4.
+
+## Performance
+**Tasks:** 4. One plan, executed as 4 sequenced tasks, all marked complete.

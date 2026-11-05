@@ -1,6 +1,7 @@
 ---
 phase: MM-04-spare-parts
 plan: 1
+one-liner: "Parts with stock and price, consumed on a job inside one transaction so the link and the decrement happen together or not at all — over-consumption is refused, never negative."
 subsystem: crud
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -48,3 +49,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Ready for phase 5.
+
+## Performance
+**Tasks:** 3. One plan, executed as 3 sequenced tasks, all marked complete.

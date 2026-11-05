@@ -1,6 +1,7 @@
 ---
 phase: MM-06-windows-and-offline
 plan: 1
+one-liner: "Windows launchers plus an offline audit that proves zero external requests, verified end to end on real Windows 11 hardware rather than asserted from Linux."
 subsystem: packaging
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -49,3 +50,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Milestone complete.
+
+## Performance
+**Tasks:** 3. One plan, executed as 3 sequenced tasks, all marked complete.

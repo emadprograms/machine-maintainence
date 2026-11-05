@@ -1,6 +1,7 @@
 ---
 phase: MM-01-foundation
 plan: 1
+one-liner: "Replaced sql.js's whole-file rewrite-per-request with node:sqlite in WAL mode, so a read never touches the disk and a write commits atomically — proven by a SIGKILL restart test."
 subsystem: persistence
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -49,3 +50,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Ready for phase 2.
+
+## Performance
+**Tasks:** 3. One plan, executed as 3 sequenced tasks, all marked complete.

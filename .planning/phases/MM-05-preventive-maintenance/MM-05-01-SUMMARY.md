@@ -1,6 +1,7 @@
 ---
 phase: MM-05-preventive-maintenance
 plan: 1
+one-liner: "Real recurring maintenance where the reviewed repo generated fake dates by hashing machine IDs: pm_schedule with next_due, a due-soon window that lists overdue first, and mark-done rolling forward exactly interval_days."
 subsystem: scheduling
 tags: [node, sqlite, vanilla-js, offline]
 provides:
@@ -47,3 +48,6 @@ Covered by `starter/scripts/smoke-test.js`. Full suite: **45 passed, 0 failed**.
 
 ## Next Phase Readiness
 Ready for phase 6.
+
+## Performance
+**Tasks:** 3. One plan, executed as 3 sequenced tasks, all marked complete.
