@@ -31,6 +31,12 @@ Plan: —
 Status: Awaiting next milestone
 Last activity: 2026-11-05 — Milestone v1.1 completed and archived
 
+## Quick Tasks Completed
+
+| Date | ID | Task | Commit |
+|---|---|---|---|
+| 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |
+
 ## Evidence log
 
 | Date | What was verified | How |

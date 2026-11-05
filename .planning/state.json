@@ -39,5 +39,17 @@
     "label": "Show progress",
     "reason": "Unsure of state \u2014 showing progress"
   },
-  "updated_at": "2026-11-05T10:06:56.101Z"
+  "updated_at": "2026-11-05T10:06:56.101Z",
+  "quick_tasks": [
+    {
+      "id": "261105-kkb",
+      "date": "2026-11-05",
+      "task": "Record failed sign-ins instead of blocking them",
+      "status": "complete",
+      "commits": [
+        "dd6b44e",
+        "23bf79f"
+      ]
+    }
+  ]
 }
