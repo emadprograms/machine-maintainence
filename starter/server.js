@@ -6,9 +6,22 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { all, get, run, transaction, backup } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
+import { createThrottle } from './throttle.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
+
+// Login throttling. In memory on purpose: it dies with the process, so a
+// restart is the most conservative possible answer to "does the block expire".
+const loginThrottle = createThrottle();
+
+// One client, one key. Node reports IPv4 connections as ::ffff:a.b.c.d when the
+// listener is dual-stack, which would otherwise let a single client appear as
+// two different sources.
+function sourceOf(req) {
+  const raw = req.socket?.remoteAddress || 'unknown';
+  return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+}
 const HOST = '0.0.0.0';           // reachable from other PCs on the workshop network
 const cookies = new Map();         // token -> expiry  (cleared on restart = "log out everywhere")
 
@@ -215,13 +228,33 @@ function partsFilter(query) {
 const api = {
   // ---- auth
   'POST /api/login': route(async (req, res) => {
+    const source = sourceOf(req);
+    // Checked before the password is verified: guessing costs the guesser a
+    // refusal, not a scrypt run.
+    const gate = loginThrottle.check(source);
+    if (gate.blocked) {
+      res.setHeader('retry-after', String(gate.retryAfter));
+      return send(res, 429, {
+        error: `Too many failed sign-ins. Try again in ${gate.retryAfter} seconds.`,
+        retry_after: gate.retryAfter,
+      });
+    }
+
     const body = await readBody(req);
     const user = get('SELECT * FROM users WHERE email = ?',
       String(body?.email || '').trim().toLowerCase());
     // Constant-time-ish: always hash something so timing does not leak whether an email exists.
     const ok = verifyPassword(String(body?.password || ''), user?.password_hash || hashPassword('x'));
-    if (!user || !ok) return send(res, 401, { error: 'Wrong email or password' });
+    if (!user || !ok) {
+      // An unknown email is an ordinary failure, counted identically. Treating it
+      // differently here would make the throttle an oracle for which addresses exist.
+      loginThrottle.fail(source);
+      return send(res, 401, { error: 'Wrong email or password' });
+    }
     if (!user.active) return send(res, 403, { error: 'This account has been disabled' });
+    // AUTH-02: someone who mistypes four times and then gets it right is not one
+    // attempt away from being locked out for the afternoon.
+    loginThrottle.reset(source);
     const token = signToken({ sub: user.id, role: user.role, name: user.name });
     cookies.set(token, Date.now() + 12 * 3600_000);
     res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200`);

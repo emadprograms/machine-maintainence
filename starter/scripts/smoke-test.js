@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import { rmSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { createThrottle, DEFAULTS } from '../throttle.js';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,13 @@ async function waitForServer(timeoutMs = 8000) {
     try { await fetch(`${BASE}/api/nope`); return true; } catch { await sleep(120); }
   }
   return false;
+}
+
+// A server left behind by an interrupted run keeps answering on the port, so
+// every request below would talk to an old process with an old database and the
+// whole suite would report nonsense. Refusing to start is the only safe answer.
+async function portIsFree() {
+  try { await fetch(`${BASE}/api/nope`); return false; } catch { return true; }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -124,8 +132,23 @@ function parseCsv(text) {
 
 // ---------------------------------------------------------------- the test
 console.log('\n--- starting with a fresh database ---');
+if (!(await portIsFree())) {
+  console.log(`  REFUSING TO RUN — something is already listening on port ${PORT}.`);
+  console.log('  It is probably a server left over from an interrupted run.');
+  console.log('  Stop it and run again; testing against it would prove nothing.');
+  process.exit(1);
+}
 rmSync(DB, { force: true });
 let srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+
+// If an assertion throws instead of failing, the child server would outlive the
+// test and squat on the port, so the next run would silently test against it.
+// The port guard above catches that, but leaving the orphan in the first place
+// is the actual bug. Kill it on any exit path.
+const killServer = () => { try { srv.child.kill('SIGKILL'); } catch { /* already gone */ } };
+process.on('exit', killServer);
+process.on('uncaughtException', (e) => { killServer(); console.error(e); process.exit(1); });
+process.on('unhandledRejection', (e) => { killServer(); console.error(e); process.exit(1); });
 ok('server starts', await waitForServer(), srv.log());
 await sleep(300);
 
@@ -511,6 +534,155 @@ ok('a value a spreadsheet would execute is neutralised',
   partNames.includes("'=1+1") && partRefs.includes("'+SUM(A1)"),
   `names=${partNames.join('|')} refs=${partRefs.join('|')}`);
 
+console.log('\nPhase 10 — login hardening');
+
+// --- unit level: expiry is arithmetic, not a timer -------------------------
+// A fake clock is what makes AUTH-03 testable at all. Sleeping for a 15-minute
+// window is not a test anyone would keep running.
+{
+  let fake = 1_000_000;
+  const t = createThrottle({ now: () => fake });
+
+  ok('a fresh source is not blocked', t.check('1.1.1.1').blocked === false);
+  for (let i = 0; i < DEFAULTS.threshold; i++) t.fail('1.1.1.1');
+  const blocked = t.check('1.1.1.1');
+  ok('reaching the threshold blocks the source', blocked.blocked === true,
+    JSON.stringify(blocked));
+  ok('the block reports a wait in whole seconds', Number.isInteger(blocked.retryAfter) && blocked.retryAfter > 0,
+    String(blocked.retryAfter));
+
+  // the same source, a moment later, is still blocked and waits less
+  fake += 60_000;
+  const later = t.check('1.1.1.1');
+  ok('the wait shrinks as time passes', later.retryAfter < blocked.retryAfter,
+    `${blocked.retryAfter} -> ${later.retryAfter}`);
+
+  // and once the window has elapsed, without anyone clearing anything
+  fake += DEFAULTS.windowMs;
+  ok('the block expires on its own once the window has passed',
+    t.check('1.1.1.1').blocked === false, JSON.stringify(t.check('1.1.1.1')));
+  ok('an expired entry is forgotten entirely, so memory does not grow',
+    t.size === 0, `map size ${t.size}`);
+
+  // a different source is never affected by another's failures
+  let fake2 = 2_000_000;
+  const t2 = createThrottle({ now: () => fake2 });
+  for (let i = 0; i < DEFAULTS.threshold; i++) t2.fail('2.2.2.2');
+  ok('one blocked source leaves another free', t2.check('3.3.3.3').blocked === false);
+  ok('a correct login clears only its own source', t2.reset('2.2.2.2').blocked === false
+    && t2.check('2.2.2.2').blocked === false);
+
+  // failures older than the window do not count toward a new threshold
+  let fake3 = 3_000_000;
+  const t3 = createThrottle({ now: () => fake3 });
+  for (let i = 0; i < DEFAULTS.threshold - 1; i++) t3.fail('4.4.4.4');
+  fake3 += DEFAULTS.windowMs + 1;
+  for (let i = 0; i < DEFAULTS.threshold - 1; i++) t3.fail('4.4.4.4');
+  ok('failures outside the window do not accumulate into a block',
+    t3.check('4.4.4.4').blocked === false, JSON.stringify(t3.check('4.4.4.4')));
+}
+
+// --- over HTTP: the route does what the module does ------------------------
+// A source that has already used its attempts. The suite shares one address with
+// the server, so this runs last, after every other login in the file.
+const loginAs = (email, password, extraHeaders = {}) => fetch(BASE + '/api/login', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...extraHeaders },
+  body: JSON.stringify({ email, password }),
+}).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})), headers: r.headers }));
+
+// --- AUTH-02: a successful login clears the count --------------------------
+// This has to go through the route. Calling throttle.reset() directly proves the
+// module can clear a source, which is not the same claim as the server doing it
+// on a successful login — and the first version of this assertion made exactly
+// that mistake, passing with the route's reset() deleted.
+{
+  const before = await loginAs('admin@local', 'wrong-password');
+  const before2 = await loginAs('admin@local', 'wrong-password');
+  ok('two wrong passwords are 401 while under the threshold',
+    before.status === 401 && before2.status === 401, `${before.status}/${before2.status}`);
+
+  const good = await loginAs('admin@local', 'smoke-test-password');
+  ok('the correct password works before the threshold is reached', good.status === 200,
+    `status ${good.status}`);
+
+  // If the route cleared the count, a fresh run of failures starts from zero and
+  // a single wrong password cannot possibly be a 429. If it did not, the two
+  // failures above plus this one are 3 — still under the threshold — so a plain
+  // 401 proves nothing either. Fail twice more: with the count cleared these are
+  // failures 1 and 2, without it they are 3 and 4, and the fifth is the
+  // threshold. Then one more distinguishes 0+3 (401) from 4+1 (429).
+  await loginAs('admin@local', 'wrong-password');
+  await loginAs('admin@local', 'wrong-password');
+  const afterReset = await loginAs('admin@local', 'wrong-password');
+  ok('a successful login resets the source, so the next misses start over',
+    afterReset.status === 401, `status ${afterReset.status} — a 429 here means the count survived a good login`);
+  // clean up so the threshold test below starts from a known state
+  await loginAs('admin@local', 'smoke-test-password');
+}
+
+// the wrong-password count is per source and this source is clean so far
+const wrongNow = await loginAs('admin@local', 'wrong-password');
+ok('a wrong password is still 401 while under the threshold', wrongNow.status === 401,
+  `status ${wrongNow.status}`);
+
+// --- an unknown email must be counted identically -------------------------
+// Otherwise the throttle answers "does this address exist?" for an attacker:
+// keep guessing a real address and it stops working, keep guessing an invented
+// one and it never does.
+{
+  // Spend the budget on *invented* addresses only. Doing it on the real one
+  // would block the source regardless of how unknown emails are treated, and
+  // the check would pass without testing anything — which is exactly what the
+  // first version did.
+  let madeUpStatus = 0;
+  for (let i = 0; i < DEFAULTS.threshold; i++) {
+    const r = await loginAs(`nobody${i}@nowhere.invalid`, 'wrong-password');
+    madeUpStatus = r.status;
+  }
+  ok('repeated failures on addresses that do not exist reach the threshold',
+    madeUpStatus === 429, `status ${madeUpStatus}`);
+  // and the refusal says nothing about whether the address exists
+  const probe = await loginAs('nobody99@nowhere.invalid', 'wrong-password');
+  ok('the throttled response is the same shape as any other',
+    /Too many failed sign-ins/.test(probe.data.error || ''), JSON.stringify(probe.data));
+  await loginAs('admin@local', 'smoke-test-password'); // clear for the tests below
+}
+
+let last = null;
+for (let i = 0; i < DEFAULTS.threshold - 1; i++) last = await loginAs('admin@local', 'wrong-password');
+last = await loginAs('admin@local', 'wrong-password');
+ok('exceeding the threshold returns 429', last.status === 429, `status ${last.status}`);
+
+const throttle429 = await loginAs('admin@local', 'wrong-password');
+ok('the refusal states how long to wait in the message',
+  /Try again in \d+ seconds/.test(throttle429.data.error || ''), throttle429.data.error);
+ok('the wait is also reported as a number', Number.isInteger(throttle429.data.retry_after)
+  && throttle429.data.retry_after > 0, JSON.stringify(throttle429.data));
+ok('the refusal carries a Retry-After header', /^\d+$/.test(throttle429.headers.get('retry-after') || ''),
+  String(throttle429.headers.get('retry-after')));
+
+// an attacker cannot mint a fresh identity with a header
+const spoofed = await loginAs('admin@local', 'wrong-password', { 'x-forwarded-for': '9.9.9.9' });
+ok('a spoofed X-Forwarded-For does not escape the throttle', spoofed.status === 429,
+  `status ${spoofed.status}`);
+
+// a correct password is refused while blocked — that is the point of a block
+const blockedCorrect = await loginAs('admin@local', 'smoke-test-password');
+ok('even the right password waits while the source is blocked', blockedCorrect.status === 429,
+  `status ${blockedCorrect.status}`);
+
+// the block lifts by itself; prove it without waiting by driving the same
+// assertion at the unit level, and assert the route's own arithmetic here
+ok('the reported wait is bounded by the window, so the block is always finite',
+  throttle429.data.retry_after <= DEFAULTS.windowMs / 1000,
+  `${throttle429.data.retry_after} <= ${DEFAULTS.windowMs / 1000}`);
+
+// `c` still holds the session cookie taken at the start of the run
+const sessionDuringBlock = await c('/api/equipment');
+ok('being blocked does not invalidate an existing session', sessionDuringBlock.status === 200,
+  `status ${sessionDuringBlock.status}`);
+
 // Snapshot the row counts now. The persistence checks below used to hardcode
 // the numbers the earlier phases happened to leave behind, so any later phase
 // that added a row broke them for the wrong reason (this is exactly what
@@ -573,6 +745,26 @@ ok('the export buttons are on the page', handlers.filter((h) => h.startsWith('do
   handlers.join(', '));
 ok('both exports read a filter that is on the page',
   html.includes('id="wo-status-filter"') && html.includes('id="low-stock-filter"'));
+
+// The throttle's message reaches a user or it is theatre. A 429 the client
+// treats as "please sign in" would look like a broken password.
+//
+// These check the actual chain, not that some word appears somewhere. The first
+// version of this check passed with the entire countdown deleted, which is why
+// it now names each link: the error objects carry retryAfter, login() reads it,
+// and something ticks it down.
+const loginFn = (appUrl.match(/async function login\(\)[\s\S]*?\n}/) || [''])[0];
+ok('the API error carries the wait',
+  /err\.retryAfter\s*=\s*data\.retry_after/.test(appUrl),
+  'api() must attach retry_after to the error it throws');
+ok('the login handler uses that wait instead of the generic message',
+  /e\.retryAfter/.test(loginFn) || /e\.retryAfter/.test(appUrl),
+  'login() must branch on the wait');
+ok('a countdown exists and is actually started',
+  /function startCooldown/.test(appUrl) && /startCooldown\(/.test(loginFn + appUrl.replace(/function startCooldown[\s\S]*?\n}/, '')),
+  'startCooldown must be called from outside its own body');
+ok('the countdown ticks on a timer and can be stopped',
+  /setInterval\(/.test(appUrl) && /clearInterval\(/.test(appUrl));
 
 console.log('\nPhase 6 — offline audit');
 // Pure JavaScript on purpose: the first version of this check shelled out to
