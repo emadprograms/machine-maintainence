@@ -1,6 +1,6 @@
 ---
 phase: MM-07-parts-become-maintainable
-verified: 2026-11-05T09:30:00Z
+verified: 2026-11-05T10:10:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -13,7 +13,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:69f7bb6a26be058776cafc67b235564235b0c4f5f8c23441fdbe6c0963b779ce"
+covered_digest: "v4:sha256:2dbb9c0dc4dd0d5f69468a69a8d89eca21caca5fb081e44c6e6ddd83f1499345"
 behavior_unverified: 0
 ---
 
@@ -83,3 +83,18 @@ automated check. Recorded in `07-VALIDATION.md`.
 
 PASSED — every must-have has automated evidence, and the one behavior without an automated
 check is layout-only and named.
+
+## Re-verification after phase 8
+
+Phase 8 modified all five files this report covers (`server.js`, `db.js`, `public/app.js`,
+`public/index.html`, `scripts/smoke-test.js`), so the digest went stale. Re-checked rather than
+re-stamped:
+
+- The phase 7 assertions all still exist and pass — the suite is now **85 checks, 0 failed**.
+- `PUT`/`DELETE /api/parts/:id` are untouched by phase 8's work-order changes.
+- Phase 8's `assigneeValue()` follows the same `{value}|{error}` shape `stockValue()` established,
+  so the two validators did not diverge.
+- Phase 8 changed `PATCH /api/work-orders/:id`; phase 7 does not touch work-order editing, so no
+  phase 7 behaviour is affected.
+
+Verdict unchanged: passed.
