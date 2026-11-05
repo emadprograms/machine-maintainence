@@ -1,24 +1,33 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v2.0",
-  "phases": [],
-  "next": {
-    "phase": 11,
-    "name": "The shell",
-    "status": "not started"
-  },
-  "updated_at": "2026-11-05T10:06:56.101Z",
-  "quick_tasks": [
+  "milestone": "v2.0 — Dashboard",
+  "phases": [
     {
-      "id": "261105-kkb",
-      "date": "2026-11-05",
-      "task": "Record failed sign-ins instead of blocking them",
-      "status": "complete",
-      "commits": [
-        "dd6b44e",
-        "23bf79f"
-      ]
+      "number": "7",
+      "name": "Parts become maintainable",
+      "status": "complete"
+    },
+    {
+      "number": "8",
+      "name": "Work belongs to somebody",
+      "status": "complete"
+    },
+    {
+      "number": "9",
+      "name": "Honest dates and real exports",
+      "status": "complete"
+    },
+    {
+      "number": "10",
+      "name": "Login hardening",
+      "status": "complete"
     }
-  ]
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step (plan phase 12)",
+    "reason": "Phase 2 of 3 — needs a plan"
+  },
+  "updated_at": "2026-11-05T15:07:51.440Z"
 }

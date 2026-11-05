@@ -22,10 +22,10 @@ makes the navigation move depending on who signed in.
 
 ### Navigation (NAV)
 
-- [ ] **NAV-01** — A persistent sidebar lists every screen the signed-in user may reach, with the current screen visibly marked
-- [ ] **NAV-02** — The sidebar collapses to an icon rail and expands back, and the chosen state survives a page reload
-- [ ] **NAV-03** — The sidebar shows only screens the user is permitted to open; a technician never sees Users or Backup
-- [ ] **NAV-04** — The existing screens remain reachable and unchanged in behaviour; this milestone moves the navigation, it does not alter what the screens do
+- [x] **NAV-01** — A persistent sidebar lists every screen the signed-in user may reach, with the current screen visibly marked
+- [x] **NAV-02** — The sidebar collapses to an icon rail and expands back, and the chosen state survives a page reload
+- [x] **NAV-03** — The sidebar shows only screens the user is permitted to open; a technician never sees Users or Backup
+- [x] **NAV-04** — The existing screens remain reachable and unchanged in behaviour; this milestone moves the navigation, it does not alter what the screens do
 
 ### Dashboard (DASH)
 
@@ -66,10 +66,10 @@ makes the navigation move depending on who signed in.
 
 | REQ | Phase | Status | Evidence |
 |---|---|---|---|
-| NAV-01 | 11 | Pending | — |
-| NAV-02 | 11 | Pending | — |
-| NAV-03 | 11 | Pending | — |
-| NAV-04 | 11 | Pending | — |
+| NAV-01 | 11 | Complete | — |
+| NAV-02 | 11 | Complete | — |
+| NAV-03 | 11 | Complete | — |
+| NAV-04 | 11 | Complete | — |
 | DASH-01 | 12 | Pending | — |
 | DASH-02 | 12 | Pending | — |
 | DASH-03 | 12 | Pending | — |

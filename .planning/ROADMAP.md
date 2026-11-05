@@ -47,7 +47,7 @@ rewritten presentation layer across six screens.
 
 ### Phases
 
-- [ ] **Phase 11: The shell** — Sidebar navigation that collapses, role-aware, replacing the top tabs (NAV-01 … NAV-04)
+- [x] **Phase 11: The shell** — Sidebar navigation that collapses, role-aware, replacing the top tabs (NAV-01 … NAV-04) (completed 2026-11-05)
 - [ ] **Phase 12: The front door** — A dashboard with counts and action lists, role-aware, with honest empty states (DASH-01 … DASH-05)
 - [ ] **Phase 13: One visual language** — Consistent headings, tables, empty states and destructive-action wording across all seven screens (SCREEN-01 … SCREEN-04)
 
@@ -71,8 +71,8 @@ Persisting the collapsed state must not require the server — `localStorage` is
 appropriate here precisely because the state is cosmetic.
 
 **Plans**:
-- [ ] 11-01: Sidebar shell in a new module, replacing the tab row; collapse toggle with persisted state
-- [ ] 11-02: Role filtering, keyboard access, accessible names, and assertions proving no behaviour changed
+- [x] 11-01: Sidebar shell in a new module, replacing the tab row; collapse toggle with persisted state
+- [x] 11-02: Role filtering, keyboard access, accessible names, and assertions proving no behaviour changed
 
 ### Phase 12: The front door
 **Goal**: Signing in answers "what needs attention?" without asking the user to visit four pages.

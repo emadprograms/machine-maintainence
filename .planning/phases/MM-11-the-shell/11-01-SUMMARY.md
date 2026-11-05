@@ -17,7 +17,7 @@ commits: [1785815]
 
 ## What was built
 
-`public/shell.js` — a module exporting `renderShell({ pages, current, onNavigate })`
+`starter/public/shell.js` — a module exporting `renderShell({ pages, current, onNavigate })`
 and `markCurrent(key)`. It renders `<aside id="sidebar">` containing a brand mark,
 a `<nav aria-label="Sections">` with one button per page, and a toggle at the
 bottom. Each entry carries an inline SVG icon, an `aria-label`, and

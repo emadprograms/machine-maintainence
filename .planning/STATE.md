@@ -2,17 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Dashboard
-status: Defining — milestone scoped, phases planned
-last_updated: "2026-11-05T10:06:56.085Z"
+current_phase: 12
+current_phase_name: The front door
+status: planning
+last_updated: "2026-11-05T15:07:51.429Z"
 last_activity: 2026-11-05
-last_activity_desc: Milestone v2.0 Dashboard scoped: 13 requirements across 3 phases
-state_head: f576bde90412c100a5d0d60a1b2ad623cb33d68b
+last_activity_desc: Phase 11 complete, transitioned to Phase 12
+state_head: 85679901daa28e35097dd11c4cf76f3bb4106718
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 6
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -26,10 +28,10 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 ## Current Position
 
-Phase: 11 — The shell (not started)
-Plan: —
-Status: Ready to plan phase 11
-Last activity: 2026-11-05 — Milestone v1.1 completed and archived
+Phase: 12 — The front door
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-05 — Phase 11 complete, transitioned to Phase 12
 
 ## Quick Tasks Completed
 
