@@ -56,7 +56,11 @@ CREATE TABLE IF NOT EXISTS work_orders (
   status       TEXT NOT NULL DEFAULT 'open'
                CHECK (status IN ('open','in_progress','done')),
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  closed_at    TEXT
+  closed_at    TEXT,
+  -- Who owns the job. No REFERENCES clause: SQLite cannot add one via ALTER
+  -- TABLE ADD COLUMN, so the app validates the id instead (see server.js).
+  -- Users are never deleted, only disabled, so an id cannot dangle.
+  assigned_to  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS parts (
@@ -104,6 +108,7 @@ ensureColumn('equipment', 'manufacturer', 'TEXT');
 // Fixed threshold of 5 became per-part in phase 7; the default keeps every
 // existing part behaving exactly as it did before the upgrade.
 ensureColumn('parts', 'reorder_level', 'INTEGER NOT NULL DEFAULT 5');
+ensureColumn('work_orders', 'assigned_to', 'INTEGER');
 ensureColumn('users', 'active', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('users', 'created_at', "TEXT");
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example

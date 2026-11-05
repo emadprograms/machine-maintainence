@@ -123,17 +123,74 @@ async function removeEquipment(id) {
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
 const NEXT_STATUS = { open: 'in_progress', in_progress: 'done', done: 'open' };
 
+let workCache = [];
+let editingWork = null;
+let assignable = [];          // { id, name } — fetched once per session
+
 async function loadWork() {
-  const rows = await api('/work-orders');
-  $('#work-rows').innerHTML = rows.map((w) => `
-    <tr>
-      <td>${esc(w.equipment_name)}</td><td>${esc(w.title)}</td>
-      <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
-      <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
-      <td><button class="small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
-        ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
-      </button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">No work orders yet.</td></tr>';
+  workCache = await api('/work-orders');
+  if (!assignable.length) {
+    try { assignable = await api('/users/assignable'); } catch { assignable = []; }
+  }
+  $('#work-rows').innerHTML = workCache.map((w) => (w.id === editingWork
+    ? `<tr>
+        <td>${esc(w.equipment_name)}</td>
+        <td><input id="we-title-${w.id}" value="${esc(w.title)}" /></td>
+        <td>${ownerSelect(w.id, w.assigned_to)}</td>
+        <td>${prioritySelect(w.id, w.priority)}</td>
+        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
+        <td class="actions">
+          <button class="small" onclick="saveWork(${w.id})">Save</button>
+          <button class="small" onclick="cancelWork()">Cancel</button>
+        </td>
+      </tr>`
+    : `<tr>
+        <td>${esc(w.equipment_name)}</td><td>${esc(w.title)}</td>
+        <td>${w.assignee_name ? esc(w.assignee_name) : '<span class="muted">unassigned</span>'}</td>
+        <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
+        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
+        <td class="actions">
+          <button class="small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
+            ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
+          </button>
+          <button class="small" onclick="editWork(${w.id})">Edit</button>
+        </td>
+      </tr>`)).join('') || '<tr><td colspan="6" class="muted">No work orders yet.</td></tr>';
+}
+
+function ownerSelect(workId, current) {
+  return `<select id="we-owner-${workId}">
+    <option value="">— unassigned —</option>
+    ${assignable.map((u) => `<option value="${u.id}"${u.id === current ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
+  </select>`;
+}
+
+function prioritySelect(workId, current) {
+  return `<select id="we-priority-${workId}">
+    ${['low', 'medium', 'high'].map((p) => `<option value="${p}"${p === current ? ' selected' : ''}>${p}</option>`).join('')}
+  </select>`;
+}
+
+function editWork(idToEdit) {
+  editingWork = idToEdit;
+  loadWork();
+}
+
+function cancelWork() {
+  editingWork = null;
+  loadWork();
+}
+
+async function saveWork(idToSave) {
+  try {
+    await api(`/work-orders/${idToSave}`, { method: 'PATCH', body: JSON.stringify({
+      title: $(`#we-title-${idToSave}`).value,
+      assigned_to: $(`#we-owner-${idToSave}`).value || null,
+      priority: $(`#we-priority-${idToSave}`).value,
+    })});
+    editingWork = null;
+    loadWork();
+  } catch (e) { alert(e.message); }
 }
 
 async function addWorkOrder() {

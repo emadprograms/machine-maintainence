@@ -220,6 +220,73 @@ ok('technician cannot delete a machine',
 ok('technician cannot read the staff list',
   (await tech('/api/users')).status === 403);
 
+console.log('\nPhase 8 — work belongs to somebody');
+// WO-01: assign, reassign, unassign.
+const assigned = await c(`/api/work-orders/${wo.data.id}`, {
+  method: 'PATCH', body: { assigned_to: created.data.id },
+});
+ok('work order can be assigned', assigned.status === 200 && assigned.data.assigned_to === created.data.id,
+  JSON.stringify(assigned.data.assigned_to));
+const listed = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id);
+ok('the list resolves the owner name',
+  listed.assignee_name === 'Tech One', `assignee_name=${listed.assignee_name}`);
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: 1 } });
+ok('work order can be reassigned',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === 'Admin');
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+ok('work order can be unassigned',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === null);
+ok('assigning a non-existent user is a readable 400',
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: 999999 } })).status === 400);
+ok('the bad-assignee refusal does not leak SQL',
+  !/FOREIGN KEY|constraint/i.test(String((await c(`/api/work-orders/${wo.data.id}`,
+    { method: 'PATCH', body: { assigned_to: 999999 } })).data.error)));
+
+// T-8-01: the narrow route must not become bug #11 through a second door.
+const assignableAsTech = await tech('/api/users/assignable');
+ok('technician can list assignable names', assignableAsTech.status === 200);
+ok('the assignable list exposes only id and name',
+  assignableAsTech.data.every((u) => Object.keys(u).sort().join(',') === 'id,name'),
+  JSON.stringify(Object.keys(assignableAsTech.data[0] || {})));
+ok('the assignable list never carries an email',
+  !JSON.stringify(assignableAsTech.data).includes('@'),
+  JSON.stringify(assignableAsTech.data).slice(0, 120));
+ok('technician still cannot read the full staff list',
+  (await tech('/api/users')).status === 403);
+
+// WO-02: a disabled owner's name must still render.
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: created.data.id } });
+ok('a disabled owner is still named on the job',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === 'Tech One',
+  'a departed technician must not vanish from their own history');
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: true } });
+
+// WO-03: editing.
+// Capture the status first — this order was moved to `done` back in phase 3, so
+// hardcoding 'open' here asserts yesterday's fixture rather than today's behaviour.
+const statusBeforeEdit = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).status;
+const retitled = await c(`/api/work-orders/${wo.data.id}`,
+  { method: 'PATCH', body: { title: 'Retitled job' } });
+ok('work order title can be edited', retitled.status === 200 && retitled.data.title === 'Retitled job');
+ok('editing the title leaves the status alone', retitled.data.status === statusBeforeEdit,
+  `was=${statusBeforeEdit} now=${retitled.data.status}`);
+ok('an empty title is refused',
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { title: '   ' } })).status === 400);
+ok('a notes-only edit does not blank the title',
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { notes: 'checked' } }))
+    .data.title === 'Retitled job');
+
+// WO-04: widening the writable surface must not widen the old boundaries.
+ok('technician can edit a work order',
+  (await tech(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { notes: 'tech edit' } })).status === 200);
+ok('technician still cannot create users',
+  (await tech('/api/users', { method: 'POST', body: {
+    name: 'Sneaky2', email: 's2@local', password: 'longenough1', role: 'admin' } })).status === 403);
+ok('technician still cannot delete a machine',
+  (await tech(`/api/equipment/${m1.data.id}`, { method: 'DELETE' })).status === 403);
+
 // Disabling takes effect immediately on the next request AND next login.
 await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });
 ok('disabled user is rejected at login',

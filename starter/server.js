@@ -107,6 +107,16 @@ function stockValue(raw, fallback) {
   return { value: n };
 }
 
+/** A user id to own a job, or null to unassign. Validated against the table so a
+ *  bad id is a sentence, not "FOREIGN KEY constraint failed". */
+function assigneeValue(raw) {
+  if (raw === undefined || raw === null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return { error: 'That person does not exist' };
+  if (!get('SELECT id FROM users WHERE id = ?', n)) return { error: 'That person does not exist' };
+  return { value: n };
+}
+
 /** A non-negative money value, or null to clear it. */
 function priceValue(raw) {
   if (raw === undefined || raw === null || raw === '') return { value: null };
@@ -175,9 +185,13 @@ const api = {
   }),
 
   // ---- work orders
+  // The owner's name is resolved here, with no filter on `active`: a person who
+  // has left still has to render on the jobs they owned (WO-02).
   'GET /api/work-orders': route(async (_req, res) => send(res, 200, all(`
-    SELECT w.*, e.name AS equipment_name
-    FROM work_orders w JOIN equipment e ON e.id = w.equipment_id
+    SELECT w.*, e.name AS equipment_name, u.name AS assignee_name
+    FROM work_orders w
+    JOIN equipment e ON e.id = w.equipment_id
+    LEFT JOIN users u ON u.id = w.assigned_to
     ORDER BY CASE w.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
              w.created_at DESC`))),
 
@@ -186,9 +200,12 @@ const api = {
     if (!b?.equipment_id || !b?.title?.trim()) {
       return send(res, 400, { error: 'Machine and title are required' });
     }
+    const owner = assigneeValue(b.assigned_to);
+    if (owner.error) return send(res, 400, { error: owner.error });
     // FK constraint catches a bogus machine id -> 400 instead of an orphan record.
-    const r = run('INSERT INTO work_orders (equipment_id, title, notes, priority) VALUES (?,?,?,?)',
-      id(b.equipment_id), b.title.trim(), b.notes || null, b.priority || 'medium');
+    const r = run(`INSERT INTO work_orders (equipment_id, title, notes, priority, assigned_to)
+                   VALUES (?,?,?,?,?)`,
+      id(b.equipment_id), b.title.trim(), b.notes || null, b.priority || 'medium', owner.value);
     send(res, 201, get('SELECT * FROM work_orders WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -196,10 +213,19 @@ const api = {
     const b = await readBody(req);
     const before = get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Work order not found' });
-    run('UPDATE work_orders SET status=?, priority=?, notes=?, closed_at=? WHERE id=?',
+    if (b.title !== undefined && !String(b.title).trim()) {
+      return send(res, 400, { error: 'Title cannot be empty' });
+    }
+    const owner = b.assigned_to === undefined
+      ? { value: before.assigned_to }
+      : assigneeValue(b.assigned_to);
+    if (owner.error) return send(res, 400, { error: owner.error });
+    run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?
+         WHERE id=?`,
+      b.title === undefined ? before.title : String(b.title).trim(),
       b.status ?? before.status, b.priority ?? before.priority, b.notes ?? before.notes,
       (b.status ?? before.status) === 'done' ? new Date().toISOString() : null,
-      id(req.params.id));
+      owner.value, id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 
@@ -347,6 +373,13 @@ const api = {
          WHERE id = ?`, base, base, id(req.params.id));
     send(res, 200, get('SELECT * FROM pm_schedule WHERE id = ?', id(req.params.id)));
   }),
+
+  // Names only, for populating an assignment dropdown. Any signed-in user may call
+  // this — a technician has to be able to say who owns a job. It deliberately
+  // exposes id and name and nothing else, so it cannot become the staff-directory
+  // leak that bug #11 closed (T-8-01).
+  'GET /api/users/assignable': route(async (_req, res) =>
+    send(res, 200, all('SELECT id, name FROM users ORDER BY name'))),
 
   // ---- users (admin only). There is deliberately no public sign-up route.
   // The role check is on the *read* too: a technician has no business seeing
