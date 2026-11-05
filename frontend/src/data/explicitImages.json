@@ -1,0 +1,139 @@
+{
+  "version": 2,
+  "equipmentByName": {
+    "Presse hydraulique 300T": [
+      "https://images.unsplash.com/photo-1689942007817-679c21614b25?w=900&q=85",
+      "https://images.unsplash.com/photo-1574935905666-e5754382b0b5?w=900&q=85",
+      "https://images.unsplash.com/photo-1565514239668-da7058edd6c8?w=900&q=85"
+    ],
+    "Convoyeur principal #1": [
+      "https://images.unsplash.com/photo-1586528116311-ad8dd87c2277?w=900&q=85",
+      "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=900&q=85",
+      "https://images.unsplash.com/photo-1504917591157-1293097a0862?w=900&q=85"
+    ],
+    "Robot de soudure MIG-200": [
+      "https://images.unsplash.com/photo-1565043666747-69fbe6adfc55?w=900&q=85",
+      "https://images.unsplash.com/photo-1563968743333-044cef800494?w=900&q=85",
+      "https://images.unsplash.com/photo-1581092918054-0ec244343066?w=900&q=85"
+    ],
+    "Compresseur à vis 75kW": [
+      "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=85",
+      "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85",
+      "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=900&q=85"
+    ],
+    "Centrifugeuse industrielle": [
+      "https://images.unsplash.com/photo-1532187863486-abf9db1a9620?w=900&q=85",
+      "https://images.unsplash.com/photo-1576086212959-78a2c33f6e10?w=900&q=85",
+      "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=900&q=85"
+    ],
+    "Four de traitement thermique": [
+      "https://images.unsplash.com/photo-1513828583688-c52646db1dc0?w=900&q=85",
+      "https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=900&q=85",
+      "https://images.unsplash.com/photo-1581092162384-898903c1c9c?w=900&q=85"
+    ],
+    "Test Pompe": [
+      "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85",
+      "https://images.unsplash.com/photo-1581092162384-898903c1c9c?w=900&q=85"
+    ]
+  },
+  "categoryFallback": {
+    "Presses": [
+      "https://images.unsplash.com/photo-1689942007817-679c21614b25?w=900&q=85",
+      "https://images.unsplash.com/photo-1574935905666-e5754382b0b5?w=900&q=85"
+    ],
+    "Convoyeurs": [
+      "https://images.unsplash.com/photo-1586528116311-ad8dd87c2277?w=900&q=85",
+      "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=900&q=85"
+    ],
+    "Robots": [
+      "https://images.unsplash.com/photo-1565043666747-69fbe6adfc55?w=900&q=85",
+      "https://images.unsplash.com/photo-1563968743333-044cef800494?w=900&q=85"
+    ],
+    "Compresseurs": [
+      "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=85",
+      "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85"
+    ],
+    "Centrifugeuses": [
+      "https://images.unsplash.com/photo-1532187863486-abf9db1a9620?w=900&q=85",
+      "https://images.unsplash.com/photo-1576086212959-78a2c33f6e10?w=900&q=85"
+    ],
+    "Fours": [
+      "https://images.unsplash.com/photo-1513828583688-c52646db1dc0?w=900&q=85",
+      "https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=900&q=85"
+    ],
+    "Pompes": [
+      "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85",
+      "https://images.unsplash.com/photo-1581092162384-898903c1c9c?w=900&q=85"
+    ]
+  },
+  "defaultEquipment": [
+    "https://images.unsplash.com/photo-1581092162384-898903c1c9c?w=900&q=85"
+  ],
+  "faultPatterns": [
+    {
+      "match": "robot|bras|articul|soudure|mig",
+      "images": [
+        "https://images.unsplash.com/photo-1563968743333-044cef800494?w=900&q=85",
+        "https://images.unsplash.com/photo-1565043666747-69fbe6adfc55?w=900&q=85"
+      ]
+    },
+    {
+      "match": "fuite|huile|joint|compresseur|spi",
+      "images": [
+        "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85",
+        "https://images.unsplash.com/photo-1581091226033-d5cafcf1aee1?w=900&q=85"
+      ]
+    },
+    {
+      "match": "vérin|hydraulique|presse|course",
+      "images": [
+        "https://images.unsplash.com/photo-1689942007817-679c21614b25?w=900&q=85",
+        "https://images.unsplash.com/photo-1574935905666-e5754382b0b5?w=900&q=85"
+      ]
+    },
+    {
+      "match": "centrifuge|bruit|vibrat|frottement",
+      "images": [
+        "https://images.unsplash.com/photo-1532187863486-abf9db1a9620?w=900&q=85",
+        "https://images.unsplash.com/photo-1581092921461-39bda440174b?w=900&q=85"
+      ]
+    },
+    {
+      "match": "convoyeur|rouleau|belt|entraînement",
+      "images": [
+        "https://images.unsplash.com/photo-1586528116311-ad8dd87c2277?w=900&q=85",
+        "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=900&q=85"
+      ]
+    },
+    {
+      "match": "four|thermique|température|chaleur",
+      "images": [
+        "https://images.unsplash.com/photo-1513828583688-c52646db1dc0?w=900&q=85",
+        "https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=900&q=85"
+      ]
+    },
+    {
+      "match": "scan|test|pompe",
+      "images": [
+        "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=85",
+        "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=85"
+      ]
+    }
+  ],
+  "faultPriorityFallback": {
+    "critical": [
+      "https://images.unsplash.com/photo-1581092921461-39bda440174b?w=900&q=85",
+      "https://images.unsplash.com/photo-1563968743333-044cef800494?w=900&q=85"
+    ],
+    "high": [
+      "https://images.unsplash.com/photo-1581091226033-d5cafcf1aee1?w=900&q=85",
+      "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=900&q=85"
+    ],
+    "medium": [
+      "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=85"
+    ],
+    "low": [
+      "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=900&q=85"
+    ]
+  }
+}
