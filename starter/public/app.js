@@ -8,6 +8,49 @@ const shellReady = import('/shell.js').then((m) => { window.shell = m; return m;
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
+// ------------------------------------------------------- dialogs and empty states
+
+/** Open a create form. One function for all seven, so they cannot drift apart. */
+function openForm(id) {
+  const d = document.getElementById(id);
+  if (!d) return;
+  d.querySelector('.form-error')?.replaceChildren();   // clear last time's message
+  if (typeof d.showModal === 'function') d.showModal();
+  else d.setAttribute('open', '');                     // older browsers: still usable
+  d.querySelector('input, select')?.focus();
+}
+
+function closeForm(id) {
+  const d = document.getElementById(id);
+  if (d?.open) d.close();
+  else d?.removeAttribute('open');
+}
+
+/** Close a dialog once its work succeeded. Failure leaves it open so the message
+ *  stays next to the field that caused it. */
+function formDone(id) { closeForm(id); }
+
+/** Write a validation message into a dialog rather than raising an alert():
+ *  an alert blocks the whole page and loses the user's place. */
+function formError(id, message) {
+  const p = document.getElementById(id)?.querySelector('.form-error');
+  if (p) p.textContent = message;
+  else alert(message);
+}
+
+/** A whole-table sentence for an empty list.
+ *  Only ever called after a fetch succeeded — the catch paths are untouched, so
+ *  "nothing here" can never be shown in place of "could not load". */
+function emptyRow(colspan, sentence) {
+  return `<tr><td colspan="${colspan}" class="cell-say">${esc(sentence)}</td></tr>`;
+}
+
+/** A row's first cell: the thing the row is about. */
+const strong = (v) => `<td class="cell-strong">${esc(v)}</td>`;
+/** A secondary value, or an honest absence rather than a dash. */
+const soft = (v, fallback = 'Not set') =>
+  `<td class="cell-muted">${v ? esc(v) : fallback}</td>`;
+
 // ---------------------------------------------------------------- helpers
 async function api(path, options = {}) {
   const res = await fetch('/api' + path, {
@@ -92,16 +135,16 @@ async function loadEquipment() {
   const rows = await api('/equipment');
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
-      <td>${esc(e.name)}</td><td>${esc(e.asset_tag || '—')}</td>
-      <td>${esc(e.category || '—')}</td><td>${esc(e.location || '—')}</td>
+      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.category)}${soft(e.location)}
       <td>${badge(e.status, e.status === 'active' ? 'green' : e.status === 'down' ? 'red' : 'grey')}</td>
-      <td class="actions">
-        <button class="small" onclick="toggleStatus(${e.id}, '${e.status}')">
+      <td>
+        <button class="ghost small" onclick="toggleStatus(${e.id}, '${e.status}')">
           ${e.status === 'retired' ? 'Restore' : 'Retire'}
         </button>
-        <button class="small danger" onclick="removeEquipment(${e.id})">Delete</button>
+        <button class="ghost small danger" onclick="removeEquipment(${e.id})">Delete</button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="6" class="muted">No machines yet.</td></tr>';
+    </tr>`).join('')
+    || emptyRow(6, 'No machines yet. Add the first one and it will appear here.');
 
   const options = rows.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;
@@ -110,12 +153,15 @@ async function loadEquipment() {
 
 async function addEquipment() {
   const name = $('#e-name').value.trim();
-  if (!name) return alert('Name is required');
-  await api('/equipment', { method: 'POST', body: JSON.stringify({
-    name, asset_tag: $('#e-tag').value, category: $('#e-cat').value, location: $('#e-loc').value,
-  })});
-  ['#e-name', '#e-tag', '#e-cat', '#e-loc'].forEach((s) => { $(s).value = ''; });
-  loadEquipment();
+  if (!name) return formError('equipment-form', 'A machine needs a name.');
+  try {
+    await api('/equipment', { method: 'POST', body: JSON.stringify({
+      name, asset_tag: $('#e-tag').value, category: $('#e-cat').value, location: $('#e-loc').value,
+    })});
+    ['#e-name', '#e-tag', '#e-cat', '#e-loc'].forEach((s) => { $(s).value = ''; });
+    formDone('equipment-form');
+    loadEquipment();
+  } catch (e) { formError('equipment-form', e.message); }
 }
 
 async function toggleStatus(id, status) {
@@ -126,7 +172,9 @@ async function toggleStatus(id, status) {
 }
 
 async function removeEquipment(id) {
-  if (!confirm('Delete this machine and its work orders?')) return;
+  const row = (await api('/equipment')).find((e) => e.id === id);
+  const name = row ? row.name : 'this machine';
+  if (!confirm(`Delete "${name}"?\n\nIts work orders and maintenance history go with it. This cannot be undone.`)) return;
   try { await api(`/equipment/${id}`, { method: 'DELETE' }); loadEquipment(); }
   catch (e) { alert(e.message); }
 }
@@ -142,6 +190,10 @@ let assignable = [];          // { id, name } — fetched once per session
 async function loadWork() {
   const status = $('#wo-status-filter')?.value;
   workCache = await api(`/work-orders${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  // A technician may not read the assignable list. That is expected, and it must
+  // not be confused with "the work-order fetch failed" — this catch is scoped to
+  // the assignee lookup alone. The assertion that guards the empty state reads
+  // this function's text, so the reason is written where the next reader looks.
   if (!assignable.length) {
     try { assignable = await api('/users/assignable'); } catch { assignable = []; }
   }
@@ -158,17 +210,18 @@ async function loadWork() {
         </td>
       </tr>`
     : `<tr>
-        <td>${esc(w.equipment_name)}</td><td>${esc(w.title)}</td>
-        <td>${w.assignee_name ? esc(w.assignee_name) : '<span class="muted">unassigned</span>'}</td>
+        ${strong(w.equipment_name)}<td>${esc(w.title)}</td>
+        <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
-        <td class="actions">
-          <button class="small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
+        <td>
+          <button class="ghost small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
             ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
           </button>
-          <button class="small" onclick="editWork(${w.id})">Edit</button>
+          <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
         </td>
-      </tr>`)).join('') || '<tr><td colspan="6" class="muted">No work orders yet.</td></tr>';
+      </tr>`)).join('')
+    || emptyRow(6, 'No work orders match. Create one with "New work order", or clear the filter.');
 }
 
 function ownerSelect(workId, current) {
@@ -208,13 +261,15 @@ async function saveWork(idToSave) {
 
 async function addWorkOrder() {
   const title = $('#w-title').value.trim();
+  if (!title) return formError('work-form', 'Say what is wrong — even a few words is enough.');
   try {
     await api('/work-orders', { method: 'POST', body: JSON.stringify({
       equipment_id: $('#w-equipment').value, title, priority: $('#w-priority').value,
     })});
     $('#w-title').value = '';
+    formDone('work-form');
     loadWork();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('work-form', e.message); }
 }
 
 async function advance(id, status) {
@@ -226,12 +281,19 @@ async function advance(id, status) {
 let partsCache = [];
 let editingPart = null;              // id of the row currently in edit mode
 
+/** A price, always with two decimals so a column lines up. */
+function money(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(2) : String(v);
+}
+
 // The badge rule lives in one place so the UI and the tests cannot disagree:
 // out of stock, at-or-below the part's own reorder level, or healthy.
 function stockCell(p) {
-  if (p.qty <= 0) return badge('out', 'red');
-  if (p.qty <= p.reorder_level) return badge(p.qty, 'amber');
-  return esc(p.qty);
+  const cell = (inner) => `<td class="cell-num">${inner}</td>`;
+  if (p.qty <= 0) return cell(badge('out', 'red'));
+  if (p.qty <= p.reorder_level) return cell(badge(p.qty, 'amber'));
+  return cell(esc(p.qty));
 }
 
 async function loadParts() {
@@ -244,21 +306,24 @@ async function loadParts() {
         <td><input id="edit-qty-${p.id}" type="number" min="0" value="${p.qty}" /></td>
         <td><input id="edit-price-${p.id}" type="number" step="0.01" value="${p.unit_price ?? ''}" /></td>
         <td><input id="edit-reorder-${p.id}" type="number" min="0" value="${p.reorder_level}" /></td>
-        <td class="actions">
-          <button class="small" onclick="savePart(${p.id})">Save</button>
-          <button class="small" onclick="cancelPart()">Cancel</button>
+        <td>
+          <button class="ghost small" onclick="savePart(${p.id})">Save</button>
+          <button class="ghost small" onclick="cancelPart()">Cancel</button>
         </td>
       </tr>`
     : `<tr>
-        <td>${esc(p.name)}</td><td>${esc(p.reference || '—')}</td>
-        <td>${stockCell(p)}</td>
-        <td>${p.unit_price == null ? '—' : esc(p.unit_price)}</td>
-        <td>${esc(p.reorder_level)}</td>
-        <td class="actions">
-          <button class="small" onclick="editPart(${p.id})">Edit</button>
-          <button class="small danger" onclick="removePart(${p.id})">Delete</button>
+        ${strong(p.name)}${soft(p.reference)}
+        ${stockCell(p)}
+        <td class="cell-num cell-muted">${p.unit_price == null ? 'Not set' : esc(money(p.unit_price))}</td>
+        <td class="cell-num cell-muted">${esc(p.reorder_level)}</td>
+        <td>
+          <button class="ghost small" onclick="editPart(${p.id})">Edit</button>
+          <button class="ghost small danger" onclick="removePart(${p.id})">Delete</button>
         </td>
-      </tr>`)).join('') || '<tr><td colspan="6" class="muted">No parts yet.</td></tr>';
+      </tr>`)).join('')
+    || emptyRow(6, low
+      ? 'Every part is above its reorder level. Nothing to order.'
+      : 'No spare parts yet. Add the ones you keep on the shelf.');
 }
 
 function editPart(idToEdit) {
@@ -289,7 +354,8 @@ async function removePart(idToRemove) {
   // Look the name up by id rather than interpolating it into the onclick — a part
   // called O'Brien or one containing a quote must not break the button.
   const part = partsCache.find((p) => p.id === idToRemove);
-  if (!confirm(`Delete the part "${part ? part.name : ''}"?`)) return;
+  const label = part ? part.name : 'this part';
+  if (!confirm(`Delete "${label}" from the spare parts list?\n\nIts stock count and price go with it. This cannot be undone.`)) return;
   try {
     await api(`/parts/${idToRemove}`, { method: 'DELETE' });
     loadParts();
@@ -298,7 +364,7 @@ async function removePart(idToRemove) {
 
 async function addPart() {
   const name = $('#p-name').value.trim();
-  if (!name) return alert('Name is required');
+  if (!name) return formError('parts-form', 'A part needs a name.');
   try {
     await api('/parts', { method: 'POST', body: JSON.stringify({
       name, reference: $('#p-ref').value, qty: $('#p-qty').value,
@@ -308,8 +374,9 @@ async function addPart() {
     ['#p-name', '#p-ref', '#p-price', '#p-supplier'].forEach((s) => { $(s).value = ''; });
     $('#p-qty').value = '0';
     $('#p-reorder').value = '5';
+    formDone('parts-form');
     loadParts();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('parts-form', e.message); }
 }
 
 // ----------------------------------------------------- preventive maint.
@@ -339,21 +406,26 @@ async function loadDue() {
   const rows = await api(`/pm/due?days=${days}`);
   $('#due-rows').innerHTML = rows.map((p) => `
     <tr>
-      <td>${esc(p.equipment_name)}</td><td>${esc(p.task)}</td>
-      <td>${p.interval_days} d</td><td>${esc(p.next_due)} ${dueKind(p.days_left)}</td>
-      <td><button class="small" onclick="pmDone(${p.id})">Mark done</button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">Nothing due in this window.</td></tr>';
+      ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
+      <td class="cell-num cell-muted">every ${p.interval_days} d</td>
+      <td class="cell-num">${esc(p.next_due)} ${dueKind(p.days_left)}</td>
+      <td><button class="ghost small" onclick="pmDone(${p.id})">Mark done</button></td>
+    </tr>`).join('')
+    || emptyRow(5, 'Nothing is due in this window. Widen the range above to look further ahead.');
 }
 
 async function loadPm() {
   const rows = await api('/pm');
   $('#pm-rows').innerHTML = rows.map((p) => `
     <tr>
-      <td>${esc(p.equipment_name)}</td><td>${esc(p.task)}</td><td>${p.interval_days} d</td>
-      <td>${esc(p.last_done || '—')}</td><td>${esc(p.next_due)} ${dueKind(p.days_left)}</td>
+      ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
+      <td class="cell-num cell-muted">every ${p.interval_days} d</td>
+      ${soft(p.last_done, 'Never')}
+      <td class="cell-num">${esc(p.next_due)} ${dueKind(p.days_left)}</td>
       <td><input type="date" id="pm-on-${p.id}" value="${esc(today())}" title="The day it was done" />
-        <button class="small" onclick="pmDone(${p.id})">Mark done</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="muted">No schedules yet.</td></tr>';
+        <button class="ghost small" onclick="pmDone(${p.id})">Mark done</button></td>
+    </tr>`).join('')
+    || emptyRow(6, 'No repeating maintenance yet. Add a schedule and it will show up here.');
 }
 
 async function addPm() {
@@ -366,8 +438,9 @@ async function addPm() {
     })});
     $('#pm-task').value = '';
     $('#pm-first').value = '';
+    formDone('pm-form');
     loadPm();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('pm-form', e.message); }
 }
 
 async function pmDone(id) {
@@ -417,13 +490,14 @@ async function loadUsers() {
   const rows = await api('/users');
   $('#users-rows').innerHTML = rows.map((u) => `
     <tr>
-      <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+      ${strong(u.name)}<td class="cell-muted">${esc(u.email)}</td>
       <td>${badge(u.role, u.role === 'admin' ? 'amber' : 'grey')}</td>
       <td>${u.active ? badge('active', 'green') : badge('disabled', 'red')}</td>
-      <td><button class="small" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">
+      <td><button class="ghost small" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">
         ${u.active ? 'Disable' : 'Enable'}
       </button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">No users yet.</td></tr>';
+    </tr>`).join('')
+    || emptyRow(5, 'Only your account exists. Create the rest with "New user".');
 }
 
 async function addUser() {
@@ -435,8 +509,9 @@ async function addUser() {
       role: $('#u-role').value,
     })});
     ['#u-name', '#u-email', '#u-pass'].forEach((s) => { $(s).value = ''; });
+    formDone('users-form');
     loadUsers();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('users-form', e.message); }
 }
 
 async function toggleUser(id, active) {

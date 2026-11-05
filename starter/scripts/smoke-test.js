@@ -701,6 +701,90 @@ ok('no countdown or retry machinery remains in the client',
 ok('the client has no login timer at all',
   !/setInterval/.test(loginFn.replace(/\/\/[^\n]*/g, '')));
 
+console.log('\nPhase 13 — one visual language');
+
+const uiCss = (html.match(/<style>([\s\S]*?)<\/style>/) || ['', ''])[1];
+const appSrc13 = readFileSync(join(root, 'public', 'app.js'), 'utf8');
+
+// Every screen opens with a header: name, purpose, and its action.
+const screenBodies = [...html.matchAll(/<section data-page="([\w-]+)"[^>]*>([\s\S]*?)<\/section>/g)];
+ok('every screen has a page header',
+  screenBodies.length > 0 && screenBodies.every((m) => /class="page-head"/.test(m[2])),
+  screenBodies.filter((m) => !/class="page-head"/.test(m[2])).map((m) => m[1]).join(',') || 'none');
+ok('every header carries a purpose sentence',
+  screenBodies.every((m) => /class="page-sub"[^>]*>[^<]{20,}</.test(m[2])),
+  screenBodies.filter((m) => !/class="page-sub"[^>]*>[^<]{20,}</.test(m[2])).map((m) => m[1]).join(','));
+
+// The complaint was a data-entry form above a table. That must not come back.
+ok('no screen opens with a form',
+  screenBodies.every((m) => {
+    const first = m[2].trim();
+    return /^<div class="page-head"/.test(first);
+  }), screenBodies.filter((m) => !/^<div class="page-head"/.test(m[2].trim())).map((m) => m[1]).join(','));
+ok('no form sits on a page outside a dialog',
+  screenBodies.every((m) => {
+    const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
+    return !/class="form-grid"/.test(withoutDialogs);
+  }));
+ok('each creating screen has its own dialog',
+  (html.match(/<dialog class="sheet"|class="sheet"/g) || []).length >= 5
+  && (html.match(/<dialog id="[\w-]+"/g) || []).length === 5,
+  `${(html.match(/<dialog id="/g) || []).length} dialogs`);
+ok('every dialog can be closed without JavaScript',
+  (html.match(/<button class="icon-btn" type="button" aria-label="Close"/g) || []).length === 5);
+ok('a create action is behind a button, not on the page',
+  /onclick="openForm\('/.test(html) && /function openForm/.test(appSrc13));
+
+// Row treatment, asserted as CSS rules rather than by eye.
+ok('rows respond to hover', /tbody tr:hover td/.test(uiCss));
+ok('numeric columns are right-aligned and tabular',
+  /\.cell-num\s*\{[^}]*text-align:\s*right/.test(uiCss) && /\.cell-num\s*\{[^}]*tabular-nums/.test(uiCss));
+ok('the first column is heavier', /\.cell-strong\s*\{[^}]*font-weight/.test(uiCss));
+ok('secondary text is muted', /\.cell-muted\s*\{[^}]*color:/.test(uiCss));
+ok('row padding is set once for every table', /th, td \{[^}]*padding/.test(uiCss));
+ok('rows use the shared strong/soft helpers, not bare cells',
+  appSrc13.includes('strong(e.name)') && appSrc13.includes('strong(w.equipment_name)')
+  && appSrc13.includes('strong(p.name)') && appSrc13.includes('strong(u.name)'));
+
+// Empty states: a sentence, and only after a successful fetch.
+ok('every list has a written empty state',
+  ['equipment', 'work', 'parts', 'due', 'pm', 'users'].every((fn) => {
+    const body = (appSrc13.match(new RegExp(`async function load${fn[0].toUpperCase()}${fn.slice(1)}[\\s\\S]*?\\n}`)) || [''])[0];
+    return /emptyRow\(/.test(body);
+  }));
+ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0,160}esc\(sentence\)/.test(appSrc13));
+// Two earlier versions of this assertion were wrong, and a mutation proved it
+// both times. The first matched the word "catch" inside emptyRow's own comment
+// and reported a bug that did not exist. The second inspected the catch body,
+// but the defect is a catch that swallows the error and lets execution fall
+// through to the empty render — the catch body itself is innocent.
+//
+// The invariant is about the data source: a loader that can render "nothing
+// here" must not have a catch that turns a failure into an empty array.
+const emptiers = ['Equipment', 'Work', 'Parts', 'Due', 'Pm', 'Users'];
+const swallowed = emptiers.filter((fn) => {
+  const body = (appSrc13.match(new RegExp(`async function load${fn}[\\s\\S]*?\\n}`)) || [''])[0];
+  if (!body.includes('emptyRow(')) return false;
+  // Only a catch that guards the *list* fetch can turn a failure into "nothing
+  // here". A catch inside the assignee lookup is a different question, and
+  // loadWork legitimately has one: a technician may not read that list.
+  const guarded = body
+    .replace(/try \{ assignable = await api\('\/users\/assignable'\); \} catch \{ assignable = \[\]; \}/, '')
+    // Strip comments before matching. Twice now this assertion has been fooled by
+    // the word "catch" in prose — the first time when it was written, the second
+    // time when I documented the very thing it was looking for.
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  return /catch[^{]*\{/.test(guarded);
+});
+ok('a failed load cannot fall through to an empty list', swallowed.length === 0,
+  `swallows errors: ${swallowed.map((f) => 'load' + f).join(', ')}`);
+
+// Destructive actions name the record and the consequence.
+ok('deleting a machine names it and says what happens',
+  /Delete "\$\{name\}"/.test(appSrc13) && /cannot be undone/i.test(appSrc13));
+ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(appSrc13));
+
 console.log('\nPhase 12 — the dashboard');
 
 // --- the endpoint ---------------------------------------------------------

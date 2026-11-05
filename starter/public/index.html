@@ -77,23 +77,80 @@
   }
   .dash-link:hover { text-decoration: underline; }
   .dash-error { border-color: #f5c2c0; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
-  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  /* ---- surfaces ---- */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 16px; margin-bottom: 16px; }
+  .card-pad { padding: 22px; }
+  .card-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .card-toolbar select { width: auto; min-width: 150px; }
+
+  /* ---- page header: every screen starts here ---- */
+  .page-head { display: flex; align-items: flex-start; gap: 20px;
+               justify-content: space-between; margin: 0 0 18px; flex-wrap: wrap; }
+  .page-head h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 3px; }
+  .page-sub { margin: 0; color: var(--soft); font-size: 13.5px; }
+  .head-actions { display: flex; gap: 8px; align-items: center; }
+  .head-actions select { width: auto; }
+
+  /* ---- tables: rows read as records ---- */
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
-  th { color: var(--soft); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--soft); font-weight: 500; font-size: 11.5px; text-transform: uppercase;
+       letter-spacing: .05em; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #fafbfc; }
+  .cell-strong { font-weight: 550; color: var(--ink); }
+  .cell-muted { color: var(--soft); }
+  .cell-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cell-say { color: var(--soft); font-size: 13px; padding: 26px 10px; text-align: center; }
+  .table-wrap { overflow-x: auto; }
+
+  /* ---- forms ---- */
   input, select, textarea {
     font: inherit; padding: 8px 10px; border: 1px solid var(--line);
-    border-radius: 8px; background: #fff; width: 100%;
+    border-radius: 8px; background: #fff; width: 100%; color: var(--ink);
   }
-  row, .form-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-  .actions { display: flex; gap: 8px; align-items: center; }
-  button.primary { background: var(--brand); color: #fff; border: none; padding: 9px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-  button.primary:hover { background: #0062c4; }
-  button.small { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
-  button.danger { color: var(--red); border-color: #f5c2c0; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  input:focus, select:focus, textarea:focus { border-color: var(--brand); }
+  .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .form-grid-wide { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > span { font-size: 12.5px; color: var(--soft); font-weight: 500; }
+  .form-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--soft); }
+  .check input { width: auto; }
+
+  /* ---- buttons ---- */
+  button { font: inherit; cursor: pointer; }
+  button.primary { background: var(--brand); color: #fff; border: 1px solid var(--brand);
+                   padding: 9px 16px; border-radius: 9px; font-weight: 600; font-size: 14px; }
+  button.primary:hover { background: #0062c4; border-color: #0062c4; }
+  button.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line);
+                 padding: 8px 14px; border-radius: 9px; font-size: 14px; }
+  button.ghost:hover { background: #f7f8fa; }
+  button.small { padding: 5px 11px; font-size: 12.5px; border-radius: 7px; }
+  button.danger { color: var(--red); border-color: #f5c2c0; background: #fff; }
+  button.danger:hover { background: #fef3f2; }
+  .icon-btn { border: 0; background: none; font-size: 22px; line-height: 1;
+              color: var(--soft); padding: 2px 6px; border-radius: 7px; }
+  .icon-btn:hover { background: #f2f4f7; color: var(--ink); }
+  td button { margin-left: 4px; }
+
+  /* ---- the create dialog ---- */
+  dialog.sheet {
+    border: 0; padding: 0; border-radius: 16px; width: min(620px, calc(100vw - 32px));
+    box-shadow: 0 24px 60px rgba(16, 24, 40, .18), 0 2px 8px rgba(16, 24, 40, .06);
+    color: var(--ink);
+  }
+  dialog.sheet::backdrop { background: rgba(16, 24, 40, .38); }
+  .sheet-inner { padding: 24px 24px 20px; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .sheet-head h3 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  .sheet-sub { color: var(--soft); font-size: 13px; margin: 0 0 18px; }
+  .sheet-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ---- small things ---- */
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px;
+           font-size: 11.5px; font-weight: 500; }
   .b-red { background: #fef3f2; color: var(--red); }
   .b-amber { background: #fffaeb; color: var(--amber); }
   .b-green { background: #ecfdf3; color: var(--green); }
@@ -130,152 +187,264 @@
     <main>
     <!-- Due soon -->
     <section data-page="dashboard" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p class="page-sub">What needs attention today, across the whole workshop.</p>
+        </div>
+      </div>
       <div id="dashboard-body"></div>
     </section>
     <section data-page="due" class="hidden">
-      <div class="card">
-        <h2>Due soon</h2>
-        <div class="actions" style="margin-bottom:12px">
-          <label class="muted">Within</label>
-          <select id="due-days" style="width:auto" onchange="loadDue()">
+      <div class="page-head">
+        <div>
+          <h2>Due soon</h2>
+          <p class="page-sub">Maintenance that has come due, or soon will.</p>
+        </div>
+        <div class="head-actions">
+          <label class="muted" for="due-days">Within</label>
+          <select id="due-days" onchange="loadDue()">
             <option>7</option><option>14</option><option>30</option><option>90</option>
           </select>
           <span class="muted">days</span>
         </div>
-        <table><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th>Due</th><th></th></tr></thead>
-          <tbody id="due-rows"></tbody></table>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th class="cell-num">Due</th><th></th></tr></thead>
+            <tbody id="due-rows"></tbody></table>
+        </div>
       </div>
     </section>
 
     <!-- Machines -->
     <section data-page="equipment" class="hidden">
-      <div class="card">
-        <h2>Add a machine</h2>
-        <div class="form-grid">
-          <input id="e-name" placeholder="Name (required)" />
-          <input id="e-tag" placeholder="Asset tag" />
-          <input id="e-cat" placeholder="Category" />
-          <input id="e-loc" placeholder="Location" />
+      <div class="page-head">
+        <div>
+          <h2>Machines</h2>
+          <p class="page-sub">Everything you maintain, and the state it is in right now.</p>
         </div>
-        <p></p>
-        <button class="primary" onclick="addEquipment()">Add machine</button>
+        <button class="primary" onclick="openForm('equipment-form')">New machine</button>
       </div>
       <div class="card">
-        <h2>Machines</h2>
-        <table><thead><tr><th>Name</th><th>Tag</th><th>Category</th><th>Location</th><th>Status</th><th></th></tr></thead>
-          <tbody id="equipment-rows"></tbody></table>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Name</th><th>Tag</th><th>Category</th><th>Location</th><th>Status</th><th></th></tr></thead>
+            <tbody id="equipment-rows"></tbody></table>
+        </div>
       </div>
+
+      <dialog id="equipment-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">Only the name is required; the rest can be filled in later.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="e-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Asset tag</span><input id="e-tag" placeholder="e.g. MM-014" /></label>
+            <label class="field"><span>Category</span><input id="e-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="e-loc" placeholder="e.g. Bay 2" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addEquipment()">Add machine</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Work orders -->
     <section data-page="work" class="hidden">
-      <div class="card">
-        <h2>New work order</h2>
-        <div class="form-grid">
-          <select id="w-equipment"></select>
-          <input id="w-title" placeholder="What is wrong? (required)" />
-          <select id="w-priority">
-            <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
-            <option value="high">High</option>
-          </select>
+      <div class="page-head">
+        <div>
+          <h2>Work orders</h2>
+          <p class="page-sub">What needs fixing, who owns it, and what is already done.</p>
         </div>
-        <p></p>
-        <button class="primary" onclick="addWorkOrder()">Create</button>
+        <button class="primary" onclick="openForm('work-form')">New work order</button>
       </div>
       <div class="card">
-        <h2>Work orders</h2>
-        <div class="form-grid">
+        <div class="card-toolbar">
           <select id="wo-status-filter" onchange="loadWork()">
             <option value="">Any status</option>
             <option value="open">Open</option>
             <option value="in_progress">In progress</option>
             <option value="done">Done</option>
           </select>
-          <button class="small" onclick="downloadWorkOrders()">Download CSV</button>
+          <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
-        <table><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead>
-          <tbody id="work-rows"></tbody></table>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+            <tbody id="work-rows"></tbody></table>
+        </div>
       </div>
+
+      <dialog id="work-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Machine</span><select id="w-equipment"></select></label>
+            <label class="field"><span>Problem</span><input id="w-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Priority</span>
+              <select id="w-priority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addWorkOrder()">Create work order</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Parts -->
     <section data-page="parts" class="hidden">
-      <div class="card">
-        <h2>Add a spare part</h2>
-        <div class="form-grid">
-          <input id="p-name" placeholder="Name (required)" />
-          <input id="p-ref" placeholder="Reference" />
-          <input id="p-qty" type="number" min="0" placeholder="Quantity" value="0" />
-          <input id="p-price" type="number" step="0.01" placeholder="Unit price" />
-          <input id="p-reorder" type="number" min="0" placeholder="Reorder at" value="5" />
-          <input id="p-supplier" placeholder="Supplier" />
+      <div class="page-head">
+        <div>
+          <h2>Spare parts</h2>
+          <p class="page-sub">What is on the shelf, what it costs, and what needs reordering.</p>
         </div>
-        <p></p>
-        <button class="primary" onclick="addPart()">Add part</button>
+        <button class="primary" onclick="openForm('parts-form')">New part</button>
       </div>
       <div class="card">
-        <h2>Spare parts</h2>
-        <div class="form-grid">
-          <label class="inline"><input type="checkbox" id="low-stock-filter" onchange="loadParts()" />
+        <div class="card-toolbar">
+          <label class="check"><input type="checkbox" id="low-stock-filter" onchange="loadParts()" />
             Only parts at or below the reorder level</label>
-          <button class="small" onclick="downloadParts()">Download CSV</button>
+          <button class="ghost small" onclick="downloadParts()">Download CSV</button>
         </div>
-        <table><thead><tr><th>Name</th><th>Reference</th><th>In stock</th><th>Unit price</th><th>Reorder at</th><th></th></tr></thead>
-          <tbody id="parts-rows"></tbody></table>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Name</th><th>Reference</th><th class="cell-num">In stock</th><th class="cell-num">Unit price</th><th class="cell-num">Reorder at</th><th></th></tr></thead>
+            <tbody id="parts-rows"></tbody></table>
+        </div>
       </div>
+
+      <dialog id="parts-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New spare part</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('parts-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">The reorder level is the quantity that triggers a warning.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="p-name" placeholder="e.g. Bearing 6204" /></label>
+            <label class="field"><span>Reference</span><input id="p-ref" placeholder="Supplier part number" /></label>
+            <label class="field"><span>In stock</span><input id="p-qty" type="number" min="0" value="0" /></label>
+            <label class="field"><span>Unit price</span><input id="p-price" type="number" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>Reorder at</span><input id="p-reorder" type="number" min="0" value="5" /></label>
+            <label class="field"><span>Supplier</span><input id="p-supplier" placeholder="Where it is ordered from" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('parts-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addPart()">Add part</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Preventive maintenance -->
     <section data-page="pm" class="hidden">
-      <div class="card">
-        <h2>Add a repeating maintenance task</h2>
-        <div class="form-grid">
-          <select id="pm-equipment"></select>
-          <input id="pm-task" placeholder="Task, e.g. Change hydraulic oil" />
-          <input id="pm-interval" type="number" placeholder="Every N days" value="30" />
-          <input id="pm-first" type="date" title="First due date (optional)" />
+      <div class="page-head">
+        <div>
+          <h2>Maintenance</h2>
+          <p class="page-sub">The repeating jobs that keep each machine running.</p>
         </div>
-        <p></p>
-        <button class="primary" onclick="addPm()">Add schedule</button>
+        <button class="primary" onclick="openForm('pm-form')">New schedule</button>
       </div>
       <div class="card">
-        <h2>All schedules</h2>
-        <table><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th>Last done</th><th>Next due</th><th>Mark done on</th></tr></thead>
-          <tbody id="pm-rows"></tbody></table>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th class="cell-num">Every</th><th class="cell-num">Last done</th><th class="cell-num">Next due</th><th>Mark done on</th></tr></thead>
+            <tbody id="pm-rows"></tbody></table>
+        </div>
       </div>
+
+      <dialog id="pm-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New maintenance schedule</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('pm-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">A repeating job. Set the first due date, or it starts today.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Machine</span><select id="pm-equipment"></select></label>
+            <label class="field"><span>Task</span><input id="pm-task" placeholder="e.g. Change hydraulic oil" /></label>
+            <label class="field"><span>Repeat every (days)</span><input id="pm-interval" type="number" value="30" /></label>
+            <label class="field"><span>First due</span><input id="pm-first" type="date" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('pm-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addPm()">Add schedule</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Users (admin only) -->
     <section data-page="users" class="hidden">
-      <div class="card">
-        <h2>Add a user</h2>
-        <p class="muted">There is no public sign-up. Only an admin can create accounts.</p>
-        <div class="form-grid">
-          <input id="u-name" placeholder="Full name" />
-          <input id="u-email" placeholder="Email" type="email" />
-          <input id="u-pass" placeholder="Password (8+ characters)" type="password" />
-          <select id="u-role">
-            <option value="tech" selected>Technician</option>
-            <option value="admin">Admin</option>
-          </select>
+      <div class="page-head">
+        <div>
+          <h2>Users</h2>
+          <p class="page-sub">Who can sign in, and what they are allowed to do.</p>
         </div>
-        <p></p>
-        <button class="primary" onclick="addUser()">Create user</button>
+        <button class="primary" onclick="openForm('users-form')">New user</button>
       </div>
       <div class="card">
-        <h2>Users</h2>
-        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
-          <tbody id="users-rows"></tbody></table>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody id="users-rows"></tbody></table>
+        </div>
       </div>
+
+      <dialog id="users-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New user</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('users-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">There is no public sign-up; only an admin can create an account.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Full name</span><input id="u-name" placeholder="e.g. Sam Rivera" /></label>
+            <label class="field"><span>Email</span><input id="u-email" placeholder="name@workshop" type="email" /></label>
+            <label class="field"><span>Password</span><input id="u-pass" placeholder="8 characters or more" type="password" /></label>
+            <label class="field"><span>Role</span>
+              <select id="u-role">
+                <option value="tech" selected>Technician</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('users-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addUser()">Create user</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Backup -->
     <section data-page="backup" class="hidden">
-      <div class="card">
-        <h2>Back up the database</h2>
-        <p class="muted">Writes a full copy into the <code>data</code> folder next to the database.
-          Do this before upgrades, and ideally from Windows Task Scheduler every night.</p>
+      <div class="page-head">
+        <div>
+          <h2>Backup</h2>
+          <p class="page-sub">Keep a copy of everything, in case this computer stops.</p>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <p class="muted">Writes a full copy into the <code>data</code> folder next to the
+          database. Do this before upgrades, and ideally from Windows Task Scheduler
+          every night.</p>
         <button class="primary" onclick="doBackup()">Back up now</button>
         <p id="backup-result" class="muted"></p>
       </div>
