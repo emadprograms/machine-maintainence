@@ -3,7 +3,7 @@ quick_id: 261105-rst
 slug: honour-a-folder-that-survives-a-restart
 date: 2026-11-05
 status: complete
-commit: 0bada09
+commit: 1d3bf71
 files_modified: [starter/db.js, starter/auth.js, starter/sessions.js, starter/server.js, starter/reset-password.js, starter/README.md, starter/scripts/smoke-test.js, LOCAL-AGENT-PROMPT.md]
 ---
 

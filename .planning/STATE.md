@@ -37,7 +37,7 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | Date | ID | Task | Commit |
 |---|---|---|---|
 | 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |
-| 2026-11-05 | 261105-rst | Stop the password lockout: keep the first password, keep sessions across a restart, keep `maintain.db` copyable, move data out of the app folder | `0bada09` |
+| 2026-11-05 | 261105-rst | Stop the password lockout: keep the first password, keep sessions across a restart, keep `maintain.db` copyable, move data out of the app folder | `1d3bf71` |
 
 ## Evidence log
 
