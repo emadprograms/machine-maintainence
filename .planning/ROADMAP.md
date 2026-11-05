@@ -6,7 +6,8 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
 
 ## v1.0 — Lean core, offline, on Windows
 
-**Status:** Closed — 5 verified, 1 awaiting Windows UAT (see `.planning/phases/MM-06-windows-and-offline/MM-06-UAT.md`)
+**Status:** Shipped — all 6 phases verified, including the Windows UAT
+(`WINDOWS_UAT_FINDINGS.md`, Windows 11 / Node v26.3.0)
 **Goal:** A four-feature maintenance app a beginner can read end to end, running offline on Windows.
 
 ### Phases
@@ -16,7 +17,7 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
 - [x] **Phase 3: Machines & work orders** — Complete the two CRUD screens and their validation (completed 2026-11-05)
 - [x] **Phase 4: Spare parts** — Stock levels and transactional consumption on a job (completed 2026-11-05)
 - [x] **Phase 5: Preventive maintenance** — Recurring schedules, due-soon view, roll-forward on done (completed 2026-11-05)
-- [~] **Phase 6: Windows portability & offline proof** — `.bat` launcher, portable copy test, zero external requests
+- [x] **Phase 6: Windows portability & offline proof** — `.bat` launcher, portable copy test, zero external requests
 
 ## Phase Details
 

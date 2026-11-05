@@ -110,11 +110,20 @@ ok('server log shows no external connection attempts',
   !/(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|getaddrinfo)/.test(serverLog),
   serverLog.split('\n').filter((l) => /ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(l)).join(' | '));
 
+// Wait for the process to exit, then retry the deletes: on Windows the sqlite
+// handle can outlive the process briefly and rmSync throws EBUSY.
+const exited = new Promise((resolve) => {
+  if (server.exitCode !== null || server.signalCode !== null) return resolve();
+  server.once('exit', resolve);
+});
 server.kill('SIGKILL');
-await sleep(400);
-rmSync(DB, { force: true });
-rmSync(DB + '-wal', { force: true });
-rmSync(DB + '-shm', { force: true });
+await exited;
+for (const f of [DB, DB + '-wal', DB + '-shm']) {
+  for (let i = 0; i < 30; i++) {
+    try { rmSync(f, { force: true }); break; }
+    catch { await sleep(100); }
+  }
+}
 
 // ------------------------------------------------------------- 3. inventory
 console.log('\nDependency inventory');

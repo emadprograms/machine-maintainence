@@ -2,7 +2,7 @@
 // Usage: node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 // It starts its own server on a spare port with a throwaway database.
 import { spawn } from 'node:child_process';
-import { rmSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { rmSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,7 +26,15 @@ function start(env = {}) {
   let log = '';
   child.stdout.on('data', (d) => { log += d; });
   child.stderr.on('data', (d) => { log += d; });
-  return { child, log: () => log };
+
+  // Resolves once the process is truly gone. Windows releases file handles more
+  // slowly than Linux, so deleting the database right after kill() can fail with
+  // EBUSY; waiting for 'exit' avoids that.
+  const exited = new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    child.once('exit', resolve);
+  });
+  return { child, log: () => log, exited };
 }
 
 async function waitForServer(timeoutMs = 8000) {
@@ -185,7 +193,8 @@ ok('backup is a non-empty file', bak.status === 200 && statSync(bak.data.file).s
 // kill -9, restart, confirm data survived
 console.log('\n  killing the server with SIGKILL...');
 srv.child.kill('SIGKILL');
-await sleep(600);
+await srv.exited;
+await sleep(100);
 srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
 ok('server restarts on the same database', await waitForServer(), srv.log());
 await sleep(300);
@@ -204,23 +213,51 @@ ok('first-run admin password is NOT re-seeded',
   !srv.log().includes('Created the first account'));
 
 console.log('\nPhase 6 — offline audit');
-const { execSync } = await import('node:child_process');
-const urls = execSync(
-  `grep -rn --include=*.js --include=*.html -E "https?://[a-zA-Z0-9]" "${root}" || true`,
-  { encoding: 'utf8' });
-const external = urls.split('\n').filter((l) =>
-  l && !l.includes('localhost') && !l.includes('127.0.0.1') && !l.includes('// node:'));
-ok('no external URLs in app code', external.length === 0, external.join(' | '));
+// Pure JavaScript on purpose: the first version of this check shelled out to
+// `grep ... || true`, which does not exist on Windows (found by the Windows UAT,
+// see WINDOWS_UAT_FINDINGS.md). No shell, no child process, same answer everywhere.
+const SHIPPED = ['server.js', 'db.js', 'auth.js', 'public/index.html', 'public/app.js'];
+let externalHits = [];
+for (const rel of SHIPPED) {
+  const text = readFileSync(join(root, rel), 'utf8');
+  const hits = [...text.matchAll(/https?:\/\/[^\s'"`)]+/g)]
+    .map((m) => m[0])
+    .filter((u) => !u.includes('localhost') && !u.includes('127.0.0.1'))
+    // `new URL(req.url, http://${req.headers.host})` parses a path; it opens no socket.
+    .filter((u) => !u.includes('${'));
+  for (const h of hits) externalHits.push(`${rel}: ${h}`);
+}
+ok('no external URLs in shipped app code', externalHits.length === 0, externalHits.join(' | '));
+
+// Catch the usual offenders explicitly, so a failure names the cause.
+const allSource = SHIPPED.map((f) => readFileSync(join(root, f), 'utf8')).join('\n');
+ok('no Google Fonts / CDN / remote fetch',
+  !/fonts\.(googleapis|gstatic)\.com/.test(allSource)
+  && !/<script[^>]+src=["']https?:/.test(allSource)
+  && !/<link[^>]+href=["']https?:/.test(allSource)
+  && !/fetch\(\s*["'`]https?:/.test(allSource));
 
 console.log('\n--- stopping ---');
 srv.child.kill('SIGKILL');
-await sleep(300);
-rmSync(DB, { force: true });
-rmSync(DB + '-wal', { force: true });
-rmSync(DB + '-shm', { force: true });
-for (const f of readdirSync(join(root, 'data'))) {
-  if (f.startsWith('backup-')) rmSync(join(root, 'data', f), { force: true });
+await srv.exited;
+
+// Retry for up to 3 s: on Windows the sqlite handle can outlive the process briefly.
+async function removeWithRetry(path, attempts = 30) {
+  for (let i = 0; i < attempts; i++) {
+    try { rmSync(path, { force: true }); return true; }
+    catch { /* EBUSY / EPERM: sleep and retry */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
 }
+let cleaned = true;
+for (const f of [DB, DB + '-wal', DB + '-shm']) {
+  if (!removeWithRetry(f) && existsSync(f)) cleaned = false;
+}
+for (const f of readdirSync(join(root, 'data'))) {
+  if (f.startsWith('backup-') && !removeWithRetry(join(root, 'data', f))) cleaned = false;
+}
+if (!cleaned) console.log('  note: some temp files could not be deleted (still locked)');
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail === 0 ? 0 : 1);

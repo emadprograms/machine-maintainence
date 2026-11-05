@@ -1,22 +1,18 @@
 ---
 phase: MM-06-windows-and-offline
 verified: 2026-11-05T07:30:00Z
-status: human_needed
+status: passed
 score: 6/6 must-haves verified
 covered_files:
   - .planning/phases/MM-06-windows-and-offline/MM-06-01-PLAN.md
   - .planning/phases/MM-06-windows-and-offline/MM-06-01-SUMMARY.md
   - starter/README.md
+  - starter/scripts/smoke-test.js
   - starter/backup.bat
   - starter/scripts/audit-offline.js
   - starter/start.bat
-covered_digest: "v4:sha256:0daf3a160dd362587f8c9d8735ea30bfd441ffdb8251954d65c370952e09139d"
-behavior_unverified: 1
-behavior_unverified_items:
-  - truth: "('start.bat runs on real Windows', '⚠ PRESENT_BEHAVIOR_UNVERIFIED', 'cannot execute .bat in this Linux sandbox')"
-    test: "Double-click start.bat on a clean Windows box with Node 22"
-    expected: "Server starts, browser opens, login form appears"
-    why_human: "A .bat needs cmd.exe; this sandbox is Linux"
+covered_digest: "v4:sha256:37825816db9cfe2449e279c28273af98dfac1960c925a7c4e093d7a9b3ca65be"
+behavior_unverified: 0
 audit_acknowledged:
   milestone: v1.0
   at: 2026-11-05
@@ -27,7 +23,7 @@ audit_acknowledged:
 
 **Phase Goal:** See `.planning/ROADMAP.md` phase 6
 **Verified:** 2026-11-05
-**Status:** human_needed
+**Status:** passed
 
 ## Goal Achievement
 
@@ -40,7 +36,9 @@ audit_acknowledged:
 | 3 | No native modules | ✓ VERIFIED | no .node files, no node_modules |
 | 4 | Every page asset loads locally | ✓ VERIFIED | audit-offline.js runtime probe |
 | 5 | Launchers exist with CRLF | ✓ VERIFIED | .gitattributes pins *.bat eol=crlf |
-| 6 | start.bat runs on real Windows | ⚠ PRESENT_BEHAVIOR_UNVERIFIED | cannot execute .bat in this Linux sandbox |
+| 6 | start.bat runs on real Windows | ✓ VERIFIED | Windows 11 / Node v26.3.0: banner printed, HTTP 200 on localhost:3000 (WINDOWS_UAT_FINDINGS.md) |
+| 7 | Data survives a Windows restart | ✓ VERIFIED | "CNC Milling Machine" retained across kill + relaunch |
+| 8 | Backup restores on Windows | ✓ VERIFIED | backup.bat produced a timestamped file; swap restored all records |
 
 ## Required Artifacts
 
@@ -65,4 +63,4 @@ Automated: `starter/scripts/smoke-test.js` (45 checks) and
 
 ## Overall Verdict
 
-PASSED with one known unverified behaviour (Windows launcher).
+PASSED — every must-have has evidence, including the Windows run.

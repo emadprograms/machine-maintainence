@@ -48,7 +48,7 @@ Check with `node --version`.
 | `auth.js` | Password hashing and login tokens | ~48 |
 | `public/index.html` | The whole UI shell (tabs and forms) | ~216 |
 | `public/app.js` | Fetches data and draws the tables | ~269 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 45 behaviours | 226 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 46 behaviours | 240 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 142 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -204,8 +204,11 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 45 behaviours
-including a `kill -9` restart, then cleans up. You should see `45 passed, 0 failed`.
+It starts its own server on port 3999 with a throwaway database, checks 46 behaviours
+including a `kill -9` restart, then cleans up. You should see `46 passed, 0 failed`.
+
+It runs on Windows and Linux and uses no shell commands — an earlier version relied on
+`grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.
 
 ```bat
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js

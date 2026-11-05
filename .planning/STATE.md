@@ -1,12 +1,19 @@
 ---
-gsd_state_version: '1.0'
-status: milestone_closed
+gsd_state_version: "1.0"
+milestone: v1.0
+milestone_name: Lean core, offline, on Windows
+current_phase: 6
+current_phase_name: Windows portability & offline proof
+status: completed
+last_updated: "2026-11-05T08:01:20.077Z"
+last_activity: 2026-11-05
+last_activity_desc: Phase 6 complete
+state_head: 7010ade22bb8483ec8493fbd13a499c52be7fb59
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 6
   completed_plans: 6
-  percent: 100
 ---
 
 # Project State
@@ -16,14 +23,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** Milestone v1.0 closed. Phase 6 awaits a human run of `start.bat` on Windows.
+**Current focus:** Milestone v1.0 shipped. All six phases verified, including the Windows UAT.
 
 ## Current Position
 
-Phase: 6 of 6 (Windows portability & offline proof) — **human_needed**
-Plan: 1 of 1 complete; 5 UAT checks outstanding
-Status: Milestone closed with one tracked override (see `MILESTONES.md`)
-Last activity: 2026-11-05 — autonomous run completed all 6 phases; 45/45 smoke checks and offline audit green
+Phase: 6 of 6 (Windows portability & offline proof)
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-11-05 — Phase 6 complete
 
 Progress: [██████████] 100% of plans
 
@@ -37,6 +44,9 @@ Progress: [██████████] 100% of plans
 | 2026-11-05 | Data survives `SIGKILL` (machines, work orders, schedules) | smoke test, kill -9 then restart |
 | 2026-11-05 | Reads do not write: DB mtime unchanged across 5 GETs | smoke test assertion |
 | 2026-11-05 | GSD progress reads 100% (6 plans, 6 summaries) | `gsd-tools progress` |
+| 2026-11-05 | Windows 11 / Node v26.3.0: all 5 Phase 6 UAT scenarios pass | local agent, `WINDOWS_UAT_FINDINGS.md` |
+| 2026-11-05 | Smoke test passes with `PATH=/nonexistent` (no `grep`, no `true`) | 46 passed, 0 failed |
+| 2026-11-05 | Offline audit OFFLINE-SAFE with empty PATH | `audit-offline.js` |
 
 ## Bugs found and fixed during execution
 
@@ -50,6 +60,8 @@ Progress: [██████████] 100% of plans
 | 6 | Admin could disable its own account, locking the install | smoke test on `PUT /api/users/1` | `Number(id)` compare + accept `false`/`0`/`'0'` |
 | 7 | Email regex rejected `tech@local`, breaking offline shops | smoke test creating a technician | permissive `local@host` rule |
 | 8 | Offline audit false-positive on `http://${req.headers.host}` | first audit run | exclude template expressions (URL parsing, not a socket) |
+| 9 | `smoke-test.js` shelled out to `grep ... \|\| true` — neither exists in `cmd.exe`; 44/45 then crash | Windows UAT (local agent) | pure-JavaScript file scan; added an explicit CDN/font assertion |
+| 10 | Deleting the temp DB right after `SIGKILL` can throw `EBUSY` on Windows | Windows UAT follow-up | wait for the child's `exit` event, then retry deletes for 3 s |
 
 ## Decisions made during execution
 
@@ -65,15 +77,18 @@ Progress: [██████████] 100% of plans
 
 | Item | Type | Where |
 |---|---|---|
-| `start.bat` on real Windows (5 checks) | UAT | `.planning/phases/MM-06-windows-and-offline/MM-06-UAT.md` |
-| `node:sqlite` is experimental in Node 22 | Risk | re-verify on Node upgrade |
+| `node:sqlite` is experimental in Node 22 (worked on Node 26.3.0) | Risk | re-verify on Node upgrade |
 | Concurrent edits are last-write-wins | Limitation | documented in `starter/README.md` |
 
 ## Blockers
 
-None. The one open item requires hardware, not code.
+None. Milestone shipped.
 
-## Deferred Items (acknowledged at v1.0 close)
+## Deferred Items (resolved — kept as a record)
+
+Both items below were acknowledged at the earlier close attempt and have since been
+**resolved** by the Windows UAT, not carried forward. `audit-open` now reports all clear
+with zero suppressed items.
 
 Per GSD's `audit-open acknowledge` writer, recorded for disclosure:
 

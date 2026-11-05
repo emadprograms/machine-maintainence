@@ -1,13 +1,13 @@
 # Requirements — Lean Machine Maintenance
 
-**Status at v1.0 close:** nine requirements shipped and verified by automation.
-Two (REQ-08 offline proof in a real browser, REQ-09 portable Windows run) are implemented
-but await the human UAT in `phases/MM-06-windows-and-offline/MM-06-UAT.md`.
+**Status at v1.0 ship:** all eleven requirements shipped. Nine verified by automation,
+two (REQ-08 offline proof, REQ-09 portable Windows run) verified on real Windows 11 hardware
+— see `WINDOWS_UAT_FINDINGS.md` and `phases/MM-06-windows-and-offline/MM-06-UAT.md`.
 
 | Legend | Meaning |
 |---|---|
 | ✅ | Shipped, automated evidence |
-| ⏳ | Implemented, awaiting human verification |
+| 🖥 | Verified on real Windows 11 hardware (`WINDOWS_UAT_FINDINGS.md`) |
 
 
 Scoped for **milestone v1.0**. Each requirement is testable by a human on a Windows machine with no internet.
@@ -30,8 +30,8 @@ Scoped for **milestone v1.0**. Each requirement is testable by a human on a Wind
 
 | ID | Requirement | Success check |
 |---|---|---|
-| ⏳ REQ-08 | Fully offline | Browser Network tab shows zero requests to any host other than the local server; `grep -r "https\?://" starter/` finds no runtime fetch, font, CDN or API URL |
-| ⏳ REQ-09 | Portable on Windows | Copy the folder to a clean Windows box with Node installed, double-click `start.bat`, browser opens at `http://localhost:3000`, login works |
+| 🖥 REQ-08 | Fully offline | Browser Network tab shows zero requests to any host other than the local server; `grep -r "https\?://" starter/` finds no runtime fetch, font, CDN or API URL |
+| 🖥 REQ-09 | Portable on Windows | Copy the folder to a clean Windows box with Node installed, double-click `start.bat`, browser opens at `http://localhost:3000`, login works |
 | — | Size | `wc -l` over `starter/**/*.{js,html}` ≤ ~1,200 |
 | — | No native modules | `package.json` has no dependencies; no `.node` files |
 
