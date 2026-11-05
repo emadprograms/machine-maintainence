@@ -4,7 +4,6 @@
 import { spawn } from 'node:child_process';
 import { rmSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { createThrottle, DEFAULTS } from '../throttle.js';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -139,6 +138,7 @@ if (!(await portIsFree())) {
   process.exit(1);
 }
 rmSync(DB, { force: true });
+rmSync(join(root, 'data', 'login-failures.log'), { force: true });
 let srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
 
 // If an assertion throws instead of failing, the child server would outlive the
@@ -534,154 +534,96 @@ ok('a value a spreadsheet would execute is neutralised',
   partNames.includes("'=1+1") && partRefs.includes("'+SUM(A1)"),
   `names=${partNames.join('|')} refs=${partRefs.join('|')}`);
 
-console.log('\nPhase 10 — login hardening');
+console.log('\nPhase 10 — failed sign-ins are logged, not blocked');
 
-// --- unit level: expiry is arithmetic, not a timer -------------------------
-// A fake clock is what makes AUTH-03 testable at all. Sleeping for a 15-minute
-// window is not a test anyone would keep running.
-{
-  let fake = 1_000_000;
-  const t = createThrottle({ now: () => fake });
-
-  ok('a fresh source is not blocked', t.check('1.1.1.1').blocked === false);
-  for (let i = 0; i < DEFAULTS.threshold; i++) t.fail('1.1.1.1');
-  const blocked = t.check('1.1.1.1');
-  ok('reaching the threshold blocks the source', blocked.blocked === true,
-    JSON.stringify(blocked));
-  ok('the block reports a wait in whole seconds', Number.isInteger(blocked.retryAfter) && blocked.retryAfter > 0,
-    String(blocked.retryAfter));
-
-  // the same source, a moment later, is still blocked and waits less
-  fake += 60_000;
-  const later = t.check('1.1.1.1');
-  ok('the wait shrinks as time passes', later.retryAfter < blocked.retryAfter,
-    `${blocked.retryAfter} -> ${later.retryAfter}`);
-
-  // and once the window has elapsed, without anyone clearing anything
-  fake += DEFAULTS.windowMs;
-  ok('the block expires on its own once the window has passed',
-    t.check('1.1.1.1').blocked === false, JSON.stringify(t.check('1.1.1.1')));
-  ok('an expired entry is forgotten entirely, so memory does not grow',
-    t.size === 0, `map size ${t.size}`);
-
-  // a different source is never affected by another's failures
-  let fake2 = 2_000_000;
-  const t2 = createThrottle({ now: () => fake2 });
-  for (let i = 0; i < DEFAULTS.threshold; i++) t2.fail('2.2.2.2');
-  ok('one blocked source leaves another free', t2.check('3.3.3.3').blocked === false);
-  ok('a correct login clears only its own source', t2.reset('2.2.2.2').blocked === false
-    && t2.check('2.2.2.2').blocked === false);
-
-  // failures older than the window do not count toward a new threshold
-  let fake3 = 3_000_000;
-  const t3 = createThrottle({ now: () => fake3 });
-  for (let i = 0; i < DEFAULTS.threshold - 1; i++) t3.fail('4.4.4.4');
-  fake3 += DEFAULTS.windowMs + 1;
-  for (let i = 0; i < DEFAULTS.threshold - 1; i++) t3.fail('4.4.4.4');
-  ok('failures outside the window do not accumulate into a block',
-    t3.check('4.4.4.4').blocked === false, JSON.stringify(t3.check('4.4.4.4')));
-}
-
-// --- over HTTP: the route does what the module does ------------------------
-// A source that has already used its attempts. The suite shares one address with
-// the server, so this runs last, after every other login in the file.
+// Locking a workshop out of its own app is worse than letting an attacker try
+// again, so there is no attempt limit and no delay. That is a decision, not an
+// omission — so it is asserted rather than left to be rediscovered as a bug by
+// someone who assumes a login screen must throttle.
 const loginAs = (email, password, extraHeaders = {}) => fetch(BASE + '/api/login', {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...extraHeaders },
   body: JSON.stringify({ email, password }),
 }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})), headers: r.headers }));
 
-// --- AUTH-02: a successful login clears the count --------------------------
-// This has to go through the route. Calling throttle.reset() directly proves the
-// module can clear a source, which is not the same claim as the server doing it
-// on a successful login — and the first version of this assertion made exactly
-// that mistake, passing with the route's reset() deleted.
-{
-  const before = await loginAs('admin@local', 'wrong-password');
-  const before2 = await loginAs('admin@local', 'wrong-password');
-  ok('two wrong passwords are 401 while under the threshold',
-    before.status === 401 && before2.status === 401, `${before.status}/${before2.status}`);
-
-  const good = await loginAs('admin@local', 'smoke-test-password');
-  ok('the correct password works before the threshold is reached', good.status === 200,
-    `status ${good.status}`);
-
-  // If the route cleared the count, a fresh run of failures starts from zero and
-  // a single wrong password cannot possibly be a 429. If it did not, the two
-  // failures above plus this one are 3 — still under the threshold — so a plain
-  // 401 proves nothing either. Fail twice more: with the count cleared these are
-  // failures 1 and 2, without it they are 3 and 4, and the fifth is the
-  // threshold. Then one more distinguishes 0+3 (401) from 4+1 (429).
-  await loginAs('admin@local', 'wrong-password');
-  await loginAs('admin@local', 'wrong-password');
-  const afterReset = await loginAs('admin@local', 'wrong-password');
-  ok('a successful login resets the source, so the next misses start over',
-    afterReset.status === 401, `status ${afterReset.status} — a 429 here means the count survived a good login`);
-  // clean up so the threshold test below starts from a known state
-  await loginAs('admin@local', 'smoke-test-password');
+// Repeated failures: every one is an ordinary 401 for as long as anyone cares
+// to keep trying. The count is deliberately well past any plausible threshold.
+let sawSomethingElse = null;
+const started = Date.now();
+for (let i = 0; i < 40; i++) {
+  const r = await loginAs('admin@local', 'wrong-password');
+  if (r.status !== 401) { sawSomethingElse = `attempt ${i + 1} returned ${r.status} ${JSON.stringify(r.data)}`; break; }
 }
+const elapsed = Date.now() - started;
+ok('forty wrong passwords are all rejected the same way, with no limit reached',
+  sawSomethingElse === null, sawSomethingElse || '');
+ok('the attempts were not slowed down', elapsed < 40 * 200, `${elapsed}ms for 40 attempts`);
 
-// the wrong-password count is per source and this source is clean so far
-const wrongNow = await loginAs('admin@local', 'wrong-password');
-ok('a wrong password is still 401 while under the threshold', wrongNow.status === 401,
-  `status ${wrongNow.status}`);
+// The shape of a failed sign-in is unchanged: one message, no hint about
+// whether the address exists, no retry-after header.
+const one = await loginAs('admin@local', 'wrong-password');
+const madeUp = await loginAs('nobody@nowhere.invalid', 'wrong-password');
+ok('a real address and an invented one fail identically',
+  one.status === madeUp.status && one.data.error === madeUp.data.error,
+  `${one.status}/${madeUp.status} ${JSON.stringify(one.data)} vs ${JSON.stringify(madeUp.data)}`);
+ok('a failed sign-in sends no Retry-After header', one.headers.get('retry-after') === null,
+  String(one.headers.get('retry-after')));
+ok('the error states no delay',
+  !/wait|seconds|too many/i.test(one.data.error || ''), one.data.error);
 
-// --- an unknown email must be counted identically -------------------------
-// Otherwise the throttle answers "does this address exist?" for an attacker:
-// keep guessing a real address and it stops working, keep guessing an invented
-// one and it never does.
-{
-  // Spend the budget on *invented* addresses only. Doing it on the real one
-  // would block the source regardless of how unknown emails are treated, and
-  // the check would pass without testing anything — which is exactly what the
-  // first version did.
-  let madeUpStatus = 0;
-  for (let i = 0; i < DEFAULTS.threshold; i++) {
-    const r = await loginAs(`nobody${i}@nowhere.invalid`, 'wrong-password');
-    madeUpStatus = r.status;
-  }
-  ok('repeated failures on addresses that do not exist reach the threshold',
-    madeUpStatus === 429, `status ${madeUpStatus}`);
-  // and the refusal says nothing about whether the address exists
-  const probe = await loginAs('nobody99@nowhere.invalid', 'wrong-password');
-  ok('the throttled response is the same shape as any other',
-    /Too many failed sign-ins/.test(probe.data.error || ''), JSON.stringify(probe.data));
-  await loginAs('admin@local', 'smoke-test-password'); // clear for the tests below
-}
+// And a correct password works immediately, straight after all that.
+const recovered = await loginAs('admin@local', 'smoke-test-password');
+ok('the right password works straight after forty failures', recovered.status === 200,
+  `status ${recovered.status} ${JSON.stringify(recovered.data)}`);
 
-let last = null;
-for (let i = 0; i < DEFAULTS.threshold - 1; i++) last = await loginAs('admin@local', 'wrong-password');
-last = await loginAs('admin@local', 'wrong-password');
-ok('exceeding the threshold returns 429', last.status === 429, `status ${last.status}`);
+// --- the record itself -----------------------------------------------------
+// Visibility is the whole justification for not blocking, so the record has to
+// actually exist and say something useful.
+const logFile = join(root, 'data', 'login-failures.log');
+ok('failed sign-ins are written to a log', existsSync(logFile), logFile);
 
-const throttle429 = await loginAs('admin@local', 'wrong-password');
-ok('the refusal states how long to wait in the message',
-  /Try again in \d+ seconds/.test(throttle429.data.error || ''), throttle429.data.error);
-ok('the wait is also reported as a number', Number.isInteger(throttle429.data.retry_after)
-  && throttle429.data.retry_after > 0, JSON.stringify(throttle429.data));
-ok('the refusal carries a Retry-After header', /^\d+$/.test(throttle429.headers.get('retry-after') || ''),
-  String(throttle429.headers.get('retry-after')));
+const logText = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+const logLines = logText.trim().split('\n').filter(Boolean);
+ok('the log has an entry per failure', logLines.length >= 40, `${logLines.length} lines`);
 
-// an attacker cannot mint a fresh identity with a header
+const fields = logLines[0] ? logLines[0].split('\t') : [];
+ok('each entry carries a timestamp', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(fields[0] || ''), fields[0]);
+ok('each entry carries the source address', !!fields[1] && fields[1] !== 'unknown', fields[1]);
+ok('each entry carries the address that was attempted', fields[2] === 'admin@local', fields[2]);
+ok('each entry says why it failed', /wrong password|no such account/.test(fields[3] || ''), fields[3]);
+
+// The one thing a failure log must never contain.
+ok('the password is never written to the log',
+  !logText.includes('wrong-password') && !logText.includes('smoke-test-password'),
+  'a password fragment leaked into the log');
+
+// An invented address is recorded too, and the record does not distinguish it
+// in a way that would tell an attacker which accounts exist.
+const inventedLines = logLines.filter((l) => l.includes('nobody@nowhere.invalid'));
+ok('an invented address is recorded like any other', inventedLines.length >= 1,
+  `${inventedLines.length} entries`);
+
+// A successful attempt is not a failure and must not be logged as one.
+const beforeSuccessCount = (() => {
+  const t = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+  return t.trim().split('\n').filter(Boolean).length;
+})();
+await loginAs('admin@local', 'smoke-test-password');
+const afterSuccessCount = (() => {
+  const t = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+  return t.trim().split('\n').filter(Boolean).length;
+})();
+ok('a successful sign-in adds no failure entry', afterSuccessCount === beforeSuccessCount,
+  `${beforeSuccessCount} -> ${afterSuccessCount}`);
+
+// A spoofed forwarding header is irrelevant now, but it must not break anything.
 const spoofed = await loginAs('admin@local', 'wrong-password', { 'x-forwarded-for': '9.9.9.9' });
-ok('a spoofed X-Forwarded-For does not escape the throttle', spoofed.status === 429,
-  `status ${spoofed.status}`);
+ok('a spoofed X-Forwarded-For changes nothing', spoofed.status === 401, `status ${spoofed.status}`);
 
-// a correct password is refused while blocked — that is the point of a block
-const blockedCorrect = await loginAs('admin@local', 'smoke-test-password');
-ok('even the right password waits while the source is blocked', blockedCorrect.status === 429,
-  `status ${blockedCorrect.status}`);
-
-// the block lifts by itself; prove it without waiting by driving the same
-// assertion at the unit level, and assert the route's own arithmetic here
-ok('the reported wait is bounded by the window, so the block is always finite',
-  throttle429.data.retry_after <= DEFAULTS.windowMs / 1000,
-  `${throttle429.data.retry_after} <= ${DEFAULTS.windowMs / 1000}`);
-
-// `c` still holds the session cookie taken at the start of the run
-const sessionDuringBlock = await c('/api/equipment');
-ok('being blocked does not invalidate an existing session', sessionDuringBlock.status === 200,
-  `status ${sessionDuringBlock.status}`);
+// An existing session is unaffected by any of this.
+const sessionAfterFailures = await c('/api/equipment');
+ok('repeated failures do not disturb an existing session', sessionAfterFailures.status === 200,
+  `status ${sessionAfterFailures.status}`);
 
 // Snapshot the row counts now. The persistence checks below used to hardcode
 // the numbers the earlier phases happened to leave behind, so any later phase
@@ -746,25 +688,18 @@ ok('the export buttons are on the page', handlers.filter((h) => h.startsWith('do
 ok('both exports read a filter that is on the page',
   html.includes('id="wo-status-filter"') && html.includes('id="low-stock-filter"'));
 
-// The throttle's message reaches a user or it is theatre. A 429 the client
-// treats as "please sign in" would look like a broken password.
-//
-// These check the actual chain, not that some word appears somewhere. The first
-// version of this check passed with the entire countdown deleted, which is why
-// it now names each link: the error objects carry retryAfter, login() reads it,
-// and something ticks it down.
+// A login form shows the server's message and nothing else. With no wait to
+// count, no cooldown machinery should be left behind — dead timer code is how a
+// removed feature comes back half-wired.
 const loginFn = (appUrl.match(/async function login\(\)[\s\S]*?\n}/) || [''])[0];
-ok('the API error carries the wait',
-  /err\.retryAfter\s*=\s*data\.retry_after/.test(appUrl),
-  'api() must attach retry_after to the error it throws');
-ok('the login handler uses that wait instead of the generic message',
-  /e\.retryAfter/.test(loginFn) || /e\.retryAfter/.test(appUrl),
-  'login() must branch on the wait');
-ok('a countdown exists and is actually started',
-  /function startCooldown/.test(appUrl) && /startCooldown\(/.test(loginFn + appUrl.replace(/function startCooldown[\s\S]*?\n}/, '')),
-  'startCooldown must be called from outside its own body');
-ok('the countdown ticks on a timer and can be stopped',
-  /setInterval\(/.test(appUrl) && /clearInterval\(/.test(appUrl));
+ok('the login form shows the server message verbatim',
+  /\$\('#login-error'\)\.textContent = e\.message/.test(loginFn),
+  'login() must surface the error rather than interpret it');
+ok('no countdown or retry machinery remains in the client',
+  !/startCooldown|stopCooldown|loginCooldown|retryAfter|retry_after/.test(appUrl),
+  'leftover cooldown code suggests the removal was incomplete');
+ok('the client has no login timer at all',
+  !/setInterval/.test(loginFn.replace(/\/\/[^\n]*/g, '')));
 
 console.log('\nPhase 6 — offline audit');
 // Pure JavaScript on purpose: the first version of this check shelled out to
@@ -805,7 +740,10 @@ async function removeWithRetry(path, attempts = 30) {
   return false;
 }
 let cleaned = true;
-for (const f of [DB, DB + '-wal', DB + '-shm']) {
+// the failure log is plain-file state too; leaving it behind would make the
+// next run's "one entry per failure" assertions pass on stale lines
+for (const f of [DB, DB + '-wal', DB + '-shm', join(root, 'data', 'login-failures.log'),
+                 join(root, 'data', 'login-failures.log.1')]) {
   if (!removeWithRetry(f) && existsSync(f)) cleaned = false;
 }
 for (const f of readdirSync(join(root, 'data'))) {

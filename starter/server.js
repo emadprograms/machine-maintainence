@@ -5,25 +5,26 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { all, get, run, transaction, backup } from './db.js';
+import { DATA_DIR } from './db.js';
+import { createLoginLog } from './login-log.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
-import { createThrottle } from './throttle.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = '0.0.0.0';           // reachable from other PCs on the workshop network
+const cookies = new Map();         // token -> expiry  (cleared on restart = "log out everywhere")
 
-// Login throttling. In memory on purpose: it dies with the process, so a
-// restart is the most conservative possible answer to "does the block expire".
-const loginThrottle = createThrottle();
+// Failed sign-ins are recorded, never refused. See login-log.js for why this is
+// a log and not a block.
+const failedLogins = createLoginLog(DATA_DIR);
 
-// One client, one key. Node reports IPv4 connections as ::ffff:a.b.c.d when the
-// listener is dual-stack, which would otherwise let a single client appear as
-// two different sources.
+// One client, one origin. Node reports IPv4 connections as ::ffff:a.b.c.d when
+// the listener is dual-stack; normalising means one client reads as one line in
+// the log rather than two.
 function sourceOf(req) {
   const raw = req.socket?.remoteAddress || 'unknown';
   return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
 }
-const HOST = '0.0.0.0';           // reachable from other PCs on the workshop network
-const cookies = new Map();         // token -> expiry  (cleared on restart = "log out everywhere")
 
 // ------------------------------------------------------------- first run
 // Instead of seeding demo accounts with a known password (what the reviewed
@@ -228,33 +229,23 @@ function partsFilter(query) {
 const api = {
   // ---- auth
   'POST /api/login': route(async (req, res) => {
-    const source = sourceOf(req);
-    // Checked before the password is verified: guessing costs the guesser a
-    // refusal, not a scrypt run.
-    const gate = loginThrottle.check(source);
-    if (gate.blocked) {
-      res.setHeader('retry-after', String(gate.retryAfter));
-      return send(res, 429, {
-        error: `Too many failed sign-ins. Try again in ${gate.retryAfter} seconds.`,
-        retry_after: gate.retryAfter,
-      });
-    }
-
     const body = await readBody(req);
     const user = get('SELECT * FROM users WHERE email = ?',
       String(body?.email || '').trim().toLowerCase());
     // Constant-time-ish: always hash something so timing does not leak whether an email exists.
     const ok = verifyPassword(String(body?.password || ''), user?.password_hash || hashPassword('x'));
     if (!user || !ok) {
-      // An unknown email is an ordinary failure, counted identically. Treating it
-      // differently here would make the throttle an oracle for which addresses exist.
-      loginThrottle.fail(source);
+      // Written down so attempts are visible, without costing the next attempt
+      // anything. An unknown email is recorded identically — the record must not
+      // become a way to tell which addresses exist.
+      failedLogins.record({
+        email: String(body?.email || '').trim().toLowerCase(),
+        source: sourceOf(req),
+        reason: user ? 'wrong password' : 'no such account',
+      });
       return send(res, 401, { error: 'Wrong email or password' });
     }
     if (!user.active) return send(res, 403, { error: 'This account has been disabled' });
-    // AUTH-02: someone who mistypes four times and then gets it right is not one
-    // attempt away from being locked out for the afternoon.
-    loginThrottle.reset(source);
     const token = signToken({ sub: user.id, role: user.role, name: user.name });
     cookies.set(token, Date.now() + 12 * 3600_000);
     res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200`);

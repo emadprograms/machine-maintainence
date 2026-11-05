@@ -10,12 +10,7 @@ async function api(path, options = {}) {
   });
   if (res.status === 401) { showLogin(); throw new Error('Please sign in'); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || 'Request failed');
-    // carried on the error so the caller can act on it without re-parsing
-    if (data.retry_after) err.retryAfter = data.retry_after;
-    throw err;
-  }
+  if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
@@ -35,8 +30,6 @@ function showApp(user) {
   buildTabs(user);
   showPage('due');
 }
-let loginCooldown = null;   // interval ticking down a throttle wait
-
 async function login() {
   $('#login-error').textContent = '';
   try {
@@ -44,35 +37,8 @@ async function login() {
       method: 'POST',
       body: JSON.stringify({ email: $('#email').value, password: $('#password').value }),
     });
-    stopCooldown();
     showApp(user);
-  } catch (e) {
-    // A throttled sign-in says how long to wait. Showing a frozen number makes
-    // the user refresh to find out if it is still true; counting down lets them
-    // see it lift without doing anything.
-    const wait = e.retryAfter;
-    if (wait) startCooldown(wait);
-    else $('#login-error').textContent = e.message;
-  }
-}
-
-function startCooldown(seconds) {
-  stopCooldown();
-  let left = seconds;
-  const paint = () => {
-    $('#login-error').textContent =
-      `Too many failed sign-ins. Try again in ${left} second${left === 1 ? '' : 's'}.`;
-  };
-  paint();
-  loginCooldown = setInterval(() => {
-    left -= 1;
-    if (left <= 0) { stopCooldown(); $('#login-error').textContent = 'You can try again now.'; return; }
-    paint();
-  }, 1000);
-}
-
-function stopCooldown() {
-  if (loginCooldown) { clearInterval(loginCooldown); loginCooldown = null; }
+  } catch (e) { $('#login-error').textContent = e.message; }
 }
 async function logout() {
   await api('/logout', { method: 'POST' });
