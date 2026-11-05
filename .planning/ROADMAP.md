@@ -26,9 +26,13 @@ Shipped record and accomplishments: `.planning/MILESTONES.md`.
 
 ## v1.1 — Operable
 
-**Goal:** Turn a demo that can only add records into a tool a workshop can actually run day to
-day — every entity editable, stock that can go up as well as down, and work that belongs to
-somebody.
+**Goal:** Complete the operational coverage of the working application v1.0 shipped — every
+entity editable, stock that can go up as well as down, and work that belongs to somebody.
+
+**Starting point:** v1.0 runs offline on Windows and is verified against real hardware. It is not
+a prototype. What it lacks is breadth of operations within that working system: parts cannot be
+restocked, corrected or removed; work orders cannot be assigned or edited after creation; and
+`mark done` silently discards a supplied date.
 
 ### Phases
 

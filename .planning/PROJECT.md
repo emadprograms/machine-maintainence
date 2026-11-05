@@ -10,9 +10,13 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 ## Current Milestone: v1.1 Operable
 
-**Goal:** Turn a demo that can only add records into a tool a workshop can actually run day to
-day — every entity editable, stock that can go up as well as down, and work that belongs to
-somebody.
+**Goal:** Complete the operational coverage of a shipped, working application — every entity
+editable, stock that can go up as well as down, and work that belongs to somebody.
+
+**Starting point:** v1.0 is a working application in daily-use terms: it runs offline on Windows,
+persists through power loss, enforces authentication and roles, and tracks machines, work orders,
+parts and recurring maintenance. What it lacks is *completeness of operations* — several records
+can be created but not corrected, and one input is silently discarded.
 
 **Target features:**
 - Restock, edit and delete a part (today `qty` only ever decreases and a typo is permanent)
@@ -75,7 +79,7 @@ Tracked in `.planning/REQUIREMENTS.md` for v1.1 (IDs `PART-*`, `WO-*`, `PM-*`, `
 - **Bugs found and fixed:** 11, logged in `.planning/STATE.md`. Three were only reachable
   through testing rather than reading — an unauthenticated-`GET` guard that never ran, the
   admin self-disable lockout, and a technician-readable staff list found by clicking through
-  the running demo after the milestone was already closed.
+  the running application after the milestone was already closed.
 - **Not verified anywhere:** `EBUSY` cleanup timing on Windows (written for `cmd.exe`
   semantics, exercised only via `PATH=/nonexistent` on Linux).
 

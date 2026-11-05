@@ -57,7 +57,7 @@ Last activity: 2026-11-05 — Milestone v1.1 started
 | 8 | Offline audit false-positive on `http://${req.headers.host}` | first audit run | exclude template expressions (URL parsing, not a socket) |
 | 9 | `smoke-test.js` shelled out to `grep ... \|\| true` — neither exists in `cmd.exe`; 44/45 then crash | Windows UAT (local agent) | pure-JavaScript file scan; added an explicit CDN/font assertion |
 | 10 | Deleting the temp DB right after `SIGKILL` can throw `EBUSY` on Windows | Windows UAT follow-up | wait for the child's `exit` event, then retry deletes for 3 s |
-| 11 | `GET /api/users` had no role check — a technician could read the whole staff list (names, emails, roles) | post-ship live demo click-through | added the same `role !== 'admin'` guard `POST`/`PUT` already had, plus a smoke assertion for the read |
+| 11 | `GET /api/users` had no role check — a technician could read the whole staff list (names, emails, roles) | post-ship click-through of the running app | added the same `role !== 'admin'` guard `POST`/`PUT` already had, plus a smoke assertion for the read |
 
 ## Decisions made during execution
 

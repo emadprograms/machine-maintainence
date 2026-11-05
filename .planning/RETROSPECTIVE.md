@@ -25,7 +25,7 @@
   goal. "Remove the hardcoded secret" is testable; "improve security" is not.
 - **Writing the assertion before trusting the feature.** Every one of the eleven bugs fixed
   during execution was caught by something that *ran*, not by re-reading code. Four were found
-  only by the test suite or the live demo.
+  only by the test suite or a manual pass over the running application.
 - **GSD's digest-based staleness check.** Fixing one line in `server.js` correctly invalidated
   all six verification reports, because all six phase plans cover that file. Irritating, and
   exactly right — it prevents "verified" from silently meaning "verified four commits ago".
