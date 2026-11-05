@@ -36,8 +36,8 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 
 ### Phases
 
-- [ ] **Phase 7: Parts become maintainable** — Restock, edit, delete, and a per-part reorder level (PART-01 … PART-05)
-- [ ] **Phase 8: Work belongs to somebody** — Assign and edit work orders without weakening the role boundary (WO-01 … WO-04)
+- [x] **Phase 7: Parts become maintainable** — Restock, edit, delete, and a per-part reorder level (PART-01 … PART-05) (completed 2026-11-05)
+- [x] **Phase 8: Work belongs to somebody** — Assign and edit work orders without weakening the role boundary (WO-01 … WO-04) (completed 2026-11-05)
 - [ ] **Phase 9: Honest dates and real exports** — Fix the silently-dropped completion date; export work orders and parts to CSV (PM-01 … PM-03, CSV-01 … CSV-04)
 - [ ] **Phase 10: Login hardening** — Throttle repeated failed logins, with a block that expires on its own (AUTH-01 … AUTH-03)
 
@@ -57,8 +57,8 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 **Notes**: PART-04 is the trap. `work_order_parts.part_id` is declared `ON DELETE RESTRICT`, so a raw `DELETE` throws a SQLite constraint error. The route must pre-check and return a readable 400, consistent with how v1.0 handles FK errors.
 
 **Plans**:
-- [ ] 07-01: `PUT /api/parts/:id` (stock + fields) and `DELETE /api/parts/:id` with the in-use guard; wire both into the Spare parts screen
-- [ ] 07-02: `reorder_level` column via `ensureColumn` + badge logic and the form field
+- [x] 07-01: `PUT /api/parts/:id` (stock + fields) and `DELETE /api/parts/:id` with the in-use guard; wire both into the Spare parts screen
+- [x] 07-02: `reorder_level` column via `ensureColumn` + badge logic and the form field
 
 ### Phase 8: Work belongs to somebody
 **Goal**: A work order has an owner and can be corrected after it is created.
@@ -74,8 +74,8 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 **Notes**: `db.js:105` already carries the commented example `ensureColumn('work_orders', 'assigned_to', 'INTEGER')` — the scaffold anticipated this. Criterion 4 argues for storing the assignee as a foreign key plus resolving the name on read, and *not* cascading the delete; a disabled user's name must still render.
 
 **Plans**:
-- [ ] 08-01: `assigned_to` column, assignment in the work-order PATCH, join to users for display
-- [ ] 08-02: Edit title/notes/priority UI, with the role boundary re-asserted in the smoke suite
+- [x] 08-01: `assigned_to` column, assignment in the work-order PATCH, join to users for display
+- [x] 08-02: Edit title/notes/priority UI, with the role boundary re-asserted in the smoke suite
 
 ### Phase 9: Honest dates and real exports
 **Goal**: No endpoint may silently ignore an input, and the two lists a workshop actually puts in Excel can be exported.
