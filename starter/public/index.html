@@ -174,6 +174,30 @@
       </div>
     </section>
 
+    <!-- Users (admin only) -->
+    <section data-page="users" class="hidden">
+      <div class="card">
+        <h2>Add a user</h2>
+        <p class="muted">There is no public sign-up. Only an admin can create accounts.</p>
+        <div class="form-grid">
+          <input id="u-name" placeholder="Full name" />
+          <input id="u-email" placeholder="Email" type="email" />
+          <input id="u-pass" placeholder="Password (8+ characters)" type="password" />
+          <select id="u-role">
+            <option value="tech" selected>Technician</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <p></p>
+        <button class="primary" onclick="addUser()">Create user</button>
+      </div>
+      <div class="card">
+        <h2>Users</h2>
+        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody id="users-rows"></tbody></table>
+      </div>
+    </section>
+
     <!-- Backup -->
     <section data-page="backup" class="hidden">
       <div class="card">

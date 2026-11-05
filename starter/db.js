@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS users (
   name          TEXT NOT NULL,
   email         TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin','tech'))
+  role          TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin','tech')),
+  active        INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS equipment (
@@ -98,6 +100,8 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('equipment', 'manufacturer', 'TEXT');
+ensureColumn('users', 'active', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('users', 'created_at', "TEXT");
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example
 
 // ---------------------------------------------------------------- helpers

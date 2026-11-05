@@ -117,6 +117,44 @@ const lines = (await c(`/api/work-orders/${wo.data.id}/parts`)).data;
 ok('same part twice merges into one line', lines.length === 1 && lines[0].qty === 3,
   JSON.stringify(lines));
 
+console.log('\nPhase 2b — user management');
+const users0 = await c('/api/users');
+ok('admin sees the user list', users0.status === 200 && users0.data.length === 1);
+ok('user list never includes password hashes',
+  !JSON.stringify(users0.data).includes('scrypt'));
+const created = await c('/api/users', { method: 'POST', body: {
+  name: 'Tech One', email: 'tech@local', password: 'tech-password', role: 'tech',
+} });
+ok('admin can create a technician', created.status === 201 && created.data.role === 'tech');
+ok('short password rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'X', email: 'x@local', password: 'short', role: 'tech' } })).status === 400);
+ok('email with no host part rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'X', email: 'notanemail', password: 'longenough1', role: 'tech' } })).status === 400);
+ok('duplicate email rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'Dup', email: 'tech@local', password: 'longenough1', role: 'tech' } })).status === 400);
+
+// A technician must not be able to create users or delete machines.
+const tech = makeClient();
+const techLogin = await tech('/api/login', { method: 'POST', body: {
+  email: 'tech@local', password: 'tech-password' } });
+ok('created user can log in', techLogin.status === 200 && techLogin.data.role === 'tech');
+ok('technician cannot create users',
+  (await tech('/api/users', { method: 'POST', body: {
+    name: 'Sneaky', email: 's@local', password: 'longenough1', role: 'admin' } })).status === 403);
+ok('technician cannot delete a machine',
+  (await tech(`/api/equipment/${m1.data.id}`, { method: 'DELETE' })).status === 403);
+
+// Disabling takes effect immediately on the next request AND next login.
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });
+ok('disabled user is rejected at login',
+  (await makeClient()('/api/login', { method: 'POST', body: {
+    email: 'tech@local', password: 'tech-password' } })).status === 403);
+ok('admin cannot disable their own account',
+  (await c('/api/users/1', { method: 'PUT', body: { active: false } })).status === 400);
+
 console.log('\nPhase 5 — preventive maintenance');
 const pm = await c('/api/pm', {
   method: 'POST',
@@ -152,7 +190,10 @@ srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
 ok('server restarts on the same database', await waitForServer(), srv.log());
 await sleep(300);
 const c2 = makeClient();
-await c2('/api/login', { method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' } });
+const relogin = await c2('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' },
+});
+ok('can log in again after restart', relogin.status === 200, JSON.stringify(relogin.data));
 const survived = await c2('/api/equipment');
 ok('machines survived kill -9', survived.data.length === 2, JSON.stringify(survived.data));
 const woAfter = await c2('/api/work-orders');

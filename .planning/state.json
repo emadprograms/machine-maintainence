@@ -1,0 +1,43 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.0 — Lean core, offline, on Windows",
+  "phases": [
+    {
+      "number": "1",
+      "name": "Foundation & persistence proof",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Auth & users",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Machines & work orders",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Spare parts",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Preventive maintenance",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Windows portability & offline proof",
+      "status": "in_progress"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step (verify)",
+    "reason": "Phase 6 of 6 · 83% · ready to verify"
+  },
+  "updated_at": "2026-11-05T07:20:09.455Z"
+}

@@ -4,18 +4,19 @@
 
 Ship a four-feature maintenance app on a stack a beginner can read end to end. The scaffold in `starter/` already has the schema, the auth primitives and the page shell; the phases below turn it into something verified rather than merely written: prove persistence under crash, lock down auth, complete the CRUD surfaces, then prove it runs on a clean offline Windows machine.
 
-## Milestone
+## v1.0 — Lean core, offline, on Windows
 
-**v1.0 — Lean core, offline, on Windows**
+**Status:** Closed — 5 verified, 1 awaiting Windows UAT (see `.planning/phases/MM-06-windows-and-offline/MM-06-UAT.md`)
+**Goal:** A four-feature maintenance app a beginner can read end to end, running offline on Windows.
 
-## Phases
+### Phases
 
-- [ ] **Phase 1: Foundation & persistence proof** — Make the database layer trustworthy and prove it survives restart and `kill -9`
-- [ ] **Phase 2: Auth & users** — Real login, per-install secret, revocation, admin-only user creation
-- [ ] **Phase 3: Machines & work orders** — Complete the two CRUD screens and their validation
-- [ ] **Phase 4: Spare parts** — Stock levels and transactional consumption on a job
-- [ ] **Phase 5: Preventive maintenance** — Recurring schedules, due-soon view, roll-forward on done
-- [ ] **Phase 6: Windows portability & offline proof** — `.bat` launcher, portable copy test, zero external requests
+- [x] **Phase 1: Foundation & persistence proof** — Make the database layer trustworthy and prove it survives restart and `kill -9` (completed 2026-11-05)
+- [x] **Phase 2: Auth & users** — Real login, per-install secret, revocation, admin-only user creation (completed 2026-11-05)
+- [x] **Phase 3: Machines & work orders** — Complete the two CRUD screens and their validation (completed 2026-11-05)
+- [x] **Phase 4: Spare parts** — Stock levels and transactional consumption on a job (completed 2026-11-05)
+- [x] **Phase 5: Preventive maintenance** — Recurring schedules, due-soon view, roll-forward on done (completed 2026-11-05)
+- [~] **Phase 6: Windows portability & offline proof** — `.bat` launcher, portable copy test, zero external requests
 
 ## Phase Details
 
@@ -30,9 +31,9 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   4. Backup produces a dated file that opens with a valid schema
 
 **Plans**:
-- [ ] 01-01: Review `starter/db.js` against these criteria; add startup integrity check and clear failure message
-- [ ] 01-02: Write `starter/scripts/smoke-test.js` — starts server, exercises each endpoint, kills, restarts, re-checks
-- [ ] 01-03: Add `.gitignore` for `data/` and document backup/restore in `starter/README.md`
+- [x] 01-01: Review `starter/db.js` against these criteria; add startup integrity check and clear failure message
+- [x] 01-02: Write `starter/scripts/smoke-test.js` — starts server, exercises each endpoint, kills, restarts, re-checks
+- [x] 01-03: Add `.gitignore` for `data/` and document backup/restore in `starter/README.md`
 
 ### Phase 2: Auth & users
 **Goal**: Nobody gets in without a correct password, and signing out actually signs out.
@@ -46,9 +47,9 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   5. Suspended/deleted users cannot authenticate
 
 **Plans**:
-- [ ] 02-01: Harden `starter/auth.js` — constant-time compares, token `sub` re-checked against the user table on each request
-- [ ] 02-02: Admin user management endpoint + minimal UI (list, add, disable)
-- [ ] 02-03: Auth test script covering the five criteria
+- [x] 02-01: Harden `starter/auth.js` — constant-time compares, token `sub` re-checked against the user table on each request
+- [x] 02-02: Admin user management endpoint + minimal UI (list, add, disable)
+- [x] 02-03: Auth test script covering the five criteria
 
 ### Phase 3: Machines & work orders
 **Goal**: The two screens a workshop actually uses every day.
@@ -61,9 +62,9 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   4. Only admins can delete a machine
 
 **Plans**:
-- [ ] 03-01: Finish machine edit/retire UI and server-side validation
-- [ ] 03-02: Work-order status transitions with `closed_at` handling
-- [ ] 03-03: Input validation pass: every endpoint returns 400 with a message on bad input
+- [x] 03-01: Finish machine edit/retire UI and server-side validation
+- [x] 03-02: Work-order status transitions with `closed_at` handling
+- [x] 03-03: Input validation pass: every endpoint returns 400 with a message on bad input
 
 ### Phase 4: Spare parts
 **Goal**: Know what is in the cupboard and what a job consumed.
@@ -76,8 +77,8 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   4. The link and the stock change are atomic (simulate a failure mid-way, confirm rollback)
 
 **Plans**:
-- [ ] 04-01: Stock guards and transactional consumption
-- [ ] 04-02: "Parts used on this job" view + low-stock indicator
+- [x] 04-01: Stock guards and transactional consumption
+- [x] 04-02: "Parts used on this job" view + low-stock indicator
 
 ### Phase 5: Preventive maintenance
 **Goal**: The feature the reviewed repo lacked — real recurring maintenance with due dates.
@@ -91,9 +92,9 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   5. Schedules survive a restart and are visible to all signed-in users
 
 **Plans**:
-- [ ] 05-01: Date arithmetic and overdue/due-soon queries, including leap-month edge cases
-- [ ] 05-02: Due-soon dashboard as the landing page after login
-- [ ] 05-03: Optional daily digest file (`data/due-soon.txt`) for a Windows scheduled task
+- [x] 05-01: Date arithmetic and overdue/due-soon queries, including leap-month edge cases
+- [x] 05-02: Due-soon dashboard as the landing page after login
+- [x] 05-03: Optional daily digest file (`data/due-soon.txt`) for a Windows scheduled task
 
 ### Phase 6: Windows portability & offline proof
 **Goal**: Prove the claims in `starter/README.md` on a clean machine — this is where the reviewed repo failed.
@@ -107,6 +108,6 @@ Ship a four-feature maintenance app on a stack a beginner can read end to end. T
   5. `starter/README.md` has a worked "add a field" example that a beginner can follow without reading other files
 
 **Plans**:
-- [ ] 06-01: `start.bat` + `backup.bat` + portable-folder layout
-- [ ] 06-02: Offline audit script (`npm run audit:offline` equivalent, no npm needed — a Node script)
-- [ ] 06-03: Beginner README with the modification recipe and troubleshooting section
+- [x] 06-01: `start.bat` + `backup.bat` + portable-folder layout
+- [x] 06-02: Offline audit script (`npm run audit:offline` equivalent, no npm needed — a Node script)
+- [x] 06-03: Beginner README with the modification recipe and troubleshooting section

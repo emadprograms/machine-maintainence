@@ -52,6 +52,7 @@ const PAGES = [
   { key: 'work', label: 'Work orders' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
+  { key: 'users', label: 'Users', adminOnly: true },
   { key: 'backup', label: 'Backup', adminOnly: true },
 ];
 let currentPage = 'due';
@@ -67,7 +68,10 @@ function showPage(key) {
   currentPage = key;
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === key));
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
-  const loaders = { due: loadDue, equipment: loadEquipment, work: loadWork, pm: loadPm, parts: loadParts };
+  const loaders = {
+    due: loadDue, equipment: loadEquipment, work: loadWork,
+    pm: loadPm, parts: loadParts, users: loadUsers,
+  };
   loaders[key]?.();
 }
 
@@ -223,6 +227,39 @@ async function doBackup() {
     const r = await api('/backup', { method: 'POST' });
     $('#backup-result').textContent = 'Saved: ' + r.file;
   } catch (e) { $('#backup-result').textContent = e.message; }
+}
+
+
+// ------------------------------------------------------------------ users
+async function loadUsers() {
+  const rows = await api('/users');
+  $('#users-rows').innerHTML = rows.map((u) => `
+    <tr>
+      <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+      <td>${badge(u.role, u.role === 'admin' ? 'amber' : 'grey')}</td>
+      <td>${u.active ? badge('active', 'green') : badge('disabled', 'red')}</td>
+      <td><button class="small" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">
+        ${u.active ? 'Disable' : 'Enable'}
+      </button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">No users yet.</td></tr>';
+}
+
+async function addUser() {
+  try {
+    await api('/users', { method: 'POST', body: JSON.stringify({
+      name: $('#u-name').value,
+      email: $('#u-email').value,
+      password: $('#u-pass').value,
+      role: $('#u-role').value,
+    })});
+    ['#u-name', '#u-email', '#u-pass'].forEach((s) => { $(s).value = ''; });
+    loadUsers();
+  } catch (e) { alert(e.message); }
+}
+
+async function toggleUser(id, active) {
+  try { await api(`/users/${id}`, { method: 'PUT', body: JSON.stringify({ active: !!active }) }); loadUsers(); }
+  catch (e) { alert(e.message); }
 }
 
 // ------------------------------------------------------------------ boot

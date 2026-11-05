@@ -95,6 +95,7 @@ const api = {
     // Constant-time-ish: always hash something so timing does not leak whether an email exists.
     const ok = verifyPassword(String(body?.password || ''), user?.password_hash || hashPassword('x'));
     if (!user || !ok) return send(res, 401, { error: 'Wrong email or password' });
+    if (!user.active) return send(res, 403, { error: 'This account has been disabled' });
     const token = signToken({ sub: user.id, role: user.role, name: user.name });
     cookies.set(token, Date.now() + 12 * 3600_000);
     res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200`);
@@ -255,6 +256,60 @@ const api = {
          SET last_done = ?, next_due = date(?, '+' || interval_days || ' days')
          WHERE id = ?`, base, base, id(req.params.id));
     send(res, 200, get('SELECT * FROM pm_schedule WHERE id = ?', id(req.params.id)));
+  }),
+
+  // ---- users (admin only). There is deliberately no public sign-up route.
+  'GET /api/users': route(async (_req, res) =>
+    send(res, 200, all('SELECT id, name, email, role, active, created_at FROM users ORDER BY name'))),
+
+  'POST /api/users': route(async (req, res) => {
+    if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    const b = await readBody(req);
+    if (!b?.name?.trim() || !b?.email?.trim()) {
+      return send(res, 400, { error: 'Name and email are required' });
+    }
+    const email = String(b.email).trim().toLowerCase();
+    // Deliberately permissive: offline workshops use names like `tech@workshop`
+    // with no dot. Anything with a local part and a host part is acceptable.
+    if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
+      return send(res, 400, { error: 'That does not look like an email address' });
+    }
+    if (!b.password || String(b.password).length < 8) {
+      return send(res, 400, { error: 'Password must be at least 8 characters' });
+    }
+    const role = b.role === 'admin' ? 'admin' : 'tech';
+    const r = run('INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)',
+      b.name.trim(), email, hashPassword(b.password), role);
+    send(res, 201, get('SELECT id, name, email, role, active FROM users WHERE id = ?',
+      r.lastInsertRowid));
+  }),
+
+  'PUT /api/users/:id': route(async (req, res) => {
+    if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    const b = await readBody(req);
+    const target = get('SELECT * FROM users WHERE id = ?', id(req.params.id));
+    if (!target) return send(res, 404, { error: 'User not found' });
+
+    // Never let an admin lock themselves out of their own installation.
+    // Two traps here, both of which bit this file once:
+    //   - the token carries the id as a JSON number, the row is a SQLite integer,
+    //     so compare with Number(...) rather than ===
+    //   - clients send `false` for "disable", not `0`, so accept both
+    const wantsDisable = b.active === 0 || b.active === false || b.active === '0';
+    if (Number(target.id) === Number(req.user.sub) && wantsDisable) {
+      return send(res, 400, { error: 'You cannot disable your own account' });
+    }
+    if (b.password) {
+      if (String(b.password).length < 8) {
+        return send(res, 400, { error: 'Password must be at least 8 characters' });
+      }
+      run('UPDATE users SET password_hash = ? WHERE id = ?',
+        hashPassword(b.password), target.id);
+    }
+    run('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?',
+      b.name ?? target.name, b.role ?? target.role,
+      b.active === undefined ? target.active : (b.active ? 1 : 0), target.id);
+    send(res, 200, get('SELECT id, name, email, role, active FROM users WHERE id = ?', target.id));
   }),
 
   // ---- backup (same idea as the repo's /tmp problem, solved properly)
