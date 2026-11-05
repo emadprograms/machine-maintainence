@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v2.0 — Dashboard",
+  "milestone": "v2.0 \u2014 Dashboard",
   "phases": [
     {
       "number": "7",
@@ -27,7 +27,7 @@
   "next": {
     "command": "/gsd-progress",
     "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "reason": "Unsure of state \u2014 showing progress"
   },
   "updated_at": "2026-11-05T15:16:52.902Z"
 }
