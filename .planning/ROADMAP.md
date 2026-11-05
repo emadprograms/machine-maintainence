@@ -38,7 +38,7 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 
 - [x] **Phase 7: Parts become maintainable** — Restock, edit, delete, and a per-part reorder level (PART-01 … PART-05) (completed 2026-11-05)
 - [x] **Phase 8: Work belongs to somebody** — Assign and edit work orders without weakening the role boundary (WO-01 … WO-04) (completed 2026-11-05)
-- [ ] **Phase 9: Honest dates and real exports** — Fix the silently-dropped completion date; export work orders and parts to CSV (PM-01 … PM-03, CSV-01 … CSV-04)
+- [x] **Phase 9: Honest dates and real exports** — Fix the silently-dropped completion date; export work orders and parts to CSV (PM-01 … PM-03, CSV-01 … CSV-04) (completed 2026-11-05)
 - [ ] **Phase 10: Login hardening** — Throttle repeated failed logins, with a block that expires on its own (AUTH-01 … AUTH-03)
 
 ## Phase Details
@@ -91,8 +91,8 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 **Notes**: The root cause of PM-01 is broader than the PM handler — `req.body` is never assigned in `server.js`, so any future handler reaching for it will fail the same way. The fix should make the body available (or delete the dead `req.body?.on` read and use a parsed value), and a regression check should assert that a supplied value is *used*, not merely that the call returns 200. That distinction is exactly what v1.0 got wrong.
 
 **Plans**:
-- [ ] 09-01: Fix body handling; honour, validate and cap the completion date
-- [ ] 09-02: CSV writer (quoting/escaping) + two export endpoints + download buttons that pass current filters
+- [x] 09-01: Fix body handling; honour, validate and cap the completion date
+- [x] 09-02: CSV writer (quoting/escaping) + two export endpoints + download buttons that pass current filters
 
 ### Phase 10: Login hardening
 **Goal**: Guessing passwords over the LAN is slow and visible.

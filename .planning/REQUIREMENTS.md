@@ -40,16 +40,16 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 
 ### Preventive maintenance (PM)
 
-- [ ] **PM-01** — "Mark done" honours a supplied completion date instead of silently using today
-- [ ] **PM-02** — An invalid or unparseable completion date is rejected with a 400 naming the field, never silently substituted
-- [ ] **PM-03** — A completion date in the future is refused, because it would move `next_due` beyond a maintenance cycle that has not happened
+- [x] **PM-01** — "Mark done" honours a supplied completion date instead of silently using today
+- [x] **PM-02** — An invalid or unparseable completion date is rejected with a 400 naming the field, never silently substituted
+- [x] **PM-03** — A completion date in the future is refused, because it would move `next_due` beyond a maintenance cycle that has not happened
 
 ### Reporting (CSV)
 
-- [ ] **CSV-01** — User can download the work-order list as a CSV file that opens in Excel without a manual import step
-- [ ] **CSV-02** — User can download the parts list (with stock, reorder level and unit price) as CSV
-- [ ] **CSV-03** — A CSV export preserves the filters currently applied in the UI, so what is downloaded matches what is on screen
-- [ ] **CSV-04** — Exported text is quoted and escaped correctly, so a title containing a comma, quote or newline does not corrupt the columns
+- [x] **CSV-01** — User can download the work-order list as a CSV file that opens in Excel without a manual import step
+- [x] **CSV-02** — User can download the parts list (with stock, reorder level and unit price) as CSV
+- [x] **CSV-03** — A CSV export preserves the filters currently applied in the UI, so what is downloaded matches what is on screen
+- [x] **CSV-04** — Exported text is quoted and escaped correctly, so a title containing a comma, quote or newline does not corrupt the columns
 
 ### Authentication (AUTH)
 
@@ -87,13 +87,13 @@ deferred: a low-stock alert would fire about a number nobody can correct.
 | WO-02 | 8 | Complete | smoke "the list resolves the owner name", "a disabled owner is still named on the job" |
 | WO-03 | 8 | Complete | smoke "title can be edited", "editing the title leaves the status alone", "empty title refused" |
 | WO-04 | 8 | Complete | smoke "technician can edit a work order" + 403 on users and machine delete |
-| PM-01 | 9 | Pending | — |
-| PM-02 | 9 | Pending | — |
-| PM-03 | 9 | Pending | — |
-| CSV-01 | 9 | Pending | — |
-| CSV-02 | 9 | Pending | — |
-| CSV-03 | 9 | Pending | — |
-| CSV-04 | 9 | Pending | — |
+| PM-01 | 9 | Complete | — |
+| PM-02 | 9 | Complete | — |
+| PM-03 | 9 | Complete | — |
+| CSV-01 | 9 | Complete | — |
+| CSV-02 | 9 | Complete | — |
+| CSV-03 | 9 | Complete | — |
+| CSV-04 | 9 | Complete | — |
 | AUTH-01 | 10 | Pending | — |
 | AUTH-02 | 10 | Pending | — |
 | AUTH-03 | 10 | Pending | — |
