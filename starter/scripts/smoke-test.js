@@ -1,8 +1,9 @@
 // Smoke test: proves the Phase 1-5 success criteria in .planning/ROADMAP.md.
 // Usage: node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 // It starts its own server on a spare port with a throwaway database.
-import { spawn } from 'node:child_process';
-import { rmSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { rmSync, existsSync, statSync, readdirSync, readFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -933,6 +934,116 @@ ok('no Google Fonts / CDN / remote fetch',
   && !/<link[^>]+href=["']https?:/.test(allSource)
   && !/fetch\(\s*["'`]https?:/.test(allSource));
 
+// --------------------------------------- what the owner's machine taught us
+// Four failures, one per section below. Each assertion is written so that it
+// fails again if the fix is taken out — a green run here means something.
+console.log('\nPersistence — a restart, a file copy, and a forgotten password');
+
+// 1. Sessions are rows in the database. They used to be a Map in memory, so a
+//    restart silently signed everybody out, and the owner read that as "the
+//    password changed again".
+const persistent = makeClient();
+const beforeRestart = await persistent('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' },
+});
+ok('admin is signed in before the restart', beforeRestart.status === 200,
+  JSON.stringify(beforeRestart.data));
+srv.child.kill('SIGKILL');
+await srv.exited;
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server is back up', await waitForServer(), srv.log());
+const stillIn = await persistent('/api/me');
+ok('a signed-in session survives a hard restart', stillIn.status === 200,
+  `got ${stillIn.status}: the browser is back on the login screen`);
+
+// 2. maintain.db on its own must be a complete database. The owner's was 4,096
+//    bytes with 78,312 bytes sitting in the side file, so copying it — to a USB
+//    stick, a backup folder, anywhere — produced an empty database.
+const marker = `Copy-me-${Date.now()}`;
+await persistent('/api/equipment', { method: 'POST', body: { name: marker } });
+const walSize = existsSync(DB + '-wal') ? statSync(DB + '-wal').size : 0;
+ok('a save is merged into maintain.db, not left in the side file', walSize === 0,
+  `${DB}-wal is ${walSize} bytes: a copy of maintain.db alone would be incomplete`);
+const copiedAlone = join(root, 'data', 'copied-alone.db');
+copyFileSync(DB, copiedAlone);
+const alone = new DatabaseSync(copiedAlone, { readOnly: true });
+const foundInCopy = alone.prepare('SELECT COUNT(*) AS n FROM equipment WHERE name = ?')
+  .get(marker).n;
+alone.close();
+rmSync(copiedAlone, { force: true });
+ok('a copy of maintain.db alone still contains the data', foundInCopy === 1,
+  'the copy was empty, which is exactly what a naive backup used to produce');
+
+// 3. The first password is written beside the database, so closing the console
+//    window cannot lose it. It was printed once and never stored anywhere.
+const note = join(root, 'data', 'first-password.txt');
+ok('the first password is kept beside the database',
+  existsSync(note) && readFileSync(note, 'utf8').includes('smoke-test-password'),
+  existsSync(note) ? 'the file exists but does not hold the password' : 'no first-password.txt');
+const changed = await persistent('/api/users/1', {
+  method: 'PUT', body: { password: 'chosen-by-the-admin-1' },
+});
+ok('an admin can change their own password', changed.status === 200, JSON.stringify(changed.data));
+ok('changing it deletes the now-stale note', !existsSync(note),
+  'a file holding a password that no longer works is worse than no file');
+
+// 4. A forgotten password has a way back. This is the bug that actually locked
+//    the owner out: the only route to a new password needs an admin already in.
+function resetPassword(password) {
+  return spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', 'reset-password.js', '--password', password],
+    { cwd: root, env: { ...process.env, MM_DB: DB }, encoding: 'utf8' });
+}
+srv.child.kill('SIGKILL');
+await srv.exited;
+const reset = resetPassword('recovered-pass-1');
+ok('reset-password.js runs with the app stopped', reset.status === 0,
+  reset.stderr || reset.stdout);
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server runs again after a reset', await waitForServer(), srv.log());
+const afterReset = await makeClient()('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'recovered-pass-1' },
+});
+ok('the password set by reset-password.js works', afterReset.status === 200,
+  JSON.stringify(afterReset.data));
+const tooShort = resetPassword('short');
+ok('reset-password.js refuses a password under 8 characters', tooShort.status !== 0,
+  'it accepted a password the login form would also reject');
+
+// Put the account back the way the rest of the run expects to find it.
+resetPassword('smoke-test-password');
+
+// 5. Upgrading from v2.0 copies the old database into %LOCALAPPDATA%. A v2.0
+//    folder keeps its recent writes in the side file (the owner's held 78 KB),
+//    so a copy that takes only maintain.db is an empty database. This builds a
+//    real pending side file and copies it the way the upgrade does.
+const legacyFrom = join(root, 'data', 'legacy-from');
+const legacyTo = join(root, 'data', 'legacy-to');
+for (const dir of [legacyFrom, legacyTo]) {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir);
+}
+const legacy = new DatabaseSync(join(legacyFrom, 'maintain.db'));
+legacy.exec('PRAGMA journal_mode = WAL');
+legacy.exec('CREATE TABLE equipment (id INTEGER PRIMARY KEY, name TEXT)');
+legacy.exec("INSERT INTO equipment (name) VALUES ('Left in the side file')");
+// Deliberately left open: the row is still in the -wal, exactly like v2.0.
+// db.js is imported here, not at the top, so opening it cannot disturb the
+// server's database: the test process gets its own throw-away one.
+process.env.MM_DB = join(root, 'data', 'test-process.db');
+const { copyDataFiles } = await import('../db.js');
+const copiedNames = copyDataFiles(legacyFrom, legacyTo);
+ok('the upgrade copies the side files with the database',
+  copiedNames.includes('maintain.db') && copiedNames.includes('maintain.db-wal'),
+  `copied: ${copiedNames.join(', ') || 'nothing'}`);
+legacy.close();
+const adopted = new DatabaseSync(join(legacyTo, 'maintain.db'), { readOnly: true });
+const keptRecent = adopted.prepare('SELECT COUNT(*) AS n FROM equipment').get().n;
+adopted.close();
+ok('a database adopted from v2.0 keeps its recent writes', keptRecent === 1,
+  'the recent write lived in the side file and did not come across');
+for (const dir of [legacyFrom, legacyTo]) rmSync(dir, { recursive: true, force: true });
+
 console.log('\n--- stopping ---');
 srv.child.kill('SIGKILL');
 await srv.exited;
@@ -950,7 +1061,12 @@ let cleaned = true;
 // the failure log is plain-file state too; leaving it behind would make the
 // next run's "one entry per failure" assertions pass on stale lines
 for (const f of [DB, DB + '-wal', DB + '-shm', join(root, 'data', 'login-failures.log'),
-                 join(root, 'data', 'login-failures.log.1')]) {
+                 join(root, 'data', 'login-failures.log.1'),
+                 join(root, 'data', 'first-password.txt'),
+                 join(root, 'data', 'copied-alone.db'),
+                 join(root, 'data', 'test-process.db'),
+                 join(root, 'data', 'test-process.db-wal'),
+                 join(root, 'data', 'test-process.db-shm')]) {
   if (!removeWithRetry(f) && existsSync(f)) cleaned = false;
 }
 for (const f of readdirSync(join(root, 'data'))) {

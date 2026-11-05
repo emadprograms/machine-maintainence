@@ -14,6 +14,14 @@ export function hashPassword(plain) {
   return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
 }
 
+// A password nobody has to invent. Three groups of five, because it is read off
+// a screen and typed by a person: 15 characters from randomBytes, not Math.random,
+// which is predictable enough that the old version was worth replacing.
+export function randomPassword() {
+  const raw = randomBytes(18).toString('base64url').replace(/[-_]/g, 'x');
+  return [raw.slice(0, 5), raw.slice(5, 10), raw.slice(10, 15)].join('-');
+}
+
 export function verifyPassword(plain, stored) {
   if (!stored || !stored.startsWith('scrypt$')) return false;
   const [, saltHex, hashHex] = stored.split('$');

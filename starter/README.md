@@ -169,8 +169,33 @@ function, and `sites: loadSites` to the `loaders` object in `showPage`.
 * **Nothing is written when you only view pages.** Opening a list does not touch the disk.
 * Every change is a real transaction. If a step fails, the earlier steps are undone — for
   example, using 99 of a part with only 3 in stock leaves the stock exactly as it was.
-* `data/maintain.db` is your data. Copy it to back up; delete it to start over.
-  `data/secret.txt` is the per-install signing key — keep it, or everyone is logged out.
+* `maintain.db` is your data. Copy it to back up; delete it to start over.
+  `secret.txt` is the per-install signing key — keep it, or everyone is logged out.
+* **The side file is merged back after every save.** WAL mode normally leaves recent
+  writes in `maintain.db-wal` until something closes the database, which meant a copy of
+  `maintain.db` on its own could be an empty database — the owner's was 4 KB with 78 KB
+  sitting beside it. Every write now checkpoints, so `maintain.db` alone is always a
+  complete, copyable file. That is why the backup instructions below are safe.
+
+### Where your data lives
+
+Not inside the app folder any more.
+
+* **Windows:** `%LOCALAPPDATA%\MachineMaintenance`
+* **Linux / macOS:** `data/` inside this folder, as before
+* Override either with `MM_DATA=/path/to/folder`, or `MM_DB=/path/to/file.db`
+  (everything else is then kept beside that file).
+
+The app prints the full path on startup. It used to keep everything in `data/` next to
+`start.bat`, which is *inside the git working copy* — and `data/` is git-ignored, so one
+`git clean -fdx` or a fresh clone deleted the database with no warning. On the owner's
+machine that folder was also a Parallels shared folder, and **SQLite does not support WAL
+over a network filesystem**. Both problems are gone now that the data lives outside the
+app.
+
+Upgrading from v2.0 needs nothing: on first start the app finds `data/maintain.db`, copies
+it (with `-wal`, `-shm` and `secret.txt`) to the new location, and says so. The old folder
+is left untouched.
 
 ### Back up
 
@@ -178,12 +203,32 @@ function, and `sites: loadSites` to the `loaders` object in `showPage`.
 * `backup.bat`, or
 * Windows Task Scheduler → daily → `backup.bat`.
 
-Each run writes `data/backup-YYYY-MM-DD-HH-MM-SS.db`, a complete standalone database.
+Each run writes `backup-YYYY-MM-DD-HH-MM-SS.db` beside the database, a complete
+standalone file.
+
+Even so, the honest answer to "what is a backup?" is **a copy in a different place**.
+A backup sitting in the same folder as the database is not one.
 
 ### Restore
 
-Stop the server, replace `data/maintain.db` with a backup file, start the server.
-(Delete `data/maintain.db-wal` and `data/maintain.db-shm` first if they exist.)
+Stop the server, replace `maintain.db` with a backup file, start the server.
+(Delete `maintain.db-wal` and `maintain.db-shm` first if they exist.)
+
+### If you lose the password
+
+You cannot be locked out any more. Two ways back in, both run with the app stopped:
+
+1. `first-password.txt` beside the database holds the password from the very first start.
+   It is deleted as soon as you change that password in **Users**.
+2. Otherwise, open a command prompt in this folder and run:
+
+   ```
+   node reset-password.js
+   ```
+
+   It prints a new password for `admin@local`, or takes `--password` to set one you
+   choose, or `--email` for a different account. Nothing is deleted; open sessions are
+   signed out.
 
 ---
 
@@ -234,9 +279,9 @@ native modules. You should see `OFFLINE-SAFE`.
 ### Known limitations
 
 * No HTTPS. Fine on a trusted local network; do not expose it to the internet.
-* No password reset by email (there is no email). An admin can set a new password by
-  deleting the user row and creating it again, or with a one-line SQL update.
-* Single user session store in memory: restarting the server signs everybody out.
+* No password reset by email (there is no email). Use `node reset-password.js` instead —
+  see **If you lose the password** above.
+* A restored backup signs everybody out, because sessions are rows in the database.
 * No audit log. The reviewed repo had one; it is intentionally out of scope.
 
 ---

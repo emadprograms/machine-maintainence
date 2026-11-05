@@ -37,12 +37,15 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | Date | ID | Task | Commit |
 |---|---|---|---|
 | 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |
+| 2026-11-05 | 261105-rst | Stop the password lockout: keep the first password, keep sessions across a restart, keep `maintain.db` copyable, move data out of the app folder | `0bada09` |
 
 ## Evidence log
 
 | Date | What was verified | How |
 |---|---|---|
 | 2026-11-05 | `node:sqlite` on Node 22.22: WAL, FK, CHECK, `VACUUM INTO` | direct `node -e` probes |
+| 2026-11-05 | Five restarts do not re-seed; `secret.txt` and `maintain.db` keep CreationTime and SHA256; a `.db` copy alone was empty (4,096 B vs 78,312 B of `-wal`) | an evidence-collection agent on the owner's Windows machine, prompt in `LOCAL-AGENT-PROMPT.md` |
+| 2026-11-05 | Six mutations of the persistence fixes each failed their assertion | `scripts/smoke-test.js`, 203 checks |
 | 2026-11-05 | 45/45 smoke checks pass | `node starter/scripts/smoke-test.js` |
 | 2026-11-05 | Offline-safe: no external URL, no deps, no native modules | `node starter/scripts/audit-offline.js` → `OFFLINE-SAFE` |
 | 2026-11-05 | Data survives `SIGKILL` (machines, work orders, schedules) | smoke test, kill -9 then restart |

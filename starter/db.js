@@ -1,16 +1,68 @@
 import { randomUUID } from "node:crypto";
-// Database layer. The whole file is ~100 lines.
+// Database layer. The whole file is ~180 lines.
 // Node's built-in SQLite: no npm package, no native compile, real transactions.
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync, existsSync, readFileSync, writeFileSync, copyFileSync, rmSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-export const DATA_DIR = join(root, 'data');
+
+// ------------------------------------------------------ where the data lives
+// Until v2.1 this was always <app>/data. The owner's installation taught us why
+// that is unsafe: the folder sits inside a git working tree that ignores it, so
+// one `git clean -fdx` or a fresh clone silently removes the database, and theirs
+// further lived on a Parallels shared folder, where SQLite does not support WAL.
+// The database now lives outside the app, in the user's own AppData.
+const oldDir = join(root, 'data');
+
+function chooseDataDir() {
+  if (process.env.MM_DATA) return process.env.MM_DATA;
+  // MM_DB already names a file, so keep the secret, backups and log beside it.
+  // This also keeps the test suite pointed at <app>/data, as it always was.
+  if (process.env.MM_DB) return dirname(process.env.MM_DB);
+  if (process.platform === 'win32') {
+    const base = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+    return join(base, 'MachineMaintenance');
+  }
+  return oldDir;
+}
+
+export const DATA_DIR = chooseDataDir();
 mkdirSync(DATA_DIR, { recursive: true });
 
 export const DB_PATH = process.env.MM_DB || join(DATA_DIR, 'maintain.db');
+
+// Copied, never moved: if anything goes wrong the old folder is still intact.
+/** The database and the files that belong with it must travel together. */
+export function copyDataFiles(fromDir, toDir) {
+  const copied = [];
+  for (const name of ['maintain.db', 'maintain.db-wal', 'maintain.db-shm', 'secret.txt']) {
+    const from = join(fromDir, name);
+    if (!existsSync(from)) continue;
+    copyFileSync(from, join(toDir, name));
+    copied.push(name);
+  }
+  return copied;
+}
+
+// Someone upgrading from v2.0 has their database in the old place. Bring it
+// along, so upgrading does not look like the data loss this change prevents.
+function adoptOldData() {
+  // Only when this file chose the new default itself. MM_DB or MM_DATA is a
+  // decision the caller has already made and must not be second-guessed.
+  if (process.env.MM_DB || process.env.MM_DATA) return;
+  if (DATA_DIR === oldDir || existsSync(DB_PATH)) return;
+  if (!existsSync(join(oldDir, 'maintain.db'))) return;
+  copyDataFiles(oldDir, DATA_DIR);
+  console.log(`  adopted the existing database from ${oldDir}`);
+  console.log(`  it now lives in ${DATA_DIR}`);
+  console.log('  the old copy is still there and can be deleted once you are happy');
+}
+adoptOldData();
 
 const db = new DatabaseSync(DB_PATH);
 
@@ -90,6 +142,16 @@ CREATE TABLE IF NOT EXISTS pm_schedule (
   last_done     TEXT,
   next_due      TEXT NOT NULL
 );
+
+-- Sign-in sessions. These used to be a Map in memory, which forgot every
+-- session on restart and put the owner back on the login screen every time.
+-- Only a SHA-256 of the token is stored: a copy of this file is not a set of
+-- usable sessions.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 `);
 
 // --------------------------------------------------- adding a column later
@@ -116,11 +178,36 @@ ensureColumn('users', 'created_at', "TEXT");
 // ---------------------------------------------------------------- helpers
 export const all = (sql, ...params) => db.prepare(sql).all(...params);
 export const get = (sql, ...params) => db.prepare(sql).get(...params);
-export const run = (sql, ...params) => db.prepare(sql).run(...params);
+
+// ------------------------------------------------------------ the file copy
+// In WAL mode a write lands in maintain.db-wal and is only merged into
+// maintain.db later. The owner's database was 4,096 bytes with 78,312 bytes
+// sitting in the side file: copying maintain.db alone therefore copied an empty
+// database, and nothing on shutdown ever merged it because there was no shutdown
+// handler. Every write now merges the side file back, so maintain.db on its own
+// is always a complete copy that can be touched, copied or zipped on its own.
+const WRITES = /^\s*(insert|update|delete|replace)\b/i;
+let openTransactions = 0;
+
+export function checkpoint() {
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  } catch {
+    // A reader can hold the file for a moment. Nothing is lost: the write is
+    // already durable in the -wal, and the next write tries again.
+  }
+}
+
+export const run = (sql, ...params) => {
+  const result = db.prepare(sql).run(...params);
+  if (openTransactions === 0 && WRITES.test(sql)) checkpoint();
+  return result;
+};
 
 /** Multi-statement write that either fully happens or fully doesn't. */
 export function transaction(fn) {
   db.exec('BEGIN');
+  openTransactions++;
   try {
     const result = fn();
     db.exec('COMMIT');
@@ -128,7 +215,17 @@ export function transaction(fn) {
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
+  } finally {
+    openTransactions--;
+    // A checkpoint cannot run inside a transaction, so do it once, at the end.
+    if (openTransactions === 0) checkpoint();
   }
+}
+
+/** Merge the side file and close. Called on Ctrl+C, and by the tests. */
+export function close() {
+  checkpoint();
+  db.close();
 }
 
 /** One-line backup. Run it from a scheduled task; ask for it before upgrades. */
@@ -146,6 +243,44 @@ export function machineSecret() {
   const secret = randomUUID() + randomUUID();
   writeFileSync(file, secret, { mode: 0o600 });
   return secret;
+}
+
+// ------------------------------------------------------- the first password
+// The password for the first account is printed once, to a console window. If
+// that window is closed, the password is gone and there is no way back in: the
+// only route that changes a password needs an admin to already be signed in.
+// That is what happened to the owner. So the same password is also written next
+// to the database, and this file is deleted as soon as that account's password
+// is changed. It exists only while the original password is still the live one.
+const FIRST_PASSWORD = () => join(DATA_DIR, 'first-password.txt');
+
+export function rememberFirstPassword(password) {
+  const file = FIRST_PASSWORD();
+  writeFileSync(file, [
+    'Machine maintenance — the password for the first account.',
+    '',
+    '  email:    admin@local',
+    `  password: ${password}`,
+    '',
+    'Sign in, open Users, and set a password you will remember. Changing the',
+    'password deletes this file. If you lose it anyway, open a command prompt',
+    'in the folder with start.bat, stop the app, and run:',
+    '',
+    '  node reset-password.js',
+    '',
+    'It prints a new password. Nothing in the database is deleted.',
+    '',
+  ].join('\n'), { mode: 0o600 });
+  return file;
+}
+
+/** Called when admin@local's password changes: the note is stale, so drop it. */
+export function forgetFirstPassword() {
+  try {
+    rmSync(FIRST_PASSWORD(), { force: true });
+  } catch {
+    // A file that cannot be removed must not stop a password change.
+  }
 }
 
 export default db;

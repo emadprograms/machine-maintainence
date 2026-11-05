@@ -3,16 +3,15 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
-import { all, get, run, transaction, backup } from './db.js';
-import { DATA_DIR } from './db.js';
+import { all, get, run, transaction, backup, close } from './db.js';
+import { DATA_DIR, DB_PATH, rememberFirstPassword, forgetFirstPassword } from './db.js';
+import { open as openSession, userIdOf, revoke as revokeSession, purgeExpired } from './sessions.js';
 import { createLoginLog } from './login-log.js';
-import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
+import { hashPassword, verifyPassword, signToken, verifyToken, randomPassword } from './auth.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';           // reachable from other PCs on the workshop network
-const cookies = new Map();         // token -> expiry  (cleared on restart = "log out everywhere")
 
 // Failed sign-ins are recorded, never refused. See login-log.js for why this is
 // a log and not a block.
@@ -28,28 +27,32 @@ function sourceOf(req) {
 
 // ------------------------------------------------------------- first run
 // Instead of seeding demo accounts with a known password (what the reviewed
-// repo did), create one admin whose password we print once.
+// repo did), create one admin whose password we print once — and also write it
+// next to the database, because a password that exists only in a console window
+// that gets closed is a password that cannot be recovered.
 if (!get('SELECT id FROM users LIMIT 1')) {
   const password = process.env.MM_ADMIN_PASSWORD || randomPassword();
   run('INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)',
     'Admin', 'admin@local', hashPassword(password), 'admin');
+  const note = rememberFirstPassword(password);
   console.log('\n  Created the first account:');
   console.log('    email:    admin@local');
   console.log(`    password: ${password}`);
-  console.log('  Write it down now — it is not shown again.\n');
-}
-
-function randomPassword() {
-  return Array.from({ length: 3 }, () => createHash('sha256')
-    .update(String(Math.random())).digest('base64url').slice(0, 5)).join('-');
+  console.log(`  It is also written to ${note}`);
+  console.log('  Sign in, open Users, and change it — that deletes the file.\n');
 }
 
 // --------------------------------------------------------------- session
-function currentUser(req) {
-  const token = (req.headers.cookie || '')
+function cookieToken(req) {
+  return (req.headers.cookie || '')
     .split(';').map(s => s.trim()).find(s => s.startsWith('sid='))?.slice(4);
-  if (!token || !cookies.has(token)) return null;
-  if (cookies.get(token) < Date.now()) { cookies.delete(token); return null; }
+}
+
+function currentUser(req) {
+  const token = cookieToken(req);
+  if (!token) return null;
+  // The session row, not a Map in memory: this is what survives a restart.
+  if (userIdOf(token) === null) return null;
   return verifyToken(token);
 }
 
@@ -247,7 +250,7 @@ const api = {
     }
     if (!user.active) return send(res, 403, { error: 'This account has been disabled' });
     const token = signToken({ sub: user.id, role: user.role, name: user.name });
-    cookies.set(token, Date.now() + 12 * 3600_000);
+    openSession(token, user.id);            // a row, so a restart does not sign you out
     res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200`);
     send(res, 200, { id: user.id, name: user.name, role: user.role });
   }, { public: true }),
@@ -255,7 +258,7 @@ const api = {
   'POST /api/logout': route(async (req, res) => {
     const token = (req.headers.cookie || '').split(';').map(s => s.trim())
       .find(s => s.startsWith('sid='))?.slice(4);
-    cookies.delete(token);                  // the repo could not do this at all
+    revokeSession(cookieToken(req));        // the repo could not do this at all
     res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; Max-Age=0');
     send(res, 200, { ok: true });
   }, { public: true }),
@@ -619,6 +622,10 @@ const api = {
       }
       run('UPDATE users SET password_hash = ? WHERE id = ?',
         hashPassword(b.password), target.id);
+      // first-password.txt only ever holds admin@local's original password.
+      // Once that password is replaced the note is stale, and leaving a working
+      // password in a text file would be worse than the lockout it prevents.
+      if (target.email === 'admin@local') forgetFirstPassword();
     }
     run('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?',
       b.name ?? target.name, b.role ?? target.role,
@@ -708,7 +715,23 @@ const server = createServer(async (req, res) => {
   res.end('Not found');
 });
 
+// Sessions left over from before a restart are still valid; expired ones are
+// deleted on the way in so the table cannot grow without limit.
+purgeExpired();
+
+// Ctrl+C closes the database properly, which merges the side file into
+// maintain.db. Windows cannot trap SIGTERM, which is why every write also
+// checkpoints on its own — shutting down cleanly is a bonus, not the safety net.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    console.log('\n  Closing the database.');
+    try { close(); } catch { /* already closed */ }
+    process.exit(0);
+  });
+}
+
 server.listen(PORT, HOST, () => {
   console.log(`Machine maintenance running at http://localhost:${PORT}`);
-  console.log(`Database: ${process.env.MM_DB || 'data/maintain.db'}`);
+  console.log(`Database: ${DB_PATH}`);
+  console.log('Stop it with Ctrl+C in this window.');
 });
