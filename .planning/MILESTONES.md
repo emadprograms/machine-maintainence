@@ -14,7 +14,7 @@ preventive maintenance) in ~1,040 lines of plain JavaScript with zero dependenci
 - Replaced sql.js's whole-file rewrite-per-request with `node:sqlite` in WAL mode; reads no longer touch the disk
 - Removed all three of the reviewed repo's security holes: hardcoded signing secret, public manager self-registration, and unauthenticated reads
 - Built real recurring maintenance (`pm_schedule`, `next_due`, due-soon window) where the reviewed repo generated fake dates by hashing machine IDs
-- 46 automated smoke checks including a `SIGKILL` durability test, plus an offline audit that proves zero external requests
+- 47 automated smoke checks including a `SIGKILL` durability test, plus an offline audit that proves zero external requests
 - Windows launchers and a beginner README with two worked modification recipes
 
 **Stats:**
@@ -28,7 +28,7 @@ and the `human_needed` verification) were resolved rather than carried: all 5 UA
 passed on Windows 11, and the run caught a real portability bug that Linux could not see —
 `smoke-test.js` shelled out to `grep ... || true`, absent from `cmd.exe` (44/45 passed,
 the 45th crashed). Fixed by scanning in pure JavaScript and hardening cleanup for Windows
-handle-release timing; re-verified with `PATH=/nonexistent` -> **46 passed, 0 failed**.
+handle-release timing; re-verified with `PATH=/nonexistent` -> **47 passed, 0 failed**.
 
 **Git range:** `649baa0` → current HEAD
 

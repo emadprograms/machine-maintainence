@@ -1,6 +1,6 @@
 ---
 phase: MM-03-machines-and-work-orders
-verified: 2026-11-05T07:30:00Z
+verified: 2026-11-05T08:06:48Z
 status: passed
 score: 4/4 must-haves verified
 covered_files:
@@ -8,7 +8,7 @@ covered_files:
   - .planning/phases/MM-03-machines-and-work-orders/MM-03-01-SUMMARY.md
   - starter/public/app.js
   - starter/server.js
-covered_digest: "v4:sha256:dda920571e62572d05fb01378167b8bc5d77985e5040b4fdc55784f6bfb78e34"
+covered_digest: "v4:sha256:a385bbef4b2b8733865c7e8e703f8762ef37a961e8f275eb2f994b0d23113c4f"
 behavior_unverified: 0
 
 ---
@@ -46,7 +46,7 @@ All files listed in the plan exist in `starter/`.
 
 ## Behavioral Verification
 
-Automated: `starter/scripts/smoke-test.js` (45 checks) and
+Automated: `starter/scripts/smoke-test.js` (47 checks) and
 `starter/scripts/audit-offline.js` for phase 6.
 
 No human verification outstanding for this phase.

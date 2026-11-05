@@ -4,7 +4,7 @@ phase: MM-06-windows-and-offline
 source:
   - .planning/phases/MM-06-windows-and-offline/MM-06-01-SUMMARY.md
 started: 2026-11-05T07:35:00Z
-updated: 2026-11-05T09:10:00Z
+updated: 2026-11-05T10:20:00Z
 audit_acknowledged:
   milestone: v1.0
   at: 2026-11-05
@@ -71,6 +71,10 @@ Verified by running the suite with `PATH=/nonexistent`, which removes `grep` and
 exactly as `cmd.exe` does: **46 passed, 0 failed**, and the offline audit still reports
 `OFFLINE-SAFE`. Test count rose from 45 to 46 because the CDN check is now its own
 assertion.
+
+> **Later:** the count is now **47**. A post-ship live click-through found that
+> `GET /api/users` had no role check (bug #11), so a smoke assertion for the technician
+> case was added. The 46 above is the historic figure from this UAT run.
 
 ## Notes
 

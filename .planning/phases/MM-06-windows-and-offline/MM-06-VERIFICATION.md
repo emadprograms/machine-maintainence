@@ -1,6 +1,6 @@
 ---
 phase: MM-06-windows-and-offline
-verified: 2026-11-05T07:30:00Z
+verified: 2026-11-05T08:06:48Z
 status: passed
 score: 6/6 must-haves verified
 covered_files:
@@ -11,7 +11,7 @@ covered_files:
   - starter/backup.bat
   - starter/scripts/audit-offline.js
   - starter/start.bat
-covered_digest: "v4:sha256:37825816db9cfe2449e279c28273af98dfac1960c925a7c4e093d7a9b3ca65be"
+covered_digest: "v4:sha256:6a6633089fd23086e313ef914f3ce2294bba3be1d55978787170d213ddf55899"
 behavior_unverified: 0
 audit_acknowledged:
   milestone: v1.0
@@ -56,7 +56,7 @@ All files listed in the plan exist in `starter/`.
 
 ## Behavioral Verification
 
-Automated: `starter/scripts/smoke-test.js` (45 checks) and
+Automated: `starter/scripts/smoke-test.js` (47 checks) and
 `starter/scripts/audit-offline.js` for phase 6.
 
 **Human verification outstanding:** Windows execution of `start.bat`.

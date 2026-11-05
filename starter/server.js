@@ -259,8 +259,13 @@ const api = {
   }),
 
   // ---- users (admin only). There is deliberately no public sign-up route.
-  'GET /api/users': route(async (_req, res) =>
-    send(res, 200, all('SELECT id, name, email, role, active, created_at FROM users ORDER BY name'))),
+  // The role check is on the *read* too: a technician has no business seeing
+  // the staff list. This was missing until the live demo preview caught it —
+  // the smoke test only covered POST, not GET (bug #11).
+  'GET /api/users': route(async (req, res) => {
+    if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    send(res, 200, all('SELECT id, name, email, role, active, created_at FROM users ORDER BY name'));
+  }),
 
   'POST /api/users': route(async (req, res) => {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });

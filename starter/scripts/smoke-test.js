@@ -154,6 +154,8 @@ ok('technician cannot create users',
     name: 'Sneaky', email: 's@local', password: 'longenough1', role: 'admin' } })).status === 403);
 ok('technician cannot delete a machine',
   (await tech(`/api/equipment/${m1.data.id}`, { method: 'DELETE' })).status === 403);
+ok('technician cannot read the staff list',
+  (await tech('/api/users')).status === 403);
 
 // Disabling takes effect immediately on the next request AND next login.
 await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });

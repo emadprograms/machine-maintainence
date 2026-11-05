@@ -1,6 +1,6 @@
 ---
 phase: MM-04-spare-parts
-verified: 2026-11-05T07:30:00Z
+verified: 2026-11-05T08:06:48Z
 status: passed
 score: 4/4 must-haves verified
 covered_files:
@@ -8,7 +8,7 @@ covered_files:
   - .planning/phases/MM-04-spare-parts/MM-04-01-SUMMARY.md
   - starter/db.js
   - starter/server.js
-covered_digest: "v4:sha256:471778fd0f1678b30a67e5585e87887c979ce7c10cd8e1bc8669975c6257d08b"
+covered_digest: "v4:sha256:b3b52026443821ebf56465abdf235f9108283ddf8a7f53b9bee57b719ca53200"
 behavior_unverified: 0
 
 ---
@@ -46,7 +46,7 @@ All files listed in the plan exist in `starter/`.
 
 ## Behavioral Verification
 
-Automated: `starter/scripts/smoke-test.js` (45 checks) and
+Automated: `starter/scripts/smoke-test.js` (47 checks) and
 `starter/scripts/audit-offline.js` for phase 6.
 
 No human verification outstanding for this phase.

@@ -1,6 +1,6 @@
 ---
 phase: MM-05-preventive-maintenance
-verified: 2026-11-05T07:30:00Z
+verified: 2026-11-05T08:06:48Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
@@ -8,7 +8,7 @@ covered_files:
   - .planning/phases/MM-05-preventive-maintenance/MM-05-01-SUMMARY.md
   - starter/db.js
   - starter/server.js
-covered_digest: "v4:sha256:f78a1ccdfb8b75ce197f98910cada07afb3df827d1abfd6883928d83715e83a7"
+covered_digest: "v4:sha256:3efdc142409abbbd3243784d77740297f802f49dc0306b7065aca94a2a068c4e"
 behavior_unverified: 0
 
 ---
@@ -47,7 +47,7 @@ All files listed in the plan exist in `starter/`.
 
 ## Behavioral Verification
 
-Automated: `starter/scripts/smoke-test.js` (45 checks) and
+Automated: `starter/scripts/smoke-test.js` (47 checks) and
 `starter/scripts/audit-offline.js` for phase 6.
 
 No human verification outstanding for this phase.

@@ -1,6 +1,6 @@
 ---
 phase: MM-01-foundation
-verified: 2026-11-05T07:30:00Z
+verified: 2026-11-05T08:06:48Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
@@ -9,7 +9,7 @@ covered_files:
   - starter/db.js
   - starter/server.js
   - starter/start.bat
-covered_digest: "v4:sha256:ce442cc882b9a77b0e7215bc1919a955b6f12dcf8065b79271bfbaf849c00db7"
+covered_digest: "v4:sha256:08b2b6f38be402615a82b101b6dfa06080043a2644412bf0e753cc17a9c3ba80"
 behavior_unverified: 0
 
 ---
@@ -48,7 +48,7 @@ All files listed in the plan exist in `starter/`.
 
 ## Behavioral Verification
 
-Automated: `starter/scripts/smoke-test.js` (45 checks) and
+Automated: `starter/scripts/smoke-test.js` (47 checks) and
 `starter/scripts/audit-offline.js` for phase 6.
 
 No human verification outstanding for this phase.
