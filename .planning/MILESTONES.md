@@ -1,5 +1,19 @@
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
+## v2.0 v2.0 (Shipped: 2026-11-05)
+
+**Phases completed:** 3 phases, 6 plans, 17 tasks
+
+**Key accomplishments:**
+- A collapsible sidebar rendered from the same PAGES array, in its own module
+- Role filtering reuses the existing flag, and five structural checks prove no screen moved
+- One /api/dashboard returning four counts, capped lists, and the screen each owns
+- Four cards on the landing page, each with a count, its items, and a way through
+- Every screen opens with its name, purpose and action; every create form is behind a button
+- Lists read as records, empty states are sentences, deletes name what they destroy
+
+---
+
 ## v1.1 v1.1 (Shipped: 2026-11-05)
 
 **Phases completed:** 4 phases, 7 plans, 11 tasks

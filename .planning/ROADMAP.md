@@ -49,7 +49,7 @@ rewritten presentation layer across six screens.
 
 - [x] **Phase 11: The shell** — Sidebar navigation that collapses, role-aware, replacing the top tabs (NAV-01 … NAV-04) (completed 2026-11-05)
 - [x] **Phase 12: The front door** — A dashboard with counts and action lists, role-aware, with honest empty states (DASH-01 … DASH-05) (completed 2026-11-05)
-- [ ] **Phase 13: One visual language** — Consistent headings, tables, empty states and destructive-action wording across all seven screens (SCREEN-01 … SCREEN-04)
+- [x] **Phase 13: One visual language** — Consistent headings, tables, empty states and destructive-action wording across all seven screens (SCREEN-01 … SCREEN-04) (completed 2026-11-05)
 
 ## Phase Details
 
@@ -136,5 +136,5 @@ each screen is two stacked cards. The fixes are hierarchy, not decoration:
 "every button calls a function that exists" check is the real guard.
 
 **Plans**:
-- [ ] 13-01: Design primitives in CSS — spacing/radius scale, page header, toolbar, table treatment, designed empty state, button hierarchy
-- [ ] 13-02: Apply across all seven screens — page headers, create-behind-button, summary lines, row treatment, destructive wording, end-to-end pass
+- [x] 13-01: Design primitives in CSS — spacing/radius scale, page header, toolbar, table treatment, designed empty state, button hierarchy
+- [x] 13-02: Apply across all seven screens — page headers, create-behind-button, summary lines, row treatment, destructive wording, end-to-end pass
