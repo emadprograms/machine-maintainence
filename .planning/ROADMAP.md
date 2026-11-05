@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Lean core, offline, on Windows** — Phases 1–6 (shipped 2026-11-05)
-- 🚧 **v1.1 Operable** — Phases 7–10 (in progress)
+- ✅ **v1.1 Operable** — Phases 7–10 (shipped 2026-11-05)
 
 ## Phases
 
@@ -24,7 +24,8 @@ Shipped record and accomplishments: `.planning/MILESTONES.md`.
 
 </details>
 
-## v1.1 — Operable
+<details>
+<summary>✅ v1.1 Operable (Phases 7–10) — SHIPPED 2026-11-05</summary>
 
 **Goal:** Complete the operational coverage of the working application v1.0 shipped — every
 entity editable, stock that can go up as well as down, and work that belongs to somebody.
@@ -108,3 +109,5 @@ restocked, corrected or removed; work orders cannot be assigned or edited after 
 
 **Plans**:
 - [x] 10-01: Per-source failure counter with a time window, cleared on success; smoke checks including a simulated expiry
+
+</details>

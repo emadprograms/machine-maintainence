@@ -2,18 +2,17 @@
 gsd_state_version: "1.0"
 milestone: v1.1
 milestone_name: Operable
-current_phase: 10
-status: completed
-last_updated: "2026-11-05T10:05:26.164Z"
+status: Awaiting next milestone
+last_updated: "2026-11-05T10:06:56.085Z"
 last_activity: 2026-11-05
-last_activity_desc: Phase 10 complete
-state_head: c29146895e95a2609971257ba7dd6695a3c0efba
+last_activity_desc: Milestone v1.1 completed and archived
+state_head: f576bde90412c100a5d0d60a1b2ad623cb33d68b
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 4
   total_plans: 7
   completed_plans: 7
-  percent: 25
+  percent: 100
 ---
 
 # Project State
@@ -23,14 +22,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** v1.0 is closed and archived. Next up is scoping v1.1.
+**Current focus:** v1.0 and v1.1 are both closed and archived. The next milestone is not yet scoped.
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-05 — Phase 10 complete
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-05 — Milestone v1.1 completed and archived
 
 ## Evidence log
 

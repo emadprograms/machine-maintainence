@@ -1,5 +1,20 @@
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
+## v1.1 v1.1 (Shipped: 2026-11-05)
+
+**Phases completed:** 4 phases, 7 plans, 11 tasks
+
+**Key accomplishments:**
+- Closed the one-way ratchet on stock: a part can now be restocked, corrected and deleted, and deleting one that a job consumed explains which job instead of leaking a foreign-key error.
+- Each part carries its own reorder level, migrated onto existing databases with a default of 5 so no part silently changed meaning on upgrade.
+- A work order now has an owner: assign, reassign and unassign, with the owner's name resolved in the list even after that person is disabled, without handing technicians the staff directory.
+- Title, priority, owner and notes are editable after creation, while the technician boundary that v1.0 established is re-asserted in the same test block.
+- A completion date is stored, validated, or refused; req.body was assigned at the source
+- Work orders and parts export as RFC 4180 CSV that opens in Excel and matches the screen
+- Failed logins are throttled per source by arithmetic on timestamps, so the block expires without anything having to clear it
+
+---
+
 Entries in reverse chronological order — newest first.
 
 ## v1.0 Lean core, offline, on Windows (Shipped: 2026-11-05)
