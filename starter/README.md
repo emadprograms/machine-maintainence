@@ -1,0 +1,232 @@
+# Machine Maintenance (lean starter)
+
+A small offline web app for machines, work orders, recurring maintenance and spare parts.
+Plain JavaScript, one HTML page, SQLite via Node's built-in `node:sqlite`.
+**No `npm install`. No build step. No internet.**
+
+---
+
+## Run it
+
+**Windows:** double-click `start.bat`.
+**Anything else:** `node --no-warnings=ExperimentalWarning server.js`
+
+The first run prints an admin password **once**:
+
+```
+  Created the first account:
+    email:    admin@local
+    password: r7JHZ-croEo-mKQFU
+```
+
+Write it down. Then open <http://localhost:3000>.
+
+To set the password yourself on first run:
+
+```bat
+set MM_ADMIN_PASSWORD=my-password
+start.bat
+```
+
+### Requirements
+
+Node.js **22 or newer** (it ships `node:sqlite`). Nothing else.
+Check with `node --version`.
+
+> `node:sqlite` is still marked experimental in Node 22, which is why every command
+> passes `--no-warnings=ExperimentalWarning`. That flag only hides a notice; the
+> feature works. It is the one thing to re-check when you upgrade Node.
+
+---
+
+## What is in the folder
+
+| File | What it does | Lines |
+|---|---|---|
+| `server.js` | Web server, login, and every API route in one table | ~290 |
+| `db.js` | Database connection, table definitions, migrations, backup | ~137 |
+| `auth.js` | Password hashing and login tokens | ~48 |
+| `public/index.html` | The whole UI shell (tabs and forms) | ~192 |
+| `public/app.js` | Fetches data and draws the tables | ~232 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 33 behaviours | ~200 |
+| `start.bat` / `backup.bat` | Windows launchers | — |
+
+Total application code: **about 900 lines.** You can read all of it.
+
+---
+
+## How to change things
+
+Everything follows the same three-step shape. Find the three files below and you can
+change anything.
+
+### `db.js` — what is stored
+Table definitions, in order, from top to bottom. Each is a `CREATE TABLE IF NOT EXISTS`.
+
+### `server.js` — the API
+One object, `const api = { ... }`, keyed by `'METHOD /path'`. Each entry is one function.
+`req.user` is already filled in by the time your code runs — you don't write auth checks.
+
+### `public/app.js` — the screen
+One function per page (`loadEquipment`, `loadWork`, ...) that calls `api('/equipment')`
+and writes HTML into a table.
+
+---
+
+### Worked example: add a "Serial number" field to machines
+
+**1. `db.js` — add the column.**
+Find the `equipment` table and add one line:
+
+```sql
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  serial_number TEXT                      -- ← add this line
+```
+
+Existing databases won't get a new column from `CREATE TABLE IF NOT EXISTS`, so also add
+one line below, next to the other `ensureColumn(...)` calls:
+
+```js
+ensureColumn('equipment', 'serial_number', 'TEXT');
+```
+
+**2. `server.js` — save and return it.**
+In `'POST /api/equipment'`, add `serial_number` to the column list and one `?`:
+
+```js
+const r = run(`INSERT INTO equipment (name, asset_tag, category, location, status, notes, serial_number)
+               VALUES (?,?,?,?,?,?,?)`,
+  b.name.trim(), b.asset_tag || null, b.category || null, b.location || null,
+  b.status || 'active', b.notes || null, b.serial_number || null);   // ← added
+```
+
+**3. `public/index.html` — add an input.**
+In the "Add a machine" card, add one field:
+
+```html
+<input id="e-serial" placeholder="Serial number" />
+```
+
+**4. `public/app.js` — send it and show it.**
+
+```js
+// in addEquipment(), inside the body:
+serial_number: $('#e-serial').value,
+
+// in loadEquipment(), inside the row:
+<td>${esc(e.serial_number || '—')}</td>
+```
+
+Also add a `<th>Serial</th>` to that table's header in `index.html` so the columns line up.
+
+Restart the server. Done — four small edits, all in plain JavaScript.
+
+---
+
+### Worked example: add a new table (e.g. "sites")
+
+**1. `db.js`** — after the other tables:
+
+```sql
+CREATE TABLE IF NOT EXISTS sites (
+  id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  address TEXT
+);
+```
+
+**2. `server.js`** — two entries in `api`:
+
+```js
+'GET /api/sites':  route(async (_req, res) => send(res, 200, all('SELECT * FROM sites ORDER BY name'))),
+'POST /api/sites': route(async (req, res) => {
+  const b = await readBody(req);
+  if (!b?.name?.trim()) return send(res, 400, { error: 'Name is required' });
+  const r = run('INSERT INTO sites (name, address) VALUES (?,?)', b.name.trim(), b.address || null);
+  send(res, 201, get('SELECT * FROM sites WHERE id = ?', r.lastInsertRowid));
+}),
+```
+
+**3. `public/index.html`** — copy any `<section data-page="...">` block and change its ids.
+
+**4. `public/app.js`** — add `{ key: 'sites', label: 'Sites' }` to `PAGES`, a `loadSites()`
+function, and `sites: loadSites` to the `loaders` object in `showPage`.
+
+---
+
+## How the database behaves (and why it is safe)
+
+* SQLite in **WAL mode**: each save is committed to a small side file and committed atomically.
+  A power cut cannot leave a half-written database the way it can when the whole file is
+  rewritten on every request.
+* **Nothing is written when you only view pages.** Opening a list does not touch the disk.
+* Every change is a real transaction. If a step fails, the earlier steps are undone — for
+  example, using 99 of a part with only 3 in stock leaves the stock exactly as it was.
+* `data/maintain.db` is your data. Copy it to back up; delete it to start over.
+  `data/secret.txt` is the per-install signing key — keep it, or everyone is logged out.
+
+### Back up
+
+* Button on the **Backup** tab (admins only), or
+* `backup.bat`, or
+* Windows Task Scheduler → daily → `backup.bat`.
+
+Each run writes `data/backup-YYYY-MM-DD-HH-MM-SS.db`, a complete standalone database.
+
+### Restore
+
+Stop the server, replace `data/maintain.db` with a backup file, start the server.
+(Delete `data/maintain.db-wal` and `data/maintain.db-shm` first if they exist.)
+
+---
+
+## Copy it to another machine
+
+1. Install Node.js 22+ once (from a USB stick on an offline machine).
+2. Copy the whole folder, including `data/`.
+3. Double-click `start.bat`.
+
+There is nothing to compile and no `node_modules`. The only binary in the folder is
+Node itself, which is installed on the machine, not in the repository.
+
+---
+
+## Run the tests
+
+```bat
+node --no-warnings=ExperimentalWarning scripts/smoke-test.js
+```
+
+It starts its own server on port 3999 with a throwaway database, checks 33 behaviours
+including a `kill -9` restart, then cleans up. You should see `33 passed, 0 failed`.
+
+---
+
+## Security notes (read once)
+
+* Passwords are hashed with **scrypt** and a random salt — never stored in plain text.
+* The signing key is generated on first run and stored in `data/secret.txt`. There is no
+  secret in the source code, so a copy of this repository cannot be used to forge a login.
+* The session lives in an **HttpOnly cookie**, so browser scripts cannot read it.
+* Signing out removes the session on the server; an old cookie will not work again.
+* There is **no public sign-up**. Accounts are created by an admin.
+* The server listens on `0.0.0.0:3000`, which means other PCs on the workshop network can
+  reach it. If you only want this PC, change `HOST` to `'127.0.0.1'` in `server.js`.
+
+### Known limitations
+
+* No HTTPS. Fine on a trusted local network; do not expose it to the internet.
+* No password reset by email (there is no email). An admin can set a new password by
+  deleting the user row and creating it again, or with a one-line SQL update.
+* Single user session store in memory: restarting the server signs everybody out.
+* No audit log. The reviewed repo had one; it is intentionally out of scope.
+
+---
+
+## Where this came from
+
+Built as a lean replacement for `Ilop08/SIAI`, reviewed in `../CODE_REVIEW.md`.
+Kept from that project: the scrypt password approach, the `ensureColumn` migration idea,
+the colour palette. Replaced: `sql.js` (which rewrote the whole database on every request)
+with `node:sqlite`; React/TypeScript with one HTML page; and the fake calendar that invented
+maintenance dates with a real `pm_schedule` table.
