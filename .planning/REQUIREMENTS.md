@@ -29,11 +29,11 @@ makes the navigation move depending on who signed in.
 
 ### Dashboard (DASH)
 
-- [ ] **DASH-01** — Signing in lands on a dashboard showing, at minimum: open work orders, maintenance due within the warning window, parts at or below their reorder level, and machines marked down
-- [ ] **DASH-02** — Each summary shows the count **and** the few items that need action, so the user can act without navigating away
-- [ ] **DASH-03** — Each summary links to the screen that holds the full list
-- [ ] **DASH-04** — The dashboard is role-aware: a technician sees the operational summaries and no user or backup information
-- [ ] **DASH-05** — An empty state is honest — "no work orders open" reads differently from "could not load"
+- [x] **DASH-01** — Signing in lands on a dashboard showing, at minimum: open work orders, maintenance due within the warning window, parts at or below their reorder level, and machines marked down
+- [x] **DASH-02** — Each summary shows the count **and** the few items that need action, so the user can act without navigating away
+- [x] **DASH-03** — Each summary links to the screen that holds the full list
+- [x] **DASH-04** — The dashboard is role-aware: a technician sees the operational summaries and no user or backup information
+- [x] **DASH-05** — An empty state is honest — "no work orders open" reads differently from "could not load"
 
 ### Screens (SCREEN)
 
@@ -70,11 +70,11 @@ makes the navigation move depending on who signed in.
 | NAV-02 | 11 | Complete | — |
 | NAV-03 | 11 | Complete | — |
 | NAV-04 | 11 | Complete | — |
-| DASH-01 | 12 | Pending | — |
-| DASH-02 | 12 | Pending | — |
-| DASH-03 | 12 | Pending | — |
-| DASH-04 | 12 | Pending | — |
-| DASH-05 | 12 | Pending | — |
+| DASH-01 | 12 | Complete | — |
+| DASH-02 | 12 | Complete | — |
+| DASH-03 | 12 | Complete | — |
+| DASH-04 | 12 | Complete | — |
+| DASH-05 | 12 | Complete | — |
 | SCREEN-01 | 13 | Pending | — |
 | SCREEN-02 | 13 | Pending | — |
 | SCREEN-03 | 13 | Pending | — |

@@ -48,7 +48,7 @@ rewritten presentation layer across six screens.
 ### Phases
 
 - [x] **Phase 11: The shell** — Sidebar navigation that collapses, role-aware, replacing the top tabs (NAV-01 … NAV-04) (completed 2026-11-05)
-- [ ] **Phase 12: The front door** — A dashboard with counts and action lists, role-aware, with honest empty states (DASH-01 … DASH-05)
+- [x] **Phase 12: The front door** — A dashboard with counts and action lists, role-aware, with honest empty states (DASH-01 … DASH-05) (completed 2026-11-05)
 - [ ] **Phase 13: One visual language** — Consistent headings, tables, empty states and destructive-action wording across all seven screens (SCREEN-01 … SCREEN-04)
 
 ## Phase Details
@@ -94,8 +94,8 @@ The "due soon" window on this page should match the Due soon screen's selector
 rather than inventing a second definition of "soon".
 
 **Plans**:
-- [ ] 12-01: Dashboard module, data source decision, four role-aware cards
-- [ ] 12-02: Landing behaviour, empty states, links through to full lists, assertions
+- [x] 12-01: Dashboard module, data source decision, four role-aware cards
+- [x] 12-02: Landing behaviour, empty states, links through to full lists, assertions
 
 ### Phase 13: One visual language
 **Goal**: Seven screens that look like one modern application rather than seven
