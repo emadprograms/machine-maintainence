@@ -12,7 +12,7 @@ covered_files:
   - starter/public/index.html
   - starter/scripts/smoke-test.js
   - starter/server.js
-covered_digest: "v4:sha256:f0a2e9d90576448e877293a95ca3086341a1478785d57b7b362175332a0eddca"
+covered_digest: "v4:sha256:c150637ef8d828381a07e44c7bcf14bfbbeeef2ca4a013d7e24642ccdd445fef"
 behavior_unverified: 0
 ---
 
