@@ -315,7 +315,10 @@ native modules. You should see `OFFLINE-SAFE`.
 
 ## Where this came from
 
-Built as a lean replacement for `Ilop08/SIAI`, reviewed in `../CODE_REVIEW.md`.
+Built as a lean replacement for `Ilop08/SIAI`, reviewed in
+`../.planning/milestones/v1.0-CODE-REVIEW.md`. That project's code has been removed from
+this repository — `starter/` is the whole application now; the review and the old
+repository (up to commit `4971ea3`) are where it came from.
 Kept from that project: the scrypt password approach, the `ensureColumn` migration idea,
 the colour palette. Replaced: `sql.js` (which rewrote the whole database on every request)
 with `node:sqlite`; React/TypeScript with one HTML page; and the fake calendar that invented

@@ -47,14 +47,14 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | Date | What was verified | How |
 |---|---|---|
 | 2026-11-05 | `node:sqlite` on Node 22.22: WAL, FK, CHECK, `VACUUM INTO` | direct `node -e` probes |
-| 2026-11-05 | Five restarts do not re-seed; `secret.txt` and `maintain.db` keep CreationTime and SHA256; a `.db` copy alone was empty (4,096 B vs 78,312 B of `-wal`) | an evidence-collection agent on the owner's Windows machine, prompt in `LOCAL-AGENT-PROMPT.md` |
+| 2026-11-05 | Five restarts do not re-seed; `secret.txt` and `maintain.db` keep CreationTime and SHA256; a `.db` copy alone was empty (4,096 B vs 78,312 B of `-wal`) | an evidence-collection agent on the owner's Windows machine, prompt in `.planning/milestones/v2.0-LOCAL-AGENT-PROMPT.md` |
 | 2026-11-05 | Six mutations of the persistence fixes each failed their assertion | `scripts/smoke-test.js`, 203 checks |
 | 2026-11-05 | 45/45 smoke checks pass | `node starter/scripts/smoke-test.js` |
 | 2026-11-05 | Offline-safe: no external URL, no deps, no native modules | `node starter/scripts/audit-offline.js` → `OFFLINE-SAFE` |
 | 2026-11-05 | Data survives `SIGKILL` (machines, work orders, schedules) | smoke test, kill -9 then restart |
 | 2026-11-05 | Reads do not write: DB mtime unchanged across 5 GETs | smoke test assertion |
 | 2026-11-05 | GSD progress reads 100% (6 plans, 6 summaries) | `gsd-tools progress` |
-| 2026-11-05 | Windows 11 / Node v26.3.0: all 5 Phase 6 UAT scenarios pass | local agent, `WINDOWS_UAT_FINDINGS.md` |
+| 2026-11-05 | Windows 11 / Node v26.3.0: all 5 Phase 6 UAT scenarios pass | local agent, `.planning/milestones/v1.0-WINDOWS-UAT-FINDINGS.md` |
 | 2026-11-05 | Smoke test passes with `PATH=/nonexistent` (no `grep`, no `true`) | 47 passed, 0 failed |
 | 2026-11-05 | Offline audit OFFLINE-SAFE with empty PATH | `audit-offline.js` |
 

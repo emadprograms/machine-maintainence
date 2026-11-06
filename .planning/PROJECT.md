@@ -91,13 +91,18 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
   write); `EBUSY` cleanup timing on Windows; and any screen in a real browser, since none
   exists in the build environment.
 
-- Source of the review that motivates this rebuild: `CODE_REVIEW.md` (verified findings, tags `[read]` / `[ran]`).
+- Source of the review that motivates this rebuild: `.planning/milestones/v1.0-CODE-REVIEW.md`
+  (verified findings, tags `[read]` / `[ran]`). The reviewed application itself was removed
+  from this repository on 2026-11-06; its paths survive in the archive and in git history.
 - User profile: knows Python and basic web concepts; not experienced with React or TypeScript; will modify the app with AI assistance.
 - Environment: restricted network, Windows only, no internet. Anything needed must be installed on a connected machine and copied over.
 - Prior art to reuse deliberately:
   - password hashing + token approach from `Ilop08/SIAI` `backend/src/lib/auth.ts`
   - `ensureColumn()` migration helper from `backend/src/database.ts:364`
   - colour palette from `frontend/tailwind.config.js`
+
+  (Those three paths are in `Ilop08/SIAI`, not in this repository, which now holds only
+  `starter/`.)
   - data-model shape for equipment / faults / spare parts (tables redrawn, not copied)
 - Scaffold already written (this branch, `starter/`): `db.js`, `auth.js`, `server.js`, `public/index.html`. It is a starting point to be completed and verified phase by phase, not a finished product.
 
