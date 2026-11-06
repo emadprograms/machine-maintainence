@@ -3,6 +3,7 @@ quick_id: 261106-eqp
 slug: edit-the-machines
 date: 2026-11-06
 status: complete
+commit: 13d3854
 files_modified: [app/public/index.html, app/public/machines.js, app/public/app.js, app/routes/equipment.js, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
