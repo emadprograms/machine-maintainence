@@ -77,6 +77,16 @@ delete.
 already 714 before this task; the routes want splitting along the API groups, which
 is its own change and was not folded into a bug fix.
 
+## Verification status
+
+Proven on Linux: 203 checks pass, and six mutations each failed their assertion.
+
+**Not yet proven on Windows**, which is the machine it has to work on. The suite has
+never run there since the change, and the `%LOCALAPPDATA%` default, the migration and
+the `SIGINT` handler have never executed on that OS. `LOCAL-AGENT-VERIFY-PROMPT.md` at
+the repository root is the ready-to-run check; its step 9 (copy `maintain.db` alone and
+open it) is the one that matters.
+
 ## Limitations
 
 Layout and behaviour on Windows were not exercised — the suite runs on Linux. The

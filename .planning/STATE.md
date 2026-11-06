@@ -76,6 +76,8 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | Date | Decision | Why |
 |---|---|---|
 | 2026-11-05 | Sessions in memory, not the database | simplest correct option; restart signs everyone out, documented as a limitation |
+| 2026-11-06 | ~~Sessions in memory~~ reversed: sessions are rows in the `sessions` table | the memory store made every restart look like "the password changed again"; see quick task `261105-rst` |
+| 2026-11-06 | Data folder moves to `%LOCALAPPDATA%\MachineMaintenance` | it was inside the git working tree (gitignored) and on a Parallels shared folder, where SQLite does not support WAL |
 | 2026-11-05 | No public registration route at all | the reviewed repo's worst hole (REQ-03) |
 | 2026-11-05 | `ensureColumn()` kept as the migration mechanism | proven pattern from the reviewed repo; one line per added field |
 | 2026-11-05 | `.claude/` gitignored, `.planning/` committed | 16 MB of reinstallable tooling vs. the durable record |
@@ -85,7 +87,8 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 
 | Item | Type | Where |
 |---|---|---|
-| `node:sqlite` is experimental in Node 22 (worked on Node 26.3.0) | Risk | re-verify on Node upgrade |
+| The persistence fix (`261105-rst`) is proven on Linux only — 203 checks, 6 mutations | Pending | hand `LOCAL-AGENT-VERIFY-PROMPT.md` to an agent on the Windows machine |
+| | `node:sqlite` is experimental in Node 22 (worked on Node 26.3.0) | Risk | re-verify on Node upgrade |
 | Concurrent edits are last-write-wins | Limitation | documented in `starter/README.md` |
 
 ## Blockers
