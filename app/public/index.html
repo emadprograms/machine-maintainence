@@ -76,6 +76,8 @@
         <div class="card-toolbar">
           <input id="eq-search" type="search" placeholder="Search name, tag, location or category"
                  oninput="searchEquipment()" />
+          <label class="check toolbar-check"><input id="eq-show-retired" type="checkbox"
+            onchange="loadEquipment()" /> Show retired</label>
         </div>
         <div class="table-wrap">
           <table class="table"><thead><tr><th class="cell-thumb"></th><th>Name</th><th>Barcode</th><th>Manufacturer</th><th>Status</th><th></th></tr></thead>

@@ -20,6 +20,9 @@ const photoOf = (idToFind) => get('SELECT photo FROM equipment WHERE id = ?', id
 
 export default {
   // ---- equipment
+  // `?service=active` leaves retired machines out; no parameter returns everything.
+  // Two lists in the app ask for the first: the everyday Machines screen and the
+  // dropdowns that start new work.
   'GET /api/equipment': route(async (req, res) => {
     const f = equipmentFilter(req.query);
     const rows = all(`SELECT e.* FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params);

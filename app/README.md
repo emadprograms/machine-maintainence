@@ -49,7 +49,7 @@ Check with `node --version`.
 | `values.js` | Turns what a browser sends into what the database may store | 54 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 316 |
-| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 131 |
+| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 138 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
@@ -59,11 +59,11 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 414 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 204 |
+| `public/index.html` | The whole UI shell: every screen and form | 416 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 205 |
 | `public/app.js` | Fetches data and draws the main screens | 552 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 169 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 327 behaviours | 1,775 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 180 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 340 behaviours | 1,827 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -73,7 +73,7 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 43 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 110 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 113 |
 | `routes/work-orders.js` | work orders, work-orders.csv | 95 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 68 |
@@ -130,6 +130,11 @@ photograph pushed that page past 600 lines.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
+* **A retired machine is out of the way.** It keeps its record, history and photographs, but
+  it is not in the everyday list — the **Show retired** box in the Machines toolbar brings it
+  back — and it is never offered in the dropdowns that start new work (report a job, add
+  maintenance). Restoring it returns it everywhere. The API asks for this explicitly with
+  `?service=active`; with no parameter the list is everything, as it always was.
 * **A machine can be corrected — by an administrator.** Edit on its row opens what the
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
@@ -339,10 +344,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 327 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 340 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`327 passed, 0 failed`.
+`340 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

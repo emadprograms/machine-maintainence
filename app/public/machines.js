@@ -50,7 +50,18 @@ let equipmentRows = [];
 
 export async function loadEquipment() {
   const q = searchTerm('#eq-search');
-  const rows = await api(`/equipment${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  const retired = $('#eq-show-retired').checked;
+  // Two lists, deliberately. The table is what this screen is filtered to; the
+  // dropdowns are "every machine in service", because a new job or a new
+  // maintenance schedule must not be startable on a machine that has left. They
+  // used to share one array, so typing in the search box narrowed the dropdowns
+  // too — searching "pump" left only pumps to report a fault against.
+  // The second list is always in service, whatever the toggle says: the toggle is
+  // about what this screen *shows*, never about what new work may be started on.
+  const [rows, inService] = await Promise.all([
+    api(`/equipment?service=${retired ? 'all' : 'active'}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+    api('/equipment?service=active'),
+  ]);
   equipmentRows = rows;
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
@@ -64,7 +75,7 @@ export async function loadEquipment() {
       ? `No machine matches "${searchTerm('#eq-search')}". Clear the search to see them all.`
       : 'No machines yet. Add the first one and it will appear here.');
 
-  const options = rows.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+  const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;
   $('#pm-equipment').innerHTML = options;
 }

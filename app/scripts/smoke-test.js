@@ -1484,6 +1484,42 @@ ok('deleting a machine deletes its photograph',
   !storedName || !existsSync(join(photosDir, storedName)), String(storedName));
 await c(`/api/equipment/${techAdded.data.id}`, { method: 'DELETE' });
 
+// ---- retired machines stay out of the way ---------------------------------
+// Retiring used to be a label. It is still not deletion — every job, photograph
+// and history entry stays — but a machine that has left is no longer offered when
+// new work is started, and the everyday list stops showing it.
+const scrapped = (await c('/api/equipment', { method: 'POST', body: {
+  name: 'Old press (scrapped)', asset_tag: 'OP-1', category: 'Pressing' } })).data;
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
+
+const everyMachine = (await c('/api/equipment')).data;
+const inService = (await c('/api/equipment?service=active')).data;
+ok('a retired machine is not offered as a machine in service',
+  !inService.some((e) => e.id === scrapped.id), 'it was still in the list new work is started from');
+ok('but it has not been deleted: it is still in the full list',
+  everyMachine.some((e) => e.id === scrapped.id));
+ok('the two lists differ by exactly the retired machines',
+  everyMachine.length - inService.length === everyMachine.filter((e) => e.status === 'retired').length,
+  `${everyMachine.length} - ${inService.length}`);
+ok('?service=all means everything, like no parameter at all',
+  (await c('/api/equipment?service=all')).data.length === everyMachine.length);
+// "contains the machine" was not enough: the unfiltered list contains it too, so
+// the check passed with the clause deleted. It has to be the retired ones *only*.
+const onlyRetired = (await c('/api/equipment?service=retired')).data;
+ok('?service=retired answers with the ones that left, and only those',
+  onlyRetired.length > 0 && onlyRetired.every((e) => e.status === 'retired')
+  && onlyRetired.some((e) => e.id === scrapped.id),
+  onlyRetired.map((e) => `${e.name}:${e.status}`).join(', '));
+ok('the service filter composes with the search box',
+  !(await c('/api/equipment?service=active&q=scrapped')).data.some((e) => e.id === scrapped.id)
+  && (await c('/api/equipment?service=all&q=scrapped')).data.some((e) => e.id === scrapped.id));
+ok('the retired machine keeps its history',
+  (await c(`/api/history?equipment_id=${scrapped.id}`)).status === 200);
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'active' } });
+ok('restoring it puts it back in service',
+  (await c('/api/equipment?service=active')).data.some((e) => e.id === scrapped.id));
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
+
 // ---- what the screen does, read as text (no browser exists here) ---------
 const appEq = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
 const indexEq = readFileSync(join(root, 'public', 'index.html'), 'utf8');
@@ -1535,6 +1571,22 @@ ok('Edit, Retire and Delete are drawn only for an admin',
   && actionsFn.includes('removeEquipment'), actionsFn ? 'no gate' : 'actions() is not defined');
 ok('History is offered to everybody',
   !/admin \? `<button[^`]*openMachineHistory/.test(actionsFn) && actionsFn.includes('openMachineHistory'));
+ok('the Machines screen offers a "show retired" toggle',
+  /id="eq-show-retired" type="checkbox"/.test(indexEq)
+  && /id="eq-show-retired"[^>]*onchange="loadEquipment\(\)"/.test(indexEq));
+ok('and it starts off, so the everyday list is machines in service',
+  !/id="eq-show-retired" type="checkbox" checked/.test(indexEq)
+  && !/id="eq-show-retired"[^>]*\schecked/.test(indexEq));
+// A literal fragment of source, so `includes` rather than a regex: the braces and
+// question mark of a template string are exactly the characters a regex mangles.
+ok('the list asks for the service the toggle names',
+  appEq.includes("service=${retired ? 'all' : 'active'}"), 'the toggle changes nothing');
+ok('the dropdowns that start new work never come from the filtered table',
+  /const \[rows, inService\] = await Promise\.all/.test(appEq)
+  && /inService\.map\(\(e\) => `<option/.test(appEq)
+  && !/rows\.map\(\(e\) => `<option/.test(appEq), 'the search box still narrows the dropdowns');
+ok('and they ask for machines in service with no search term',
+  /api\('\/equipment\?service=active'\)/.test(appEq));
 ok('the app remembers who signed in', /window\.me = user/.test(
   readFileSync(join(root, 'public', 'app.js'), 'utf8')));
 const equipmentSrc = codeOnly(readFileSync(join(root, 'routes', 'equipment.js'), 'utf8'));

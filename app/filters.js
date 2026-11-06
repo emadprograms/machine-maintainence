@@ -54,6 +54,13 @@ export function equipmentFilter(query = {}) {
     const p = likeParam(query.q);
     params.push(p, p, p, p);
   }
+  // Retired machines are not offered for new work (261106-eqt). The screen asks with
+  // ?service=active; no parameter still means everything, so nothing that already
+  // called this list changes behaviour.
+  if (query.service === 'active') where.push("e.status <> 'retired'");
+  if (query.service === 'retired') where.push("e.status = 'retired'");
+  // `status` is the raw column (active/down/retired). `down` is derived now, so a
+  // request filtered on it would answer wrongly — the list route derives afterwards.
   if (query.status) { where.push('e.status = ?'); params.push(String(query.status)); }
 
   return whereOf(where, params);
