@@ -1706,11 +1706,23 @@ ok('History is offered to everybody',
 ok('the Machines screen filters by a named view, not a hidden-retired checkbox',
   /<select id="eq-filter" onchange="loadEquipment\(\)"/.test(indexEq)
   && !indexEq.includes('eq-show-retired'));
+// `<option value="all">` no longer matches: the default is marked, so the test has
+// to allow attributes after the value rather than assume an empty tag.
 ok('the four views are in service, down, retired and everything',
   ['in', 'down', 'retired', 'all'].every((v) =>
-    new RegExp(`<option value="${v}">`).test(indexEq)));
-ok('the everyday view — in service — is the one it opens on',
-  /<select id="eq-filter"[^>]*>\s*<option value="in">/.test(indexEq));
+    new RegExp(`<option value="${v}"[ >]`).test(indexEq)));
+// It used to open on "In service", which meant a machine that had been retired was
+// indistinguishable from a machine that had been deleted — and the machine somebody
+// is asking about is exactly the one that stopped.
+ok('it opens on every machine, not only the ones in service',
+  /<select id="eq-filter"[^>]*>\s*<option value="all" selected>All machines<\/option>/.test(indexEq),
+  (indexEq.match(/<select id="eq-filter"[^>]*>[\s\S]{0,200}/) || [''])[0].replace(/\s+/g, ' '));
+ok('a view the select cannot name falls back to everything, not to in-service',
+  appEq.includes('?? VIEWS.all'), 'the fallback is the old default');
+ok('a retired machine is dimmed in the list rather than missing from it',
+  appEq.includes("class=\"row-quiet\"") && /<tr\$\{/.test(appEq)
+  && /\.row-quiet td \{ opacity/.test(uiCss),
+  appEq.includes('row-quiet') ? 'no styling for the dimmed row' : 'retired rows are not marked');
 ok('each view asks the server for the machines it names',
   ["in: { query: 'service=active'", "down: { query: 'service=active&status=down'",
     "retired: { query: 'service=retired'", "all: { query: 'service=all'"]

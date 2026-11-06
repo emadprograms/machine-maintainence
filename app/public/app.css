@@ -137,7 +137,12 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field-wide { grid-column: 1 / -1; }
   /* ---- machine photographs ---- */
-  .cell-thumb { width: 56px; }
+  /* A retired machine is in the list, not out of sight: visible enough to find and
+   reopen, quiet enough not to compete with the machines that are running. */
+.row-quiet td { opacity: .6; }
+.row-quiet:hover td { opacity: 1; }
+
+.cell-thumb { width: 56px; }
   .thumb { width: 44px; height: 44px; border-radius: 9px; object-fit: cover; display: block;
            background: var(--bg); border: 1px solid var(--line); }
   .thumb-empty { display: flex; align-items: center; justify-content: center; font-size: 15px;

@@ -77,10 +77,10 @@
           <input id="eq-search" type="search" placeholder="Search name, tag, location or category"
                  oninput="searchEquipment()" />
           <select id="eq-filter" onchange="loadEquipment()" aria-label="Which machines to show">
+            <option value="all" selected>All machines</option>
             <option value="in">In service</option>
             <option value="down">Down right now</option>
             <option value="retired">Retired</option>
-            <option value="all">All machines</option>
           </select>
         </div>
         <div class="table-wrap">

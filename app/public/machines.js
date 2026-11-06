@@ -84,6 +84,9 @@ let equipmentRows = [];
 
 // The four views of the machine list. One filter with four answers, instead of a
 // checkbox that could only say "hide the scrap" or "show me everything everywhere".
+// It opens on everything: a machine missing from the list looks deleted, and the
+// first question anybody asks a maintenance log is "where is the machine I mean".
+// In service is one click away for the everyday case.
 const VIEWS = {
   in: { query: 'service=active', empty: 'No machines in service. Add the first one.' },
   down: { query: 'service=active&status=down', empty: 'Nothing is down right now.' },
@@ -93,7 +96,7 @@ const VIEWS = {
 
 export async function loadEquipment() {
   const q = searchTerm('#eq-search');
-  const view = VIEWS[$('#eq-filter')?.value] ?? VIEWS.in;
+  const view = VIEWS[$('#eq-filter')?.value] ?? VIEWS.all;
   // Two requests, deliberately. The table is the view this screen is filtered to;
   // the dropdowns are "every machine in service", because a new job or a new
   // maintenance schedule must not be startable on a machine that has left. They
@@ -105,7 +108,7 @@ export async function loadEquipment() {
   ]);
   equipmentRows = rows;
   $('#equipment-rows').innerHTML = rows.map((e) => `
-    <tr>
+    <tr${e.service_status === 'retired' ? ' class="row-quiet"' : ''}>
       <td class="cell-thumb">${thumbnail(e)}</td>
       ${strong(e.name)}${soft(e.asset_tag)}${soft(e.manufacturer)}
       ${soft(e.category)}${soft(e.location)}

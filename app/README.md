@@ -60,10 +60,10 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 443 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 234 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 239 |
 | `public/app.js` | Fetches data and draws the main screens | 560 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 273 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 402 behaviours | 2,176 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 276 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 404 behaviours | 2,188 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -141,12 +141,17 @@ photograph pushed that page past 600 lines.
   manufacturer, category, location and state — one column each, in that order. The empty
   table spans exactly the columns its header names, and the suite checks that rather than
   trusting anyone to count.
-* **The machine list has four views.** A filter in the Machines toolbar offers *In service*
-  (the default), *Down right now*, *Retired* and *All machines*; the search box narrows
-  whichever view is chosen. `GET /api/equipment?service=` picks the stored state and
-  `&status=down` adds the derived one.
-* **A retired machine is out of the way.** It keeps its record, history and photographs, but
-  it is not in the *In service* view and it is never offered in the dropdowns that start new
+* **The machine list has four views, and opens on everything.** The filter in the Machines
+  toolbar offers *All machines* (the default), *In service*, *Down right now* and *Retired*;
+  the search box narrows whichever view is chosen. It opened on *In service* until
+  261106-erb, which made a retired machine look like a machine that had been deleted — the
+  one you are asking about is usually the one that stopped. `GET /api/equipment?service=`
+  picks the stored state and `&status=down` adds the derived one; a view the select cannot
+  name falls back to *All machines*, not to the old default.
+* **A retired machine is out of the way, not out of sight.** It keeps its record, history and
+  photographs; in the full list its row is dimmed and its badge says *Retired*, so it is
+  findable and reopenable without competing with the machines that are running. It is never
+  offered in the dropdowns that start new
   work (report a job, add maintenance). Its maintenance stops being a reminder too: parked schedules leave *Due soon*,
   the Maintenance screen and the dashboard card, and come back when the machine does. The API
   asks for this explicitly with `?service=active` (on the machine list, `/api/pm` and
@@ -360,10 +365,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 402 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 404 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`402 passed, 0 failed`.
+`404 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
