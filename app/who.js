@@ -3,6 +3,7 @@
 
 import { userIdOf } from './sessions.js';
 import { verifyToken } from './auth.js';
+import { get } from './db.js';
 
 // One client, one origin. Node reports IPv4 connections as ::ffff:a.b.c.d when
 // the listener is dual-stack; normalising means one client reads as one line in
@@ -22,5 +23,13 @@ export function currentUser(req) {
   if (!token) return null;
   // The session row, not a Map in memory: this is what survives a restart.
   if (userIdOf(token) === null) return null;
-  return verifyToken(token);
+  const payload = verifyToken(token);
+  if (!payload) return null;
+  // Who they are *now*, not who they were when they signed in. The token carries
+  // a role and a name, and trusting them for twelve hours meant that disabling
+  // an account did nothing to the session already open, and a demoted admin kept
+  // the admin screen. One lookup per request buys both.
+  const row = get('SELECT id, name, role, active FROM users WHERE id = ?', Number(payload.sub));
+  if (!row || !row.active) return null;
+  return { ...payload, name: row.name, role: row.role };
 }

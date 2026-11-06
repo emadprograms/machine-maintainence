@@ -4,7 +4,6 @@
 // not a deployment, and so a report can say which rate produced its numbers.
 
 import { send, readBody, route, sendCsv } from '../http.js';
-import { backup } from '../db.js';
 import { hourlyRate, setSetting, RATE_KEY } from '../settings.js';
 import { monthReport } from '../report.js';
 

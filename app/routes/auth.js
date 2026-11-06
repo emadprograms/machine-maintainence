@@ -3,13 +3,11 @@
 // A failed sign-in is recorded beside the database and never refused, however
 // many times it happens: see login-log.js for why that is the deliberate choice.
 
-import { DATA_DIR } from '../db.js';
+import { DATA_DIR, get } from '../db.js';
 import { createLoginLog } from '../login-log.js';
-import { revoke as revokeSession } from '../sessions.js';
-import { open as openSession } from '../sessions.js';
+import { open as openSession, revoke as revokeSession } from '../sessions.js';
 import { send, readBody, route } from '../http.js';
 import { sourceOf, cookieToken } from '../who.js';
-import { get } from '../db.js';
 import { hashPassword, verifyPassword, signToken } from '../auth.js';
 
 const failedLogins = createLoginLog(DATA_DIR);

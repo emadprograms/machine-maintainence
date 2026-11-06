@@ -63,8 +63,11 @@ export default {
       // password in a text file would be worse than the lockout it prevents.
       if (target.email === 'admin@local') forgetFirstPassword();
     }
+    // One spelling, as in POST: the app understands 'admin' and 'tech', and a
+    // row storing 'Administrator' would silently behave like a technician.
+    const role = b.role === undefined ? target.role : (b.role === 'admin' ? 'admin' : 'tech');
     run('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?',
-      b.name ?? target.name, b.role ?? target.role,
+      b.name ?? target.name, role,
       b.active === undefined ? target.active : (b.active ? 1 : 0), target.id);
     send(res, 200, get('SELECT id, name, email, role, active FROM users WHERE id = ?', target.id));
   }),

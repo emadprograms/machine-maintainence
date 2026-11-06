@@ -240,7 +240,10 @@ export function close() {
 
 /** One-line backup. Run it from a scheduled task; ask for it before upgrades. */
 export function backup() {
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  // Milliseconds, not seconds: two clicks in the same second used to collide and
+  // SQLite answers the second one with "output file already exists", which is the
+  // database's sentence, not the user's.
+  const stamp = new Date().toISOString().slice(0, 23).replace(/[:T.]/g, '-');
   const target = join(DATA_DIR, `backup-${stamp}.db`);
   db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
   return target;

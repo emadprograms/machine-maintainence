@@ -375,6 +375,35 @@ await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false 
 ok('disabled user is rejected at login',
   (await makeClient()('/api/login', { method: 'POST', body: {
     email: 'tech@local', password: 'tech-password' } })).status === 403);
+// The other half of the same promise, which went unchecked for four milestones:
+// the session already open must die too. It did not — this client kept working
+// for the rest of the run, and a later assertion was quietly passing on it.
+ok('a disabled user loses the session they already had',
+  (await tech('/api/work-orders')).status === 401,
+  'disabling must end the open session, not only the next sign-in');
+// The token carries a copy of the role. It must not outlive the row it copied:
+// a demoted administrator loses the admin screens on the next request, not when
+// the cookie expires twelve hours later.
+await c('/api/users', { method: 'POST', body: {
+  name: 'Deputy', email: 'deputy@local', password: 'deputy-password', role: 'admin' } });
+const deputy = makeClient();
+await deputy('/api/login', { method: 'POST', body: {
+  email: 'deputy@local', password: 'deputy-password' } });
+const deputyId = (await c('/api/users')).data.find((u) => u.email === 'deputy@local').id;
+ok('a second admin can read the user list',
+  (await deputy('/api/users')).status === 200);
+await c(`/api/users/${deputyId}`, { method: 'PUT', body: { role: 'tech' } });
+ok('a demoted admin loses the admin screens without signing in again',
+  (await deputy('/api/users')).status === 403,
+  'the role must come from the row, not from the cookie that copied it');
+
+// The database should hold one spelling of a role. POST normalised; PUT used to
+// store whatever it was given, so the same person could be 'tech' or 'technician'
+// depending on which route last touched them.
+const roleTidy = await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { role: 'technician' } });
+ok('a role is stored in one spelling only', roleTidy.data.role === 'tech',
+  `stored=${roleTidy.data.role}`);
+
 ok('admin cannot disable their own account',
   (await c('/api/users/1', { method: 'PUT', body: { active: false } })).status === 400);
 
@@ -404,6 +433,13 @@ ok('viewing pages does not rewrite the database', before === after,
 const bak = await c('/api/backup', { method: 'POST' });
 ok('backup file created', bak.status === 200 && existsSync(bak.data.file));
 ok('backup is a non-empty file', bak.status === 200 && statSync(bak.data.file).size > 0);
+// Two backups in the same second are two backups, not an error. The stamp used to
+// stop at seconds, so the second click was answered with SQLite's
+// "output file already exists" — a database sentence shown to a person.
+const bak2 = await c('/api/backup', { method: 'POST' });
+ok('a second backup in the same second is a second file, not an error',
+  bak2.status === 200 && bak2.data.file !== bak.data.file && existsSync(bak2.data.file),
+  `first=${bak.data.file} second=${bak2.data.file} status=${bak2.status}`);
 
 // kill -9, restart, confirm data survived
 console.log('\nPhase 7+ — honest dates and real exports');
@@ -1088,7 +1124,14 @@ ok('hours are stored and come back', Number(withHours.data.labour_hours) === 2.5
   JSON.stringify(withHours.data.labour_hours));
 
 // The rate is a setting, so it can be fixed without a deploy.
-const rateForTech = await tech('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
+// A fresh technician: the one from phase 4 was disabled on purpose, and its
+// client is dead now. Using it here would test the wrong thing twice over.
+await c('/api/users', { method: 'POST', body: {
+  name: 'Ratechecker', email: 'rate@local', password: 'rate-password', role: 'technician' } });
+const rateTech = makeClient();
+await rateTech('/api/login', { method: 'POST', body: {
+  email: 'rate@local', password: 'rate-password' } });
+const rateForTech = await rateTech('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
 ok('only an admin can change the hourly rate', rateForTech.status === 403,
   `status ${rateForTech.status}`);
 const negativeRate = await c2('/api/settings', { method: 'PUT', body: { hourly_rate: -5 } });
