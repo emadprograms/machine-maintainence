@@ -24,7 +24,7 @@ photograph.
 | the photograph | did not exist | file in `<data>/photos`, name chosen by the server, type from magic bytes, 2 MB cap → 413 |
 | Edit / Retire / Delete | drawn for everyone | drawn only when `window.me.role === 'admin'` |
 | `public/index.html` | 599 lines, styles inline | 414 lines; the stylesheet is `public/app.css` (203) |
-| tests | 277 checks | **326 checks**, 0 failures, `OFFLINE-SAFE` |
+| tests | 277 checks | **327 checks**, 0 failures, `OFFLINE-SAFE` |
 
 ### The rule, in one place
 
@@ -54,7 +54,7 @@ the refusal is deliverable.
 
 ## Mutation proofs
 
-Each new assertion was checked by reintroducing its defect. **14 of 14 caught.**
+Each new assertion was checked by reintroducing its defect. **15 of 15 caught.**
 
 | Mutation | Caught by |
 |---|---|
@@ -72,6 +72,7 @@ Each new assertion was checked by reintroducing its defect. **14 of 14 caught.**
 | `admin` forced true in the client | *Edit, Retire and Delete are drawn only for an admin* |
 | migration removed | *a machine left "down" by the old form is released on start-up* (+ idempotence) |
 | status select restored in the dialog | *and no longer carries a status control at all* |
+| category and location dropped from the row | *the row still says where the machine is and what kind it is* |
 
 Two existing assertions were repaired rather than relaxed, because the change made their
 old shape wrong:

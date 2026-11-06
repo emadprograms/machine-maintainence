@@ -825,8 +825,10 @@ ok('numeric columns are right-aligned and tabular',
 ok('the first column is heavier', /\.cell-strong\s*\{[^}]*font-weight/.test(uiCss));
 ok('secondary text is muted', /\.cell-muted\s*\{[^}]*color:/.test(uiCss));
 ok('row padding is set once for every table', /th, td \{[^}]*padding/.test(uiCss));
+// `strong(e.name)` grew an optional second line in 261106-eqs, so the match allows
+// the comma: the point of the check is the shared helper, not the argument count.
 ok('rows use the shared strong/soft helpers, not bare cells',
-  clientSrc.includes('strong(e.name)') && clientSrc.includes('strong(w.equipment_name)')
+  /strong\(e\.name[,)]/.test(clientSrc) && clientSrc.includes('strong(w.equipment_name)')
   && clientSrc.includes('strong(p.name)') && clientSrc.includes('strong(u.name)'));
 
 // Empty states: a sentence, and only after a successful fetch.
@@ -1523,6 +1525,10 @@ ok('the photograph is uploaded as bytes to the machine\'s own route',
   /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
 ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
 ok('the row explains why a machine is down', appEq.includes('status_reason'));
+ok('the row still says where the machine is and what kind it is',
+  /strong\(e\.name, \[e\.category, e\.location\]/.test(appEq)
+  && /const strong = \(v, sub\)/.test(readFileSync(join(root, 'public', 'app.js'), 'utf8')),
+  'a column removed and nothing put in its place');
 ok('Edit, Retire and Delete are drawn only for an admin',
   /const admin = window\.me\?\.role === 'admin'/.test(actionsFn)
   && actionsFn.includes('editEquipment') && actionsFn.includes('toggleStatus')

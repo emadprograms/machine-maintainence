@@ -60,10 +60,10 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 414 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 203 |
-| `public/app.js` | Fetches data and draws the main screens | 543 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 168 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 326 behaviours | 1,769 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 204 |
+| `public/app.js` | Fetches data and draws the main screens | 552 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 169 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 327 behaviours | 1,775 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -339,10 +339,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 326 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 327 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`326 passed, 0 failed`.
+`327 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

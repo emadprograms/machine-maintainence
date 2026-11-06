@@ -55,7 +55,8 @@ export async function loadEquipment() {
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
       <td class="cell-thumb">${thumbnail(e)}</td>
-      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.manufacturer)}
+      ${strong(e.name, [e.category, e.location].filter(Boolean).join(' · ') || null)}
+      ${soft(e.asset_tag)}${soft(e.manufacturer)}
       ${statusCell(e)}
       ${actions(e)}
     </tr>`).join('')
