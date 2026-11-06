@@ -33,6 +33,7 @@ export default {
     sendCsv(res, 'history.csv', rows, [
       { key: 'equipment_name', label: 'Machine' },
       { key: 'title', label: 'Job' },
+      { key: 'resolution', label: 'What was done' },
       { key: 'status', label: 'Status' },
       { key: 'owner', label: 'Owner' },
       { key: 'priority', label: 'Priority' },

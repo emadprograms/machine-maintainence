@@ -19,19 +19,30 @@ export function stockValue(raw, fallback) {
 }
 
 /**
- * Who reported a fault. Free text, trimmed, and null when nothing was written —
- * the person who hears the noise is often standing at the machine rather than
- * signed in, so this cannot be a user id. `undefined` still means "not
- * mentioned", so a PATCH that does not send it leaves the name alone.
+ * Free text from a person: trimmed, capped, and null when nothing was written.
+ * `undefined` still means "not mentioned", so a PATCH that does not send it
+ * leaves what is stored alone — which is the difference between clearing a field
+ * and never mentioning it.
  */
-export function reporterValue(raw) {
+export function textValue(raw, label, max = 120) {
   if (raw === undefined) return { missing: true };
   if (raw === null) return { value: null };
   const text = String(raw).trim();
   if (!text) return { value: null };
-  if (text.length > 120) return { error: 'Reported by is too long — 120 characters at most' };
+  if (text.length > max) return { error: `${label} is too long — ${max} characters at most` };
   return { value: text };
 }
+
+/** Who reported a fault. A name, not a user id: the person who hears the noise is
+ *  often standing at the machine rather than signed in. */
+export const reporterValue = (raw) => textValue(raw, 'Reported by');
+
+/** What was done. The longest thing anybody types on this screen, so it gets the
+ *  longest cap — still finite, because nothing here should accept a novel. */
+export const resolutionValue = (raw) => textValue(raw, 'What was done', 2000);
+
+/** Who checked the repair before the job was closed. */
+export const verifiedValue = (raw) => textValue(raw, 'Checked by');
 
 /**
  * Time spent on a job. `undefined` means "not mentioned" (leave it alone),

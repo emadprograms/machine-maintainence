@@ -137,7 +137,15 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field-wide { grid-column: 1 / -1; }
   /* ---- machine photographs ---- */
-  /* A fault photograph is evidence, so it is a link on the problem rather than a
+  /* Adding a part while closing a job: the select takes the space, the quantity
+   stays small enough to type with a thumb. */
+.parts-pick { display: flex; gap: 6px; align-items: center; }
+.parts-pick select { flex: 1; }
+.parts-pick input { width: 72px; }
+.part-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-soft); }
+.part-list:empty { display: none; }
+
+/* A fault photograph is evidence, so it is a link on the problem rather than a
    column: the table is about the job, and the picture is what you open next. */
 .link-photo {
   font-size: 12px;

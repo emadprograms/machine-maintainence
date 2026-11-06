@@ -199,141 +199,19 @@ function checkDeletePhrase() { (machinesReady).then((m) => m.checkDeletePhrase()
 function confirmEquipmentDelete() { (machinesReady).then((m) => m.confirmEquipmentDelete()); }
 
 // ------------------------------------------------------------ work orders
-const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
-const NEXT_STATUS = { open: 'in_progress', in_progress: 'done', done: 'open' };
+// The Work orders screen lives in its own module (see work.js). These are the
+// names the markup and the rendered rows already use, so nothing above changes.
+const workReady = import('/work.js').then((m) => { return m; });
 
-let workCache = [];
-let editingWork = null;
-let assignable = [];          // { id, name } — fetched once per session
-
-/**
- * The filters on the Work orders screen, as a query string. The list and the CSV
- * download both call this, so the file cannot disagree with the screen.
- */
-function workQuery() {
-  const params = new URLSearchParams();
-  const status = $('#wo-status-filter')?.value;
-  const q = searchTerm('#wo-search');
-  if (status) params.set('status', status);
-  if (q) params.set('q', q);
-  const qs = params.toString();
-  return qs ? `?${qs}` : '';
-}
-
-const searchWork = debounce(() => loadWork());
-
-async function loadWork() {
-  workCache = await api(`/work-orders${workQuery()}`);
-  // A technician may not read the assignable list. That is expected, and it must
-  // not be confused with "the work-order fetch failed" — this catch is scoped to
-  // the assignee lookup alone. The assertion that guards the empty state reads
-  // this function's text, so the reason is written where the next reader looks.
-  if (!assignable.length) {
-    try { assignable = await api('/users/assignable'); } catch { assignable = []; }
-  }
-  $('#work-rows').innerHTML = workCache.map((w) => (w.id === editingWork
-    ? `<tr>
-        <td>${esc(w.equipment_name)}</td>
-        <td><input id="we-title-${w.id}" value="${esc(w.title)}" /></td>
-        <td>${ownerSelect(w.id, w.assigned_to)}</td>
-        <td>${prioritySelect(w.id, w.priority)}</td>
-        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
-        <td><input id="we-hours-${w.id}" type="number" min="0" step="0.25"
-                   value="${w.labour_hours ?? ''}" placeholder="hours" /></td>
-        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
-        <td class="actions">
-          <button class="small" onclick="saveWork(${w.id})">Save</button>
-          <button class="small" onclick="cancelWork()">Cancel</button>
-        </td>
-      </tr>`
-    : `<tr>
-        ${strong(w.equipment_name)}<td>${esc(w.title)}${w.photo
-          ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
-                 rel="noopener">photo</a>` : ''}</td>
-        <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
-        <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
-        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
-        <td class="cell-num">${w.labour_hours == null ? '—' : Number(w.labour_hours)}</td>
-        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
-        <td>
-          <button class="ghost small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
-            ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
-          </button>
-          <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
-        </td>
-      </tr>`)).join('')
-    || emptyRow(8, searchTerm('#wo-search')
-      ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
-      : 'No work orders match. Create one with "New work order", or clear the filter.');
-}
-
-function ownerSelect(workId, current) {
-  return `<select id="we-owner-${workId}">
-    <option value="">— unassigned —</option>
-    ${assignable.map((u) => `<option value="${u.id}"${u.id === current ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
-  </select>`;
-}
-
-function prioritySelect(workId, current) {
-  return `<select id="we-priority-${workId}">
-    ${['low', 'medium', 'high'].map((p) => `<option value="${p}"${p === current ? ' selected' : ''}>${p}</option>`).join('')}
-  </select>`;
-}
-
-function editWork(idToEdit) {
-  editingWork = idToEdit;
-  loadWork();
-}
-
-function cancelWork() {
-  editingWork = null;
-  loadWork();
-}
-
-async function saveWork(idToSave) {
-  try {
-    await api(`/work-orders/${idToSave}`, { method: 'PATCH', body: JSON.stringify({
-      title: $(`#we-title-${idToSave}`).value,
-      assigned_to: $(`#we-owner-${idToSave}`).value || null,
-      priority: $(`#we-priority-${idToSave}`).value,
-      labour_hours: $(`#we-hours-${idToSave}`).value,
-    })});
-    editingWork = null;
-    loadWork();
-  } catch (e) { alert(e.message); }
-}
-
-async function addWorkOrder() {
-  const title = $('#w-title').value.trim();
-  if (!title) return formError('work-form', 'Say what is wrong — even a few words is enough.');
-  try {
-    // The job first, then its photograph: the route is /work-orders/:id/photo and a
-    // photograph of a fault that does not exist yet has nowhere to live. This is
-    // why the report form can carry a photo before any job id exists.
-    const created = await api('/work-orders', { method: 'POST', body: JSON.stringify({
-      equipment_id: $('#w-equipment').value, title, priority: $('#w-priority').value,
-      labour_hours: $('#w-hours')?.value || null,
-      notes: $('#w-notes')?.value.trim() || null,
-      reported_by: $('#w-reporter')?.value.trim() || null,
-    })});
-    const file = $('#w-photo')?.files?.[0];
-    if (file) {
-      try { await postPhoto(`/api/work-orders/${created.id}/photo`, file); }
-      catch (e) { formError('work-form', `${e.message} The work order itself was saved.`); return; }
-    }
-    ['#w-title', '#w-notes', '#w-reporter', '#w-hours'].forEach((sel) => {
-      const el = $(sel); if (el) el.value = '';
-    });
-    if ($('#w-photo')) $('#w-photo').value = '';
-    formDone('work-form');
-    loadWork();
-  } catch (e) { formError('work-form', e.message); }
-}
-
-async function advance(id, status) {
-  try { await api(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); loadWork(); }
-  catch (e) { alert(e.message); }
-}
+async function loadWork() { return (await workReady).loadWork(); }
+async function addWorkOrder() { return (await workReady).addWorkOrder(); }
+function advance(id, status) { (workReady).then((m) => m.advance(id, status)); }
+function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
+function cancelWork() { (workReady).then((m) => m.cancelWork()); }
+function saveWork(idToSave) { (workReady).then((m) => m.saveWork(idToSave)); }
+function searchWork() { (workReady).then((m) => m.searchWork()); }
+function usePart() { (workReady).then((m) => m.usePart()); }
+function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
 
 // ------------------------------------------------------------------ parts
 let partsCache = [];
@@ -539,8 +417,8 @@ function today() {
 // Each export takes its own page's filter and nothing else. Reading every
 // filter on the page would append one page's setting to the other page's file
 // and rely on the server ignoring it — a habit that hides real bugs.
-function downloadWorkOrders() {
-  window.location = `/api/export/work-orders.csv${workQuery()}`;
+async function downloadWorkOrders() {
+  window.location = `/api/export/work-orders.csv${(await workReady).workQuery()}`;
 }
 
 function downloadParts() {

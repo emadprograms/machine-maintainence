@@ -46,7 +46,8 @@ function historyHasRange() {
 function historyRow(w) {
   return `<tr>
     ${strong(w.equipment_name)}
-    <td>${esc(w.title)}</td>
+    <td class="cell-strong">${esc(w.title)}${w.resolution
+      ? `<span class="row-sub">${esc(w.resolution)}</span>` : ''}</td>
     <td class="cell-num">${esc(dayOf(w.closed_at))}</td>
     ${soft(w.owner, 'Nobody')}
     <td>${esc(w.priority)}</td>

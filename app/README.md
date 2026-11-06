@@ -46,10 +46,10 @@ Check with `node --version`.
 | `server.js` | Starts up, decides which route a request is, serves the one page | 116 |
 | `routes/` | **One file per screen group** — see below | 40–135 each |
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
-| `values.js` | Turns what a browser sends into what the database may store | 69 |
+| `values.js` | Turns what a browser sends into what the database may store | 80 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 324 |
-| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 138 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 330 |
+| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
@@ -59,11 +59,11 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 449 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 252 |
-| `public/app.js` | Fetches data and draws the main screens | 598 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 267 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 431 behaviours | 2,323 |
+| `public/index.html` | The whole UI shell: every screen and form | 482 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 260 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 476 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 267 · 217 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 448 behaviours | 2,432 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -72,9 +72,9 @@ The route files, one per screen group:
 | File | Routes | Lines |
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
-| `routes/record.js` | history, history.csv | 43 |
+| `routes/record.js` | history, history.csv | 44 |
 | `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 124 |
-| `routes/work-orders.js` | work orders, the photo of the fault, work-orders.csv | 144 |
+| `routes/work-orders.js` | work orders, the photo of the fault, the close rule, work-orders.csv | 165 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
@@ -174,6 +174,15 @@ photograph pushed that page past 600 lines.
   difference is deliberate — **any signed-in person may attach or remove one**, because
   the technician who finds the fault is exactly who needs to photograph it. Deleting a
   machine still takes its jobs and their photographs with it.
+* **Closing a job is where the history is written.** The step that used to be one click
+  opens a dialog that asks what was done, the hours, who checked it and which parts were
+  used; the server refuses a job that is *being* closed without an account of the repair
+  (`400 Say what was done before closing the job`). A change to a job that is already
+  closed does not ask again, and a job reopened because the fix did not hold must be closed
+  with a new account rather than inheriting the story of the repair that failed.
+  Reopening keeps what was done and clears the closed date. Parts added in that dialog
+  move stock immediately and are listed on the job; the History screen shows what was done
+  under the job title, and the history file has it as its own column.
 * **A machine has a history.** The History button on its row opens every job ever
   reported against it, open ones included.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
@@ -372,10 +381,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 431 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 448 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`431 passed, 0 failed`.
+`448 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

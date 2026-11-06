@@ -4,7 +4,7 @@
 // disagree with the screen; a second query is how that bug gets shipped.
 
 import { send, readBody, readBytes, route, id, sendCsv } from '../http.js';
-import { hoursValue, assigneeValue, reporterValue } from '../values.js';
+import { hoursValue, assigneeValue, reporterValue, resolutionValue, verifiedValue } from '../values.js';
 import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
 import { all, get, run } from '../db.js';
 import { nowStamp } from '../dates.js';
@@ -69,14 +69,35 @@ export default {
     if (hours.error) return send(res, 400, { error: hours.error });
     const reporter = reporterValue(b.reported_by);
     if (reporter.error) return send(res, 400, { error: reporter.error });
+    const resolution = resolutionValue(b.resolution);
+    if (resolution.error) return send(res, 400, { error: resolution.error });
+    const verifier = verifiedValue(b.verified_by);
+    if (verifier.error) return send(res, 400, { error: verifier.error });
     const notes = b.notes === undefined ? before.notes : (String(b.notes ?? '').trim() || null);
+    const status = b.status ?? before.status;
+    // A job cannot be closed without an account of the repair. "Bearing noise —
+    // done" answers nothing six months later, and the moment to write it down is
+    // the moment the job is finished. The rule is about the transition, not the
+    // state: a change to a job that is already closed does not ask again, but a job
+    // reopened because the fix did not hold must be closed with a new account
+    // rather than inheriting the story of the repair that failed.
+    // A job that is already closed keeps its account when something else about it
+    // changes; a job being closed now has to bring one, even if it was closed once
+    // before and reopened because that repair did not hold.
+    const done = resolution.missing
+      ? (before.status === 'done' ? before.resolution : null)
+      : resolution.value;
+    if (status === 'done' && before.status !== 'done' && !done) {
+      return send(res, 400, { error: 'Say what was done before closing the job' });
+    }
     run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
-         labour_hours=?, reported_by=? WHERE id=?`,
+         labour_hours=?, reported_by=?, resolution=?, verified_by=? WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
-      b.status ?? before.status, b.priority ?? before.priority, notes,
-      (b.status ?? before.status) === 'done' ? (before.closed_at ?? nowStamp()) : null,
+      status, b.priority ?? before.priority, notes,
+      status === 'done' ? (before.closed_at ?? nowStamp()) : null,
       owner.value, hours.missing ? before.labour_hours : hours.value,
-      reporter.missing ? before.reported_by : reporter.value, id(req.params.id));
+      reporter.missing ? before.reported_by : reporter.value,
+      done, verifier.missing ? before.verified_by : verifier.value, id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 

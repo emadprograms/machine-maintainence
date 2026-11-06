@@ -193,7 +193,7 @@ ok('bogus machine id gives a readable 400',
 ok('status advances open -> in_progress',
   (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } }))
     .data.status === 'in_progress');
-const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Replaced the seal' } });
 ok('done sets closed_at', done.data.status === 'done' && !!done.data.closed_at);
 ok('invalid status is rejected with a message',
   (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'nonsense' } }))
@@ -790,8 +790,11 @@ ok('no form sits on a page outside a dialog',
 const allDialogs = html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [];
 const dialogId = (d) => (d.match(/id="([\w-]+)"/) || [])[1];
 const CREATING_DIALOGS = ['work-form', 'equipment-form', 'parts-form', 'pm-form', 'users-form'];
+// A dialog that closes a job has a form grid too, but it creates nothing: it is
+// filtered by name rather than by hoping it looks different.
 const creatingIds = allDialogs
-  .filter((d) => /class="form-grid/.test(d) && !/-edit$/.test(dialogId(d)))
+  .filter((d) => /class="form-grid/.test(d) && !/-edit$/.test(dialogId(d))
+    && !/-close$/.test(dialogId(d)))
   .map(dialogId);
 ok('each creating screen has its own dialog',
   CREATING_DIALOGS.every((id) => creatingIds.includes(id))
@@ -930,7 +933,7 @@ const openListForClose = (await c2('/api/work-orders')).data
   .filter((w) => w.status !== 'done');
 const beforeClose = (await c2('/api/dashboard')).data.work_orders.count;
 if (openListForClose.length) {
-  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done' } });
+  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Belt re-tensioned' } });
 }
 const afterClose = (await c2('/api/dashboard')).data.work_orders.count;
 ok('closing a work order drops it from the open count',
@@ -1094,7 +1097,7 @@ const hose = await c2('/api/work-orders', {
 const flywheel = await c2('/api/work-orders', {
   method: 'POST', body: { equipment_id: press.data.id, title: 'Noise from flywheel' },
 });
-await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Flywheel balanced' } });
 
 // FIND-01 — one box over the problem, the notes and the machine's name.
 const byProblem = await c2('/api/work-orders?q=hose');
@@ -1203,7 +1206,7 @@ const costedPart = await c2('/api/parts', {
 await c2(`/api/work-orders/${pumpJob.data.id}/parts`, {
   method: 'POST', body: { part_id: costedPart.data.id, qty: 2 },
 });
-await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Impeller cleaned' } });
 const costedList = await c2('/api/work-orders');
 const costed = costedList.data.find((w) => w.id === pumpJob.data.id);
 // 2.5 h x 40 = 100 of labour, 2 x 12.5 = 25 of parts.
@@ -1259,7 +1262,7 @@ const stillOpen = await c2('/api/work-orders', {
 const toClose = await c2('/api/work-orders', {
   method: 'POST', body: { equipment_id: histId, title: 'Oil leak' },
 });
-await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Greased and tested' } });
 
 // HIST-01 — a machine's own history includes the job that is still running.
 const machineHistory = await c2(`/api/history?equipment_id=${histId}`);
@@ -1387,7 +1390,7 @@ ok('the dashboard counts the same machine as down',
   (await c('/api/dashboard')).data.machines.items.some((m) => m.id === fixable.data.id),
   'the card and the list disagree about a machine');
 
-await setJob(urgent.id, { status: 'done' });
+await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
 ok('closing that job brings the machine back to running',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 
@@ -1399,7 +1402,7 @@ ok('but a job somebody is working on right now does',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
 ok('the reason names the work in progress',
   /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
-await setJob(routine.id, { status: 'done' });
+await setJob(routine.id, { status: 'done', resolution: 'Filters changed' });
 
 const elsewhere = await job({ equipment_id: fixable.data.id, title: 'Been replaced', priority: 'high' });
 ok('a retired machine reads retired, not down, even with a job on it',
@@ -1408,7 +1411,7 @@ ok('a retired machine reads retired, not down, even with a job on it',
 await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
 ok('restoring it does not hide the job that is still open',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
-await setJob(elsewhere.id, { status: 'done' });
+await setJob(elsewhere.id, { status: 'done', resolution: 'Shaft aligned' });
 
 // ---- a technician keeps the doors they need ------------------------------
 await c('/api/users', { method: 'POST', body: {
@@ -2098,7 +2101,8 @@ const workForm = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [
 ok('the report form asks what was seen, who saw it and for a photograph',
   workForm.includes('id="w-notes"') && workForm.includes('id="w-reporter"')
   && workForm.includes('id="w-photo"'), workForm ? 'a field is missing' : 'work-form is gone');
-const createWorkFn = (appUrl.match(/async function addWorkOrder\(\) \{[\s\S]*?\n\}/) || [''])[0];
+const workSrc = readFileSync(join(root, 'public', 'work.js'), 'utf8');
+const createWorkFn = (workSrc.match(/export async function addWorkOrder\(\) \{[\s\S]*?\n\}/) || [''])[0];
 ok('the report sends the notes and the name it was given',
   createWorkFn.includes('#w-notes') && createWorkFn.includes('#w-reporter'),
   createWorkFn ? 'a field is read but not sent' : 'addWorkOrder() is not defined');
@@ -2107,10 +2111,114 @@ ok('the photograph is uploaded only after the job exists to hold it',
   && createWorkFn.indexOf("api('/work-orders'") < createWorkFn.indexOf('postPhoto('),
   'the upload happens before there is an id to upload to');
 ok('a job with a photograph offers a link to it beside the problem',
-  /link-photo/.test(appUrl) && /api\/work-orders\/\$\{w\.id\}\/photo/.test(appUrl),
+  /link-photo/.test(workSrc) && /api\/work-orders\/\$\{w\.id\}\/photo/.test(workSrc),
   'nothing on the row points at the photograph');
 ok('the link is styled, so it does not read as a stray word',
   /\.link-photo \{/.test(uiCss) && /\.link-photo:hover/.test(uiCss));
+
+// ---- closing a job: what was done, by whom, with which parts ---------------
+// A closed job that says only "done" is a row, not a history. The record of the
+// repair is the reason this screen exists at all.
+const closeMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Lathe (closing)' } })).data;
+const closeJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: closeMachine.id, title: 'Spindle wobble', priority: 'medium' } })).data;
+
+const silentClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done' } });
+ok('a job cannot be closed without saying what was done',
+  silentClose.status === 400 && /Say what was done/.test(silentClose.data.error || ''),
+  JSON.stringify(silentClose.data));
+const closeAttempt = (await late('/api/work-orders')).data.find((w) => w.id === closeJob.id);
+ok('and it is still open, not half closed',
+  closeAttempt?.status === 'open' && closeAttempt.closed_at === null,
+  JSON.stringify(closeAttempt?.status));
+
+const closedJob = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done', resolution: '  New spindle bearings, re-greased  ',
+  verified_by: '  Sam  ', labour_hours: 2.5 } });
+ok('closing records what was done, who checked it and the hours',
+  closedJob.status === 200 && closedJob.data.resolution === 'New spindle bearings, re-greased'
+  && closedJob.data.verified_by === 'Sam' && Number(closedJob.data.labour_hours) === 2.5
+  && Boolean(closedJob.data.closed_at), JSON.stringify(closedJob.data));
+
+const laterEdit = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  priority: 'low' } });
+ok('a later change to a closed job does not have to tell the story again',
+  laterEdit.status === 200 && laterEdit.data.resolution === 'New spindle bearings, re-greased'
+  && laterEdit.data.status === 'done', JSON.stringify(laterEdit.data));
+
+const reopenedJob = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'open' } });
+ok('reopening clears the closed date and keeps what was done',
+  reopenedJob.data.status === 'open' && reopenedJob.data.closed_at === null
+  && reopenedJob.data.resolution === 'New spindle bearings, re-greased',
+  JSON.stringify(reopenedJob.data));
+const reopenAgain = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done' } });
+ok('but closing it again needs a new account, not the story of the failed repair',
+  reopenAgain.status === 400 && /Say what was done/.test(reopenAgain.data.error || ''),
+  JSON.stringify(reopenAgain.data));
+const reclosed = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done', resolution: 'Shimmed the mount; wobble gone' } });
+ok('and the new account replaces the old one',
+  reclosed.data.resolution === 'Shimmed the mount; wobble gone', JSON.stringify(reclosed.data.resolution));
+
+const longResolution = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: closeMachine.id, title: 'Long story' } });
+const refusedLong = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
+  status: 'done', resolution: 'x'.repeat(2001) } });
+ok('a resolution longer than 2000 characters is refused with a sentence',
+  refusedLong.status === 400 && /2000 characters/.test(refusedLong.data.error || ''),
+  JSON.stringify(refusedLong.data));
+const refusedVerifier = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
+  status: 'done', resolution: 'Adjusted', verified_by: 'n'.repeat(121) } });
+ok('and so is a name longer than 120',
+  refusedVerifier.status === 400 && /120 characters/.test(refusedVerifier.data.error || ''),
+  JSON.stringify(refusedVerifier.data));
+
+// The machine also has the job whose long story was refused, so the assertion is
+// about the job this test closed rather than about the length of the list.
+const closedHistory = (await late(`/api/history?equipment_id=${closeMachine.id}`)).data.rows;
+ok('the record carries what was done, on the job it belongs to',
+  closedHistory.find((r) => r.id === closeJob.id)?.resolution === 'Shimmed the mount; wobble gone',
+  JSON.stringify(closedHistory.map((r) => [r.id, r.resolution])));
+
+const closeFile = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const closeCsv = await closeFile(`/api/export/history.csv?equipment_id=${closeMachine.id}`);
+const closeCsvLines = closeCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
+ok('the history file gives the repair a column of its own',
+  /What was done/.test(closeCsvLines[0] || '')
+  && closeCsvLines.some((line) => line.includes('Shimmed the mount; wobble gone')),
+  closeCsvLines.join(' | '));
+
+// ---- the dialog that asks for it ------------------------------------------
+const closeDialog = (indexEq.match(/<dialog id="work-close"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the close dialog names itself and asks what was done, the hours, who checked it and which parts',
+  closeDialog.includes('<h3 id="work-close-title">')
+  && ['wc-resolution', 'wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts']
+    .every((wanted) => closeDialog.includes(`id="${wanted}"`)),
+  closeDialog ? 'a field is missing' : 'work-close is gone');
+ok('closing opens that dialog instead of a one-click PATCH',
+  /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc),
+  'advance() still closes jobs by itself');
+ok('the browser refuses an empty account before the server has to',
+  /formError\('work-close', 'Say what was done/.test(workSrc));
+ok('and sends what was done with the close',
+  /status: 'done',\s*\n?\s*resolution,/.test(workSrc)
+  && /verified_by: \$\('#wc-verified'\)/.test(workSrc));
+// The whole function, not a fragment of the file: the same refresh line exists in
+// openWorkClose(), so a file-wide search passed when usePart() stopped refreshing
+// and the count on the shelf silently went stale.
+const usePartFn = (workSrc.match(/export async function usePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('a part taken while closing is recorded on the job, and the shelf count follows',
+  /work-orders\/\$\{closingWork\}\/parts/.test(usePartFn)
+  && /partChoices = await api\('\/parts'\)/.test(usePartFn)
+  && /fillPartChoices\(\)/.test(usePartFn)
+  && /showUsedParts\(closingWork\)/.test(usePartFn),
+  usePartFn ? 'the picker posts nowhere, or the stock never refreshes' : 'usePart() is not defined');
+ok('the history row shows what was done under the job',
+  /row-sub/.test(histSrc) && /w\.resolution/.test(histSrc));
 
 console.log('\nCoverage — the questions nothing was asking');
 
@@ -2174,7 +2282,7 @@ const historyClient = makeTextClient({ email: 'admin@local', password: 'smoke-te
 const csvMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'CSV press' } })).data;
 const closedForCsv = (await late('/api/work-orders', { method: 'POST', body: {
   equipment_id: csvMachine.id, title: 'Closed for the file', priority: 'low' } })).data;
-await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done' } });
+await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Closed for the file' } });
 
 const historyCsv = await historyClient(`/api/export/history.csv?equipment_id=${csvMachine.id}`);
 ok('the history export answers', historyCsv.status === 200, `status ${historyCsv.status}`);
@@ -2184,7 +2292,8 @@ ok('with a file name and a spreadsheet type',
   String(historyCsv.headers.get('content-disposition')));
 const historyLines = historyCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
 ok('its first line is the column names',
-  /^Machine,Job,Status/.test(historyLines[0] || ''), historyLines[0]);
+  /^Machine,Job,What was done,Status,Owner,Priority,Opened,Closed$/.test(historyLines[0] || ''),
+  historyLines[0]);
 ok('and it carries the closed job it was asked for',
   historyCsv.text.includes('Closed for the file'), 'the file does not contain the job');
 ok('filtered by machine, it carries nothing else',

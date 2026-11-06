@@ -208,6 +208,12 @@ ensureColumn('work_orders', 'reported_by', 'TEXT');
 // machine's photograph, and the same reason: maintain.db must stay small enough
 // to copy onto a stick.
 ensureColumn('work_orders', 'photo', 'TEXT');
+// What was actually done. A closed job with no account of the repair is a row,
+// not a history: six months later "Bearing noise — done" answers nothing.
+ensureColumn('work_orders', 'resolution', 'TEXT');
+// Who checked the repair. Free text for the same reason as reported_by: the
+// person who signs it off on the floor may never sign in.
+ensureColumn('work_orders', 'verified_by', 'TEXT');
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example
 
 // ---------------------------------------------------------------- helpers
