@@ -43,16 +43,25 @@ Check with `node --version`.
 
 | File | What it does | Lines |
 |---|---|---|
-| `server.js` | Web server, login, and every API route in one table | ~361 |
-| `db.js` | Database connection, table definitions, migrations, backup | ~137 |
-| `auth.js` | Password hashing and login tokens | ~48 |
-| `public/index.html` | The whole UI shell (tabs and forms) | ~216 |
-| `public/app.js` | Fetches data and draws the tables | ~269 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 47 behaviours | 240 |
-| `scripts/audit-offline.js` | Proves nothing reaches the internet | 142 |
+| `server.js` | Web server, login, and every API route in one table | 814 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 296 |
+| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 131 |
+| `report.js` | One month of work, added up | 97 |
+| `auth.js` | Password hashing, login tokens, password generation | 56 |
+| `reset-password.js` | The way back in when a password is forgotten | 58 |
+| `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
+| `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
+| `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
+| `public/index.html` | The whole UI shell: styles, screens, forms | 544 |
+| `public/app.js` | Fetches data and draws the main screens | 585 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` | One module per screen group | 113 · 91 · 143 · 79 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 240 behaviours | 1,327 |
+| `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
-Total application code: **about 1,040 lines.** You can read all of it.
+Total application code: **about 3,150 lines**, and about 1,330 of tests. You can still read
+all of it, but `server.js` is now over the ~600-line mark this project uses as a signal to
+split; see **Known limitations**.
 
 ---
 
@@ -74,11 +83,22 @@ and writes HTML into a table.
 
 ---
 
-### The tabs
+### The screens
 
-`Due soon` · `Machines` · `Work orders` · `Maintenance` · `Spare parts` · `Users` (admins) · `Backup` (admins)
+`Dashboard` · `Due soon` · `Machines` · `Work orders` · `History` · `Report` · `Maintenance` ·
+`Spare parts` · `Users` (admins) · `Backup` (admins)
 
 `Users` has no public sign-up counterpart: accounts exist only if an admin creates them.
+
+* **Every list has a search box** that works with the filters beside it, and the CSV
+  download next to it produces exactly the rows on screen.
+* **A machine has a history.** The History button on its row opens every job ever
+  reported against it, open ones included.
+* **History** lists finished work, newest first, narrowable to a date range — "what did
+  we close in October".
+* **Report** adds a month up: jobs closed, hours, parts cost, labour cost and total, plus
+  the machines that took the most work. The hourly rate that turns hours into money is a
+  field on that screen, not a number in the source.
 
 ### Worked example: add a "Serial number" field to machines
 
@@ -249,8 +269,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 47 behaviours
-including a `kill -9` restart, then cleans up. You should see `47 passed, 0 failed`.
+It starts its own server on port 3999 with a throwaway database, checks 240 behaviours —
+a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
+composing with every filter, a month's costs adding up — then cleans up. You should see
+`240 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.
@@ -282,7 +304,12 @@ native modules. You should see `OFFLINE-SAFE`.
 * No password reset by email (there is no email). Use `node reset-password.js` instead —
   see **If you lose the password** above.
 * A restored backup signs everybody out, because sessions are rows in the database.
-* No audit log. The reviewed repo had one; it is intentionally out of scope.
+* **No audit log** — who changed what is not recorded. Deliberately out of scope so far;
+  it is the strongest candidate for the next milestone.
+* **`server.js` is 814 lines**, against this project's ~600-line signal to split. The route
+  table wants dividing by domain (work orders, parts, history, report, admin) before the
+  next feature lands.
+* **Concurrent edits are last-write-wins** — one process, never tested with two browsers.
 
 ---
 

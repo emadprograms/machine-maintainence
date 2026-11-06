@@ -16,13 +16,13 @@
     {
       "number": "16",
       "name": "What it cost",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd-plan-phase 16",
-    "label": "Plan phase 16",
-    "reason": "Phase 15 is complete; cost is last"
+    "command": "/gsd-new-milestone",
+    "label": "Start the next milestone",
+    "reason": "v3.0 is complete and archived"
   },
   "updated_at": "2026-11-05T15:16:52.902Z"
 }

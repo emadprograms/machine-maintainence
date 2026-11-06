@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v3.0
 milestone_name: The record
-status: In progress
+status: Awaiting next milestone
 last_updated: "2026-11-05T15:16:52.889Z"
 last_activity: 2026-11-06
-last_activity_desc: v3.0 phase 15 (find it) complete
+last_activity_desc: Milestone v3.0 completed
 state_head: 5b8efcd03c86601ea1feca8f8f62811dd7831bea
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 3
-  completed_plans: 2
-  percent: 67
-current_phase: 15
+  completed_plans: 3
+  percent: 100
+current_phase: null
 ---
 
 # Project State
@@ -23,13 +23,13 @@ current_phase: 15
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** v3.0 "The record" — history, search and cost. v1.0, v1.1 and v2.0 are closed and archived.
+**Current focus:** v1.0, v1.1, v2.0 and v3.0 are closed and archived. No milestone is in progress.
 
 ## Current Position
 
-Phase: 15 — Find it (complete)
+Phase: Milestone v3.0 complete
 Plan: —
-Status: In progress: v3.0, phase 16 remains
+Status: Awaiting next milestone
 Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 
 ## Quick Tasks Completed
@@ -38,7 +38,8 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 |---|---|---|---|
 | 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
-| 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | pending |
+| 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
+| 2026-11-06 | v3.0 ph16 | What it cost: labour hours, a configured rate, cost per job, and a monthly report | this commit |
 | 2026-11-05 | 261105-rst | Stop the password lockout: keep the first password, keep sessions across a restart, keep `maintain.db` copyable, move data out of the app folder | `1d3bf71` |
 
 ## Evidence log

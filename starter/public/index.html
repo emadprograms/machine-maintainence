@@ -305,7 +305,7 @@
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th class="cell-num">Hours</th><th class="cell-num">Cost</th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
@@ -327,6 +327,8 @@
                 <option value="high">High</option>
               </select>
             </label>
+            <label class="field"><span>Hours (optional)</span>
+              <input id="w-hours" type="number" min="0" step="0.25" placeholder="e.g. 1.5" /></label>
           </div>
           <p class="form-error"></p>
           <div class="sheet-foot">
@@ -492,6 +494,32 @@
     </section>
 
     <!-- Backup -->
+    <!-- Report -->
+    <section data-page="report" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Report</h2>
+          <p class="page-sub">One month of finished work: how much, how long, and what it cost.</p>
+        </div>
+        <button class="ghost" onclick="downloadReport()">Download CSV</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Month</span>
+            <input type="month" id="report-month" onchange="loadReport()" /></label>
+          <label><span>Hourly rate</span>
+            <input type="number" id="report-rate" min="0" step="1" onchange="saveRate()" /></label>
+        </div>
+        <p id="report-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr>
+            <th>Machine</th><th class="cell-num">Jobs</th><th class="cell-num">Hours</th>
+            <th class="cell-num">Parts</th><th class="cell-num">Labour</th><th class="cell-num">Total</th>
+          </tr></thead><tbody id="report-rows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
     <section data-page="backup" class="hidden">
       <div class="page-head">
         <div>

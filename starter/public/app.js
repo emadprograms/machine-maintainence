@@ -7,6 +7,7 @@ const $ = (s) => document.querySelector(s);
 const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const historyReady = import('/history.js').then((m) => { return m; });
+const reportReady = import('/report.js').then((m) => { return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ------------------------------------------------------- dialogs and empty states
@@ -117,6 +118,7 @@ const PAGES = [
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
   { key: 'history', label: 'History' },
+  { key: 'report', label: 'Report' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
   { key: 'users', label: 'Users', adminOnly: true },
@@ -142,7 +144,8 @@ function showPage(key) {
   const loaders = {
     dashboard: loadDashboard,
     due: loadDue, equipment: loadEquipment, work: loadWork,
-    history: loadHistory, pm: loadPm, parts: loadParts, users: loadUsers,
+    history: loadHistory, report: loadReport,
+    pm: loadPm, parts: loadParts, users: loadUsers,
   };
   loaders[key]?.();
 }
@@ -242,6 +245,9 @@ async function loadWork() {
         <td>${ownerSelect(w.id, w.assigned_to)}</td>
         <td>${prioritySelect(w.id, w.priority)}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
+        <td><input id="we-hours-${w.id}" type="number" min="0" step="0.25"
+                   value="${w.labour_hours ?? ''}" placeholder="hours" /></td>
+        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         <td class="actions">
           <button class="small" onclick="saveWork(${w.id})">Save</button>
           <button class="small" onclick="cancelWork()">Cancel</button>
@@ -252,6 +258,8 @@ async function loadWork() {
         <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
+        <td class="cell-num">${w.labour_hours == null ? '—' : Number(w.labour_hours)}</td>
+        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         <td>
           <button class="ghost small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
             ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
@@ -259,7 +267,7 @@ async function loadWork() {
           <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
         </td>
       </tr>`)).join('')
-    || emptyRow(6, searchTerm('#wo-search')
+    || emptyRow(8, searchTerm('#wo-search')
       ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
       : 'No work orders match. Create one with "New work order", or clear the filter.');
 }
@@ -293,6 +301,7 @@ async function saveWork(idToSave) {
       title: $(`#we-title-${idToSave}`).value,
       assigned_to: $(`#we-owner-${idToSave}`).value || null,
       priority: $(`#we-priority-${idToSave}`).value,
+      labour_hours: $(`#we-hours-${idToSave}`).value,
     })});
     editingWork = null;
     loadWork();
@@ -305,6 +314,7 @@ async function addWorkOrder() {
   try {
     await api('/work-orders', { method: 'POST', body: JSON.stringify({
       equipment_id: $('#w-equipment').value, title, priority: $('#w-priority').value,
+      labour_hours: $('#w-hours')?.value || null,
     })});
     $('#w-title').value = '';
     formDone('work-form');
@@ -430,6 +440,10 @@ function dueKind(days) {
 // so showPage stays the one place that knows which screens exist.
 async function loadHistory() {
   return (await historyReady).loadHistory();
+}
+
+async function loadReport() {
+  return (await reportReady).loadReport();
 }
 
 async function loadDashboard() {

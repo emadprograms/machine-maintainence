@@ -1,5 +1,24 @@
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
+## v3.0 The record (Shipped: 2026-11-06)
+
+**Phases completed:** 3 phases, 3 plans
+
+**Key accomplishments:**
+- `closed_at` had been stored since v1.0 and never shown: a machine now has a history, open
+  jobs included, and the workshop has a History screen of finished work with a date range
+- One search box per list, composing with every filter, with LIKE wildcards escaped so a
+  search for "50%" finds a percent sign instead of everything
+- Every WHERE clause moved into `filters.js`, so each screen and its CSV export are the
+  same query with a different output — proven by a mutation that made the export ignore
+  the search while the screen obeyed it
+- A job now records labour hours and carries a cost: hours at one configured rate plus the
+  parts it consumed, computed once on the server
+- A Report screen adds a month up — jobs, hours, parts, labour, total, and the machines
+  that took the most work — with its own export
+- Two vacuous assertions were found and repaired: a dialog count hard-coded to 5, and a
+  form check whose pattern could never match the markup it was guarding
+
 ## v2.0 v2.0 (Shipped: 2026-11-05)
 
 **Phases completed:** 3 phases, 6 plans, 17 tasks

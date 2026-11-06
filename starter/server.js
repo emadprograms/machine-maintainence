@@ -9,6 +9,8 @@ import { open as openSession, userIdOf, revoke as revokeSession, purgeExpired } 
 import { createLoginLog } from './login-log.js';
 import { nowStamp, parseDay } from './dates.js';
 import { workOrderFilter, partsFilter, equipmentFilter, historyFilter, historySql } from './filters.js';
+import { hourlyRate, setSetting, getSetting, RATE_KEY } from './settings.js';
+import { monthReport } from './report.js';
 import { hashPassword, verifyPassword, signToken, verifyToken, randomPassword } from './auth.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -138,6 +140,22 @@ function stockValue(raw, fallback) {
   if (!Number.isInteger(n)) return { error: 'Quantity must be a whole number' };
   if (n < 0) return { error: 'Quantity cannot be negative' };
   if (n > MAX_COUNT) return { error: 'Quantity is unrealistically large' };
+  return { value: n };
+}
+
+/**
+ * Time spent on a job. `undefined` means "not mentioned" (leave it alone),
+ * empty means "clear it", and anything else must be a number that a human could
+ * have worked. Nullable on purpose: a job nobody has costed is not a job that
+ * took zero hours.
+ */
+function hoursValue(raw) {
+  if (raw === undefined) return { missing: true };
+  if (raw === null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return { error: 'Hours must be a number' };
+  if (n < 0) return { error: 'Hours cannot be negative' };
+  if (n > 10000) return { error: 'Hours must be under 10000 for one job' };
   return { value: n };
 }
 
@@ -288,13 +306,18 @@ const api = {
   'GET /api/work-orders': route(async (req, res) => {
     const f = workOrderFilter(req.query);
     send(res, 200, all(`
-      SELECT w.*, e.name AS equipment_name, u.name AS assignee_name
+      SELECT w.*, e.name AS equipment_name, u.name AS assignee_name,
+             -- parts used on this job, plus recorded hours at the configured rate
+             ROUND(COALESCE(w.labour_hours, 0) * ?
+                   + (SELECT COALESCE(SUM(wop.qty * COALESCE(p.unit_price, 0)), 0)
+                        FROM work_order_parts wop JOIN parts p ON p.id = wop.part_id
+                       WHERE wop.work_order_id = w.id), 2) AS cost
       FROM work_orders w
       JOIN equipment e ON e.id = w.equipment_id
       LEFT JOIN users u ON u.id = w.assigned_to
       ${f.sql}
       ORDER BY CASE w.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
-               w.created_at DESC`, ...f.params));
+               w.created_at DESC`, hourlyRate(), ...f.params));
   }),
 
   'POST /api/work-orders': route(async (req, res) => {
@@ -305,9 +328,12 @@ const api = {
     const owner = assigneeValue(b.assigned_to);
     if (owner.error) return send(res, 400, { error: owner.error });
     // FK constraint catches a bogus machine id -> 400 instead of an orphan record.
-    const r = run(`INSERT INTO work_orders (equipment_id, title, notes, priority, assigned_to)
-                   VALUES (?,?,?,?,?)`,
-      id(b.equipment_id), b.title.trim(), b.notes || null, b.priority || 'medium', owner.value);
+    const hours = hoursValue(b.labour_hours);
+    if (hours.error) return send(res, 400, { error: hours.error });
+    const r = run(`INSERT INTO work_orders (equipment_id, title, notes, priority, assigned_to, labour_hours)
+                   VALUES (?,?,?,?,?,?)`,
+      id(b.equipment_id), b.title.trim(), b.notes || null, b.priority || 'medium', owner.value,
+      hours.missing ? null : hours.value);
     send(res, 201, get('SELECT * FROM work_orders WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -322,12 +348,14 @@ const api = {
       ? { value: before.assigned_to }
       : assigneeValue(b.assigned_to);
     if (owner.error) return send(res, 400, { error: owner.error });
-    run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?
-         WHERE id=?`,
+    const hours = hoursValue(b.labour_hours);
+    if (hours.error) return send(res, 400, { error: hours.error });
+    run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
+         labour_hours=? WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
       b.status ?? before.status, b.priority ?? before.priority, b.notes ?? before.notes,
       (b.status ?? before.status) === 'done' ? (before.closed_at ?? nowStamp()) : null,
-      owner.value, id(req.params.id));
+      owner.value, hours.missing ? before.labour_hours : hours.value, id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 
@@ -678,6 +706,50 @@ const api = {
   }),
 
   // ---- backup (same idea as the repo's /tmp problem, solved properly)
+  // ---- settings and the month report
+  'GET /api/settings': route(async (_req, res) =>
+    send(res, 200, { hourly_rate: hourlyRate() })),
+
+  'PUT /api/settings': route(async (req, res) => {
+    if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
+    const b = await readBody(req);
+    const rate = Number(b?.hourly_rate);
+    if (!Number.isFinite(rate)) return send(res, 400, { error: 'Hourly rate must be a number' });
+    if (rate < 0) return send(res, 400, { error: 'Hourly rate cannot be negative' });
+    setSetting(RATE_KEY, rate);
+    send(res, 200, { hourly_rate: rate });
+  }),
+
+  'GET /api/report': route(async (req, res) => {
+    const report = monthReport(req.query.month);
+    if (report.error) return send(res, 400, { error: report.error });
+    send(res, 200, report);
+  }),
+
+  'GET /api/export/report.csv': route(async (req, res) => {
+    const report = monthReport(req.query.month);
+    if (report.error) return send(res, 400, { error: report.error });
+    // One row per machine plus a total, because a spreadsheet is where these
+    // numbers get added to something else.
+    const rows = report.machines.map((m) => ({
+      month: report.month, machine: m.name, jobs: m.jobs, hours: m.hours,
+      parts_cost: m.parts_cost, labour_cost: m.labour_cost, total: m.total,
+    }));
+    rows.push({
+      month: report.month, machine: 'All machines', jobs: report.jobs, hours: report.hours,
+      parts_cost: report.parts_cost, labour_cost: report.labour_cost, total: report.total,
+    });
+    sendCsv(res, `report-${report.month}.csv`, rows, [
+      { key: 'month', label: 'Month' },
+      { key: 'machine', label: 'Machine' },
+      { key: 'jobs', label: 'Jobs closed' },
+      { key: 'hours', label: 'Hours' },
+      { key: 'parts_cost', label: 'Parts cost' },
+      { key: 'labour_cost', label: 'Labour cost' },
+      { key: 'total', label: 'Total' },
+    ]);
+  }),
+
   'POST /api/backup': route(async (req, res) => {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     send(res, 200, { file: backup() });

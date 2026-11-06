@@ -1022,7 +1022,97 @@ ok('a search with no hits says so instead of showing an empty list',
   && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
   'one of the three search empty states is missing');
 
-console.log('\nPhase 14 — the record');console.log('\nPhase 14 — the record');
+console.log('\nPhase 16 — what it cost');
+
+const month = new Date().toISOString().slice(0, 7);
+
+// COST-01 — hours are recorded, and nonsense is refused with a sentence.
+const pump = await c2('/api/equipment', { method: 'POST', body: { name: 'Costed pump' } });
+const pumpJob = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: pump.data.id, title: 'Seal replacement' },
+});
+const negativeHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: -2 },
+});
+ok('negative hours are refused in words',
+  negativeHours.status === 400 && /cannot be negative/.test(negativeHours.data.error || ''),
+  JSON.stringify(negativeHours.data));
+const sillyHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: 'ages' },
+});
+ok('hours that are not a number are refused',
+  sillyHours.status === 400 && /must be a number/.test(sillyHours.data.error || ''),
+  JSON.stringify(sillyHours.data));
+const withHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: 2.5 },
+});
+ok('hours are stored and come back', Number(withHours.data.labour_hours) === 2.5,
+  JSON.stringify(withHours.data.labour_hours));
+
+// The rate is a setting, so it can be fixed without a deploy.
+const rateForTech = await tech('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
+ok('only an admin can change the hourly rate', rateForTech.status === 403,
+  `status ${rateForTech.status}`);
+const negativeRate = await c2('/api/settings', { method: 'PUT', body: { hourly_rate: -5 } });
+ok('a negative hourly rate is refused',
+  negativeRate.status === 400 && /cannot be negative/.test(negativeRate.data.error || ''),
+  JSON.stringify(negativeRate.data));
+const setRate = await c2('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
+const readRate = await c2('/api/settings');
+ok('the hourly rate is saved and read back',
+  setRate.status === 200 && Number(readRate.data.hourly_rate) === 40,
+  JSON.stringify(readRate.data));
+
+// COST-02 — a job costs its parts plus its hours at that rate.
+const costedPart = await c2('/api/parts', {
+  method: 'POST', body: { name: 'Seal kit', qty: 10, unit_price: 12.5 },
+});
+await c2(`/api/work-orders/${pumpJob.data.id}/parts`, {
+  method: 'POST', body: { part_id: costedPart.data.id, qty: 2 },
+});
+await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+const costedList = await c2('/api/work-orders');
+const costed = costedList.data.find((w) => w.id === pumpJob.data.id);
+// 2.5 h x 40 = 100 of labour, 2 x 12.5 = 25 of parts.
+ok('a job costs parts plus hours at the configured rate',
+  costed && Number(costed.cost) === 125, `cost ${costed && costed.cost}, expected 125`);
+
+// COST-03 — one month, added up.
+const report = await c2(`/api/report?month=${month}`);
+ok('the report answers for a month',
+  report.status === 200 && report.data.month === month, JSON.stringify(report.data).slice(0, 120));
+ok('the report counts the jobs, hours, parts and labour at the rate',
+  report.data.jobs >= 1 && report.data.hours >= 2.5 && report.data.parts_cost >= 25
+  && Number(report.data.labour_cost) === Math.round(report.data.hours * 40 * 100) / 100
+  && Number(report.data.total)
+     === Math.round((report.data.parts_cost + report.data.labour_cost) * 100) / 100,
+  JSON.stringify(report.data).slice(0, 200));
+ok('the report names the machines that took the most work',
+  report.data.machines.some((m) => m.name === 'Costed pump'),
+  JSON.stringify(report.data.machines.map((m) => m.name)));
+const badMonth = await c2('/api/report?month=November');
+ok('a month that is not YYYY-MM is a readable 400',
+  badMonth.status === 400 && /YYYY-MM/.test(badMonth.data.error || ''),
+  JSON.stringify(badMonth.data));
+const emptyMonth = await c2('/api/report?month=1990-01');
+ok('a month with nothing in it is zeroes, not an error',
+  emptyMonth.status === 200 && emptyMonth.data.jobs === 0 && emptyMonth.data.total === 0,
+  JSON.stringify(emptyMonth.data).slice(0, 120));
+
+// COST-04 — the file is the screen's numbers.
+const reportCsv = (await csvForSearch(`/api/export/report.csv?month=${month}`)).text;
+const reportRows = parseCsv(reportCsv).slice(1);
+const totalRow = reportRows.find((r) => r[1] === 'All machines');
+ok('the report exports with a total row that matches the screen',
+  Boolean(totalRow) && Number(totalRow[2]) === report.data.jobs
+  && Number(totalRow[4]) === Number(report.data.parts_cost),
+  `csv total row: ${JSON.stringify(totalRow)}`);
+ok('the report is a screen with its own export',
+  appUrl.includes("{ key: 'report', label: 'Report' }")
+  && /downloadReport/.test(readFileSync(join(root, 'public', 'report.js'), 'utf8')),
+  'no sidebar entry or no export');
+
+console.log('\nPhase 14 — the record');
 
 // A machine and two jobs of our own, so nothing here depends on what earlier
 // phases happened to leave behind.

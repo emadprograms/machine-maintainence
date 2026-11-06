@@ -8,26 +8,18 @@ A small, offline, Windows-based web app for tracking industrial machines, work o
 
 **A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.**
 
-## Current Milestone: v2.0 Dashboard
+## Current Milestone: none — v3.0 The record shipped
 
-**Goal:** Change how the application presents what it already knows — a sidebar that
-holds seven screens without moving, a dashboard that answers "what needs attention?"
-on sign-in, and one visual language across every screen.
+**Shipped 2026-11-06.** v3.0 answered the questions that arrive after a month of use:
+which machine keeps breaking, when did we last touch it, and what did it cost.
 
-**Starting point:** v1.1 is a complete, working application. Every entity is CRUD,
-dates are honoured, exports are real CSV, roles are enforced. What it lacks is a front
-door: seven screens behind a row of tabs, no landing page, and the four numbers that
-describe the workshop obtainable only by visiting four pages and counting.
+- A machine's own history, and a History screen of closed work narrowable to a date range
+- One search box per list, composing with every filter, with exports built from the same
+  filter so the file cannot disagree with the screen
+- Labour hours, parts and labour cost per job, and a monthly report with its own export
 
-**Target features:**
-- A persistent, collapsible sidebar replacing the top tabs, showing only permitted screens
-- A dashboard as the landing page for everyone, with counts and the items needing action
-- One visual language across Due soon, Machines, Work orders, Maintenance, Spare parts, Users and Backup
-- Honest empty states, and destructive actions that state their consequence
-
-**Accepted cost:** this is the largest presentation change so far. Both new browser
-surfaces (the shell and the dashboard) must be separate modules, because the
-readability constraint is the one this milestone is most likely to break.
+The next milestone is not yet chosen. The strongest candidate is an audit trail (who
+changed what), which has been out of scope since v1.0 and is now the largest gap.
 
 ## Requirements
 
@@ -45,10 +37,18 @@ readability constraint is the one this milestone is most likely to break.
 - ✓ **REQ-10** — One-command backup of the database to a dated file — v1.0
 - ✓ **REQ-11** — Adding a new field or table is documented and takes one edit in one file — v1.0
 
+- ✓ **HIST-01…04** — a machine's history, a closed-work log, a date range, and three
+  distinct empty states — v3.0
+- ✓ **FIND-01…04** — search over work orders and machines that composes with every
+  filter, with exports built from the same filter — v3.0
+- ✓ **COST-01…04** — labour hours, cost per job at one configured rate, a monthly report
+  and its CSV — v3.0
+
 ### Active
 
-Tracked in `.planning/REQUIREMENTS.md` for v1.1 (IDs `PART-*`, `WO-*`, `PM-*`, `CSV-*`,
-`AUTH-*`). v1.0's eleven requirements above are all validated and archived.
+Nothing. v1.0's eleven requirements, v1.1's (`PART-*`, `WO-*`, `PM-*`, `CSV-*`, `AUTH-*`),
+v2.0's (`SHELL-*`, `DASH-*`, `SCREEN-*`) and v3.0's (`HIST-*`, `FIND-*`, `COST-*`) are all
+validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chosen.
 
 ### Out of Scope
 
@@ -65,23 +65,31 @@ Tracked in `.planning/REQUIREMENTS.md` for v1.1 (IDs `PART-*`, `WO-*`, `PM-*`, `
 - **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
   code plus ~370 lines of test code. All eleven requirements validated; archived under
   `.planning/milestones/v1.0-*`.
-- **Codebase now:** `starter/` — `db.js` (142), `auth.js` (48), `server.js` (366),
-  `public/index.html` (216), `public/app.js` (269), plus `scripts/smoke-test.js` (265,
-  **47 checks**) and `scripts/audit-offline.js` (151). 7 tables (users, equipment,
-  work_orders, parts, work_order_parts, pm_schedule + schema versioning via `ensureColumn`).
-- **Test suite:** 47 passing checks including a `SIGKILL` durability test and a stock-rollback
-  test; offline audit reports `OFFLINE-SAFE`. Verified under `PATH=/nonexistent` so no Unix
-  shell tool is assumed.
-- **Known technical debt:** sessions live in process memory, so a restart signs everyone out;
-  concurrent edits are last-write-wins (single process, never tested with two browsers);
+- **Codebase now (2026-11-06):** `starter/` — about 3,150 lines of application code and
+  1,330 of tests. `server.js` (814), `db.js` (296), `filters.js` (131), `report.js` (97),
+  `sessions.js` (46), `settings.js` (24), `dates.js` (24), `auth.js` (56), `login-log.js`
+  (51), `reset-password.js` (58); client: `index.html` (544), `app.js` (585), `shell.js`
+  (113), `dashboard.js` (91), `history.js` (143), `report.js` (79). Eight tables (users,
+  equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
+  `ensureColumn` migrations).
+- **Test suite:** **240 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+  `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
+  with its data, search composing with every filter, exports matching their screens, and a
+  month's costs adding up. Offline audit reports `OFFLINE-SAFE`.
+- **Known technical debt:** `server.js` is 814 lines, well past the ~600-line signal to
+  split — the route table should be divided by domain before the next feature.
+  Concurrent edits are last-write-wins (single process, never tested with two browsers).
   `node:sqlite` is still experimental on Node 22, so every entry point passes
-  `--no-warnings=ExperimentalWarning`.
+  `--no-warnings=ExperimentalWarning`. The v2.1 persistence fix has never run on Windows;
+  the check for it is `LOCAL-AGENT-VERIFY-PROMPT.md`.
 - **Bugs found and fixed:** 11, logged in `.planning/STATE.md`. Three were only reachable
   through testing rather than reading — an unauthenticated-`GET` guard that never ran, the
   admin self-disable lockout, and a technician-readable staff list found by clicking through
   the running application after the milestone was already closed.
-- **Not verified anywhere:** `EBUSY` cleanup timing on Windows (written for `cmd.exe`
-  semantics, exercised only via `PATH=/nonexistent` on Linux).
+- **Not verified anywhere:** the whole app on Windows since the v2.1 persistence fix
+  (data folder moved to `%LOCALAPPDATA%`, sessions in the database, checkpoint on every
+  write); `EBUSY` cleanup timing on Windows; and any screen in a real browser, since none
+  exists in the build environment.
 
 - Source of the review that motivates this rebuild: `CODE_REVIEW.md` (verified findings, tags `[read]` / `[ran]`).
 - User profile: knows Python and basic web concepts; not experienced with React or TypeScript; will modify the app with AI assistance.

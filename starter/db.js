@@ -147,6 +147,13 @@ CREATE TABLE IF NOT EXISTS pm_schedule (
 -- session on restart and put the owner back on the login screen every time.
 -- Only a SHA-256 of the token is stored: a copy of this file is not a set of
 -- usable sessions.
+-- One row per setting. A workshop has one hourly rate, and putting it in a table
+-- rather than in the source means changing it is not a code change.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL,
@@ -173,6 +180,9 @@ ensureColumn('parts', 'reorder_level', 'INTEGER NOT NULL DEFAULT 5');
 ensureColumn('work_orders', 'assigned_to', 'INTEGER');
 ensureColumn('users', 'active', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('users', 'created_at', "TEXT");
+// Time spent on a job. Nullable: a job nobody has costed is not a job that took
+// zero hours, and the report says so by counting only what was recorded.
+ensureColumn('work_orders', 'labour_hours', 'REAL');
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example
 
 // ---------------------------------------------------------------- helpers

@@ -5,7 +5,7 @@
 - ✅ **v1.0 Lean core, offline, on Windows** — Phases 1–6 (shipped 2026-11-05)
 - ✅ **v1.1 Operable** — Phases 7–10 (shipped 2026-11-05)
 - ✅ **v2.0 Dashboard** — Phases 11–13 (shipped 2026-11-05)
-- 🚧 **v3.0 The record** — Phases 14–16 (in progress)
+- ✅ **v3.0 The record** — Phases 14–16 (shipped 2026-11-06)
 
 ## Phases
 
@@ -141,7 +141,7 @@ each screen is two stacked cards. The fixes are hierarchy, not decoration:
 - [x] 13-02: Apply across all seven screens — page headers, create-behind-button, summary lines, row treatment, destructive wording, end-to-end pass
 
 <details open>
-<summary>🚧 v3.0 The record (Phases 14–16) — IN PROGRESS</summary>
+<summary>✅ v3.0 The record (Phases 14–16) — SHIPPED 2026-11-06</summary>
 
 **Goal:** answer the questions that follow a month of use — which machine keeps
 breaking, when did we last touch it, and what is it costing. The app records all of it
@@ -151,7 +151,7 @@ already and can only say what needs attention now.
       work with a date range (HIST-01 … HIST-04)
 - [x] **Phase 15: Find it** — free-text search composed with the existing filters, and a
       CSV export built from the same filter (FIND-01 … FIND-04)
-- [ ] **Phase 16: What it cost** — labour hours, parts and labour cost per job, and a
+- [x] **Phase 16: What it cost** — labour hours, parts and labour cost per job, and a
       monthly report with its own export (COST-01 … COST-04)
 
 **Requirements:** `.planning/milestones/v3.0-REQUIREMENTS.md`
