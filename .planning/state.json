@@ -11,7 +11,7 @@
     {
       "number": "15",
       "name": "Find it",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "16",
@@ -20,9 +20,9 @@
     }
   ],
   "next": {
-    "command": "/gsd-plan-phase 15",
-    "label": "Plan phase 15",
-    "reason": "Phase 14 is complete; search is next"
+    "command": "/gsd-plan-phase 16",
+    "label": "Plan phase 16",
+    "reason": "Phase 15 is complete; cost is last"
   },
   "updated_at": "2026-11-05T15:16:52.902Z"
 }

@@ -161,7 +161,8 @@
      filters, so the labels are inline there rather than stacked. */
   .summary-line { color: var(--soft); font-size: 13px; margin: 0 0 10px; }
   .card-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--soft); }
-  .card-toolbar input[type="date"] { width: auto; }
+  .card-toolbar input[type="date"],
+  .card-toolbar input[type="search"] { width: auto; min-width: 240px; }
   #login { max-width: 340px; margin: 12vh auto; }
   .error { color: var(--red); font-size: 13px; min-height: 18px; }
   .hidden { display: none !important; }
@@ -233,6 +234,10 @@
         <button class="primary" onclick="openForm('equipment-form')">New machine</button>
       </div>
       <div class="card">
+        <div class="card-toolbar">
+          <input id="eq-search" type="search" placeholder="Search name, tag, location or category"
+                 oninput="searchEquipment()" />
+        </div>
         <div class="table-wrap">
           <table class="table"><thead><tr><th>Name</th><th>Tag</th><th>Category</th><th>Location</th><th>Status</th><th></th></tr></thead>
             <tbody id="equipment-rows"></tbody></table>
@@ -289,6 +294,8 @@
       </div>
       <div class="card">
         <div class="card-toolbar">
+          <input id="wo-search" type="search" placeholder="Search problem, notes or machine"
+                 oninput="searchWork()" />
           <select id="wo-status-filter" onchange="loadWork()">
             <option value="">Any status</option>
             <option value="open">Open</option>
@@ -346,7 +353,10 @@
             <input type="date" id="history-from" onchange="loadHistory()" /></label>
           <label><span>Closed to</span>
             <input type="date" id="history-to" onchange="loadHistory()" /></label>
+          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
+                 oninput="searchHistory()" />
           <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
+          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
         </div>
         <p id="history-summary" class="summary-line"></p>
         <div class="table-wrap">

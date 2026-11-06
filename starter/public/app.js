@@ -52,6 +52,21 @@ const strong = (v) => `<td class="cell-strong">${esc(v)}</td>`;
 const soft = (v, fallback = 'Not set') =>
   `<td class="cell-muted">${v ? esc(v) : fallback}</td>`;
 
+/** What is in a search box, trimmed. Missing box, empty string. */
+function searchTerm(selector) {
+  return ($(selector)?.value || '').trim();
+}
+
+/** Wait for typing to stop before asking the server. One request per pause, not
+ *  one per keystroke, and the list still feels immediate on a LAN. */
+function debounce(fn, ms = 150) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
 // ---------------------------------------------------------------- helpers
 async function api(path, options = {}) {
   const res = await fetch('/api' + path, {
@@ -133,8 +148,11 @@ function showPage(key) {
 }
 
 // -------------------------------------------------------------- equipment
+const searchEquipment = debounce(() => loadEquipment());
+
 async function loadEquipment() {
-  const rows = await api('/equipment');
+  const q = searchTerm('#eq-search');
+  const rows = await api(`/equipment${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
       ${strong(e.name)}${soft(e.asset_tag)}${soft(e.category)}${soft(e.location)}
@@ -147,7 +165,9 @@ async function loadEquipment() {
         <button class="ghost small danger" onclick="removeEquipment(${e.id})">Delete</button>
       </td>
     </tr>`).join('')
-    || emptyRow(6, 'No machines yet. Add the first one and it will appear here.');
+    || emptyRow(6, searchTerm('#eq-search')
+      ? `No machine matches "${searchTerm('#eq-search')}". Clear the search to see them all.`
+      : 'No machines yet. Add the first one and it will appear here.');
 
   const options = rows.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;
@@ -190,9 +210,24 @@ let workCache = [];
 let editingWork = null;
 let assignable = [];          // { id, name } — fetched once per session
 
-async function loadWork() {
+/**
+ * The filters on the Work orders screen, as a query string. The list and the CSV
+ * download both call this, so the file cannot disagree with the screen.
+ */
+function workQuery() {
+  const params = new URLSearchParams();
   const status = $('#wo-status-filter')?.value;
-  workCache = await api(`/work-orders${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  const q = searchTerm('#wo-search');
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+const searchWork = debounce(() => loadWork());
+
+async function loadWork() {
+  workCache = await api(`/work-orders${workQuery()}`);
   // A technician may not read the assignable list. That is expected, and it must
   // not be confused with "the work-order fetch failed" — this catch is scoped to
   // the assignee lookup alone. The assertion that guards the empty state reads
@@ -224,7 +259,9 @@ async function loadWork() {
           <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
         </td>
       </tr>`)).join('')
-    || emptyRow(6, 'No work orders match. Create one with "New work order", or clear the filter.');
+    || emptyRow(6, searchTerm('#wo-search')
+      ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
+      : 'No work orders match. Create one with "New work order", or clear the filter.');
 }
 
 function ownerSelect(workId, current) {
@@ -476,8 +513,7 @@ function today() {
 // filter on the page would append one page's setting to the other page's file
 // and rely on the server ignoring it — a habit that hides real bugs.
 function downloadWorkOrders() {
-  const status = $('#wo-status-filter')?.value;
-  window.location = `/api/export/work-orders.csv${status ? `?status=${encodeURIComponent(status)}` : ''}`;
+  window.location = `/api/export/work-orders.csv${workQuery()}`;
 }
 
 function downloadParts() {

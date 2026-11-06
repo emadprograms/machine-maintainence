@@ -690,8 +690,13 @@ const missingIds = literalIds.filter((id) => !html.includes(`id="${id}"`));
 ok('every element the page looks up by id exists in the markup',
   missingIds.length === 0, `missing: ${missingIds.join(', ')}`);
 
-ok('the export buttons are on the page', handlers.filter((h) => h.startsWith('download')).length === 2,
-  handlers.join(', '));
+// Named, not counted: a count passes when a third export is added and says
+// nothing about which file you get.
+const exportHandlers = [...new Set(handlers.filter((h) => h.startsWith('download')))];
+ok('every filtered list can also be written to a file',
+  ['downloadWorkOrders', 'downloadParts', 'downloadHistory']
+    .every((h) => exportHandlers.includes(h)),
+  exportHandlers.join(', '));
 ok('both exports read a filter that is on the page',
   html.includes('id="wo-status-filter"') && html.includes('id="low-stock-filter"'));
 
@@ -950,7 +955,74 @@ ok('no Google Fonts / CDN / remote fetch',
 // --------------------------------------- what the owner's machine taught us
 // Four failures, one per section below. Each assertion is written so that it
 // fails again if the fix is taken out — a green run here means something.
-console.log('\nPhase 14 — the record');
+console.log('\nPhase 15 — find it');
+
+// A machine and two jobs whose words nothing else in the database uses, so a
+// search assertion cannot pass on somebody else's row.
+const press = await c2('/api/equipment', {
+  method: 'POST',
+  body: { name: 'Searchable Press', asset_tag: 'SRCH-77', location: 'Bay 9', category: 'Pressing' },
+});
+const hose = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: press.data.id, title: 'Hydraulic hose burst' },
+});
+const flywheel = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: press.data.id, title: 'Noise from flywheel' },
+});
+await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+
+// FIND-01 — one box over the problem, the notes and the machine's name.
+const byProblem = await c2('/api/work-orders?q=hose');
+ok('search finds a job by a word in its title',
+  byProblem.data.length === 1 && byProblem.data[0].title === 'Hydraulic hose burst',
+  JSON.stringify(byProblem.data.map((w) => w.title)));
+const byMachineName = await c2('/api/work-orders?q=Searchable');
+ok('search finds jobs through the machine they belong to',
+  byMachineName.data.length === 2, `${byMachineName.data.length} rows`);
+const shouting = await c2('/api/work-orders?q=HYDRAULIC');
+ok('search ignores case', shouting.data.length === 1, `${shouting.data.length} rows`);
+const wildcard = await c2('/api/work-orders?q=%25');
+ok('a percent sign searches for a percent sign, not for everything',
+  wildcard.data.length === 0, `${wildcard.data.length} rows matched a wildcard`);
+
+const machineByTag = await c2('/api/equipment?q=SRCH-77');
+ok('machines can be found by asset tag', machineByTag.data.length === 1,
+  `${machineByTag.data.length} rows`);
+const machineByPlace = await c2('/api/equipment?q=Bay%209');
+ok('machines can be found by where they are', machineByPlace.data.length === 1,
+  `${machineByPlace.data.length} rows`);
+
+// FIND-02 — search composes with the filters that already existed.
+const composed = await c2('/api/work-orders?q=hose&status=done');
+ok('search composes with the status filter',
+  composed.data.length === 0, `${composed.data.length} rows: the hose job is still open`);
+const historySearch = await c2('/api/history?status=done&q=flywheel');
+ok('search composes with the history screen',
+  historySearch.data.rows.length === 1 && historySearch.data.rows[0].title === 'Noise from flywheel',
+  JSON.stringify(historySearch.data.rows.map((r) => r.title)));
+const historyBoth = await c2('/api/history?status=done&q=flywheel&from=2020-01-01&to=2020-12-31');
+ok('search and a date range narrow together',
+  historyBoth.data.total === 0, `${historyBoth.data.total} rows`);
+
+// FIND-03 — the file is the screen's query with another output.
+const searchedScreen = await c2('/api/work-orders?q=hose');
+// A text client of our own: makeTextClient signs in and keeps the cookie, which
+// is the only way to fetch a file endpoint from here.
+const csvForSearch = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const searchedCsvText = (await csvForSearch('/api/export/work-orders.csv?q=hose')).text;
+const csvRows = parseCsv(searchedCsvText).slice(1);
+ok('the work-order export applies the same search as the screen',
+  csvRows.length === searchedScreen.data.length && searchedCsvText.includes('Hydraulic hose burst')
+  && !searchedCsvText.includes('Noise from flywheel'),
+  `${csvRows.length} csv rows vs ${searchedScreen.data.length} on screen`);
+
+// FIND-04 — "nothing matched" is not "there is nothing".
+ok('a search with no hits says so instead of showing an empty list',
+  /Nothing matches "/.test(appUrl) && /No machine matches "/.test(appUrl)
+  && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
+  'one of the three search empty states is missing');
+
+console.log('\nPhase 14 — the record');console.log('\nPhase 14 — the record');
 
 // A machine and two jobs of our own, so nothing here depends on what earlier
 // phases happened to leave behind.

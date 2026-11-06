@@ -21,6 +21,10 @@ function statusBadge(status) {
 }
 
 // ------------------------------------------------------------ the screen
+/**
+ * The filters on the History screen, as a query string. The screen and its CSV
+ * download both call this — the file is the screen's query with another output.
+ */
 function historyQuery() {
   const params = new URLSearchParams();
   // The History screen is about finished work; a job still running belongs on
@@ -28,8 +32,10 @@ function historyQuery() {
   params.set('status', 'done');
   const from = $('#history-from').value;
   const to = $('#history-to').value;
+  const q = ($('#history-search')?.value || '').trim();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
+  if (q) params.set('q', q);
   return `?${params.toString()}`;
 }
 
@@ -61,11 +67,14 @@ export function renderHistory({ rows, total, shown }) {
   $('#history-summary').textContent = count === 0 ? ''
     : `${count} closed ${count === 1 ? 'job' : 'jobs'}`
       + (shown < count ? ` · showing the most recent ${shown}` : '');
+  const searched = ($('#history-search')?.value || '').trim();
   $('#history-rows').innerHTML = rows.length
     ? rows.map(historyRow).join('')
-    : emptyRow(5, range
-      ? 'Nothing was closed between those dates. Widen the range, or clear it.'
-      : 'Nothing has been closed yet. A work order appears here once it is marked done.');
+    : emptyRow(5, searched
+      ? `Nothing closed matches "${searched}". Clear the search to see everything.`
+      : range
+        ? 'Nothing was closed between those dates. Widen the range, or clear it.'
+        : 'Nothing has been closed yet. A work order appears here once it is marked done.');
 }
 
 export async function loadHistory() {
@@ -79,8 +88,16 @@ export async function loadHistory() {
 export function clearHistoryFilters() {
   $('#history-from').value = '';
   $('#history-to').value = '';
+  if ($('#history-search')) $('#history-search').value = '';
   return loadHistory();
 }
+
+/** The same filters as the screen, written out as a file. */
+export function downloadHistory() {
+  window.location = `/api/export/history.csv${historyQuery()}`;
+}
+
+export const searchHistory = debounce(() => loadHistory());
 
 // --------------------------------------------------- one machine's history
 function machineHistoryRow(w) {
@@ -122,4 +139,5 @@ export function closeMachineHistory() {
 // module's exports. Four lines here beats four wrappers in app.js.
 Object.assign(window, {
   loadHistory, clearHistoryFilters, openMachineHistory, closeMachineHistory,
+  downloadHistory, searchHistory,
 });

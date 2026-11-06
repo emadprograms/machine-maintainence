@@ -8,7 +8,7 @@ import { DATA_DIR, DB_PATH, rememberFirstPassword, forgetFirstPassword } from '.
 import { open as openSession, userIdOf, revoke as revokeSession, purgeExpired } from './sessions.js';
 import { createLoginLog } from './login-log.js';
 import { nowStamp, parseDay } from './dates.js';
-import { historyFilter, historySql } from './history-query.js';
+import { workOrderFilter, partsFilter, equipmentFilter, historyFilter, historySql } from './filters.js';
 import { hashPassword, verifyPassword, signToken, verifyToken, randomPassword } from './auth.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -194,22 +194,9 @@ function sendCsv(res, filename, rows, columns) {
   res.end(body);
 }
 
-// The WHERE clauses live here so the list route and the export route cannot
-// drift apart. A separate export query is how "the file does not match the
-// screen" gets shipped (CSV-03).
-function workOrderFilter(query) {
-  const where = [];
-  const params = [];
-  if (query.status) { where.push('w.status = ?'); params.push(String(query.status)); }
-  if (query.equipment_id) { where.push('w.equipment_id = ?'); params.push(Number(query.equipment_id)); }
-  if (query.assigned_to) { where.push('w.assigned_to = ?'); params.push(Number(query.assigned_to)); }
-  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
-}
-
-function partsFilter(query) {
-  if (query.low) return { sql: 'WHERE p.qty <= p.reorder_level', params: [] };
-  return { sql: '', params: [] };
-}
+// The WHERE clauses now live in filters.js: one home for "which rows", shared by
+// every list screen and both exports. A separate export query is how "the file
+// does not match the screen" gets shipped (CSV-03).
 
 // ------------------------------------------------------------------ API
 const api = {
@@ -263,8 +250,10 @@ const api = {
   }),
 
   // ---- equipment
-  'GET /api/equipment': route(async (_req, res) =>
-    send(res, 200, all('SELECT * FROM equipment ORDER BY name'))),
+  'GET /api/equipment': route(async (req, res) => {
+    const f = equipmentFilter(req.query);
+    send(res, 200, all(`SELECT e.* FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params));
+  }),
 
   'POST /api/equipment': route(async (req, res) => {
     const b = await readBody(req);
@@ -628,6 +617,25 @@ const api = {
       b.name ?? target.name, b.role ?? target.role,
       b.active === undefined ? target.active : (b.active ? 1 : 0), target.id);
     send(res, 200, get('SELECT id, name, email, role, active FROM users WHERE id = ?', target.id));
+  }),
+
+  // ---- history as a file. It uses historyFilter, exactly as the screen does,
+  // so "what did we close in October" is one query with two renderings.
+  'GET /api/export/history.csv': route(async (req, res) => {
+    const filter = historyFilter(req.query);
+    if (filter.error) return send(res, 400, { error: filter.error });
+    // No LIMIT here on purpose: the screen shows the most recent 500, but a file
+    // is the place to put everything that matches.
+    const rows = all(historySql(filter, 1_000_000).rows, ...filter.params);
+    sendCsv(res, 'history.csv', rows, [
+      { key: 'equipment_name', label: 'Machine' },
+      { key: 'title', label: 'Job' },
+      { key: 'status', label: 'Status' },
+      { key: 'owner', label: 'Owner' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'created_at', label: 'Opened' },
+      { key: 'closed_at', label: 'Closed' },
+    ]);
   }),
 
   // ---- CSV export. Same filter builders as the list routes above, so the file

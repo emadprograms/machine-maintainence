@@ -149,7 +149,7 @@ already and can only say what needs attention now.
 
 - [x] **Phase 14: The record** — a machine's own history, and a History screen of closed
       work with a date range (HIST-01 … HIST-04)
-- [ ] **Phase 15: Find it** — free-text search composed with the existing filters, and a
+- [x] **Phase 15: Find it** — free-text search composed with the existing filters, and a
       CSV export built from the same filter (FIND-01 … FIND-04)
 - [ ] **Phase 16: What it cost** — labour hours, parts and labour cost per job, and a
       monthly report with its own export (COST-01 … COST-04)
