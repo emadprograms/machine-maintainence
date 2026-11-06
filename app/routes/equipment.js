@@ -25,9 +25,14 @@ export default {
   // dropdowns that start new work.
   'GET /api/equipment': route(async (req, res) => {
     const f = equipmentFilter(req.query);
-    const rows = all(`SELECT e.* FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params);
-    // `status` on the way out is derived; `service_status` is what is stored.
-    send(res, 200, withStatus(rows));
+    const rows = withStatus(
+      all(`SELECT e.* FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params));
+    // `status` is the derived state (down/active/retired); `service_status` is what is
+    // stored. Filtering on the derived one has to happen after it is worked out —
+    // which is why this is a JavaScript filter and not another WHERE clause. Before
+    // 261106-eqv this parameter filtered the raw column, where 'down' no longer lives.
+    const wanted = String(req.query.status || '');
+    send(res, 200, wanted ? rows.filter((m) => m.status === wanted) : rows);
   }),
 
   'POST /api/equipment': route(async (req, res) => {

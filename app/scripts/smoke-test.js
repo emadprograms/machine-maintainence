@@ -1139,7 +1139,8 @@ ok('the work-order export applies the same search as the screen',
 
 // FIND-04 — "nothing matched" is not "there is nothing".
 ok('a search with no hits says so instead of showing an empty list',
-  /Nothing matches "/.test(clientSrc) && /No machine matches "/.test(clientSrc)
+  /Nothing matches "/.test(clientSrc)
+  && /Nothing in this filter matches "/.test(readFileSync(join(root, 'public', 'machines.js'), 'utf8'))
   && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
   'one of the three search empty states is missing');
 
@@ -1568,8 +1569,16 @@ ok('the edit form carries every field a machine has',
   ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
     .every((f) => indexEq.includes(`id="${f}"`)),
   'a field missing from the form is a field nobody can correct');
-ok('and no longer carries a status control at all',
-  !indexEq.includes('id="ee-status"') && !/<option value="down">/.test(indexEq));
+// Scoped to the dialog: the Machines toolbar legitimately offers a "Down right now"
+// filter now, and a page-wide search for `<option value="down">` would call that a
+// status field. The question is what the editor can set.
+{
+  const editor = (indexEq.match(/<dialog id="equipment-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+  ok('the machine editor carries no status control at all',
+    editor.length > 0 && !editor.includes('id="ee-status"')
+    && !/<select/.test(editor) && !/<option/.test(editor),
+    editor ? 'the editor can still set a status' : 'the editor dialog is gone');
+}
 ok('the editor says where the state comes from', /work orders/i.test(indexEq));
 ok('the form is filled from the row that was clicked, not from a second request',
   editFn.includes('equipmentRows.find') && editFn.includes('#ee-name')
@@ -1599,16 +1608,41 @@ ok('Edit, Retire and Delete are drawn only for an admin',
   && actionsFn.includes('removeEquipment'), actionsFn ? 'no gate' : 'actions() is not defined');
 ok('History is offered to everybody',
   !/admin \? `<button[^`]*openMachineHistory/.test(actionsFn) && actionsFn.includes('openMachineHistory'));
-ok('the Machines screen offers a "show retired" toggle',
-  /id="eq-show-retired" type="checkbox"/.test(indexEq)
-  && /id="eq-show-retired"[^>]*onchange="loadEquipment\(\)"/.test(indexEq));
-ok('and it starts off, so the everyday list is machines in service',
-  !/id="eq-show-retired" type="checkbox" checked/.test(indexEq)
-  && !/id="eq-show-retired"[^>]*\schecked/.test(indexEq));
-// A literal fragment of source, so `includes` rather than a regex: the braces and
-// question mark of a template string are exactly the characters a regex mangles.
-ok('the list asks for the service the toggle names',
-  appEq.includes("service=${retired ? 'all' : 'active'}"), 'the toggle changes nothing');
+ok('the Machines screen filters by a named view, not a hidden-retired checkbox',
+  /<select id="eq-filter" onchange="loadEquipment\(\)"/.test(indexEq)
+  && !indexEq.includes('eq-show-retired'));
+ok('the four views are in service, down, retired and everything',
+  ['in', 'down', 'retired', 'all'].every((v) =>
+    new RegExp(`<option value="${v}">`).test(indexEq)));
+ok('the everyday view — in service — is the one it opens on',
+  /<select id="eq-filter"[^>]*>\s*<option value="in">/.test(indexEq));
+ok('each view asks the server for the machines it names',
+  ["in: { query: 'service=active'", "down: { query: 'service=active&status=down'",
+    "retired: { query: 'service=retired'", "all: { query: 'service=all'"]
+    .every((frag) => appEq.includes(frag)), 'a view with no query is a view that lies');
+// The table of views is easy to assert and easy to leave unused: a mutation that
+// replaced the lookup with `VIEWS.in` passed every check above. This one reads the
+// lookup itself.
+ok('the chosen view is the one that is used',
+  appEq.includes("VIEWS[$('#eq-filter')?.value]"), 'the filter is defined and then ignored');
+ok('a view that finds nothing says which view found nothing',
+  ['Nothing is down right now.', 'No machines have been retired.']
+    .every((line) => appEq.includes(line)));
+// `status=down` on an empty database passes vacuously, so this makes a machine
+// down first and checks it is found — and that the answer is not everything.
+const blocked = (await c('/api/equipment', { method: 'POST', body: { name: 'Grinder (blocked)' } })).data;
+await c('/api/work-orders', { method: 'POST', body: {
+  equipment_id: blocked.id, title: 'Wheel guard missing', priority: 'high' } });
+const downList = (await c('/api/equipment?status=down')).data;
+ok('the API can be asked for the machines that are down',
+  downList.some((e) => e.id === blocked.id) && downList.every((e) => e.status === 'down'),
+  downList.map((e) => `${e.name}:${e.status}`).join(', '));
+ok('and that answer is not the whole list',
+  downList.length < (await c('/api/equipment')).data.length);
+ok('a machine in service can still be down — the two filters ask different questions',
+  (await c('/api/equipment?service=active')).data.some((e) => e.id === blocked.id)
+  && (await c('/api/equipment?service=retired')).data.every((e) => e.status === 'retired'));
+await c(`/api/equipment/${blocked.id}`, { method: 'DELETE' });   // takes its job with it
 ok('the dropdowns that start new work never come from the filtered table',
   /const \[rows, inService\] = await Promise\.all/.test(appEq)
   && /inService\.map\(\(e\) => `<option/.test(appEq)
@@ -1618,8 +1652,6 @@ ok('the due list asks only for machines in service',
   'the due list still shows maintenance on machines that have left');
 ok('the maintenance list asks the same way',
   appSrc13.includes("api('/pm?service=active')"), 'the two lists can disagree');
-ok('an empty list says that retired machines are hidden',
-  /tick Show retired/.test(appEq), 'the empty state blames the search box for a retired machine');
 ok('and they ask for machines in service with no search term',
   /api\('\/equipment\?service=active'\)/.test(appEq));
 ok('the app remembers who signed in', /window\.me = user/.test(

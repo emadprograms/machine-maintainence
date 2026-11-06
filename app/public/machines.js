@@ -48,18 +48,25 @@ function actions(machine) {
 // would use.
 let equipmentRows = [];
 
+// The four views of the machine list. One filter with four answers, instead of a
+// checkbox that could only say "hide the scrap" or "show me everything everywhere".
+const VIEWS = {
+  in: { query: 'service=active', empty: 'No machines in service. Add the first one.' },
+  down: { query: 'service=active&status=down', empty: 'Nothing is down right now.' },
+  retired: { query: 'service=retired', empty: 'No machines have been retired.' },
+  all: { query: 'service=all', empty: 'No machines yet. Add the first one and it will appear here.' },
+};
+
 export async function loadEquipment() {
   const q = searchTerm('#eq-search');
-  const retired = $('#eq-show-retired').checked;
-  // Two lists, deliberately. The table is what this screen is filtered to; the
-  // dropdowns are "every machine in service", because a new job or a new
+  const view = VIEWS[$('#eq-filter')?.value] ?? VIEWS.in;
+  // Two requests, deliberately. The table is the view this screen is filtered to;
+  // the dropdowns are "every machine in service", because a new job or a new
   // maintenance schedule must not be startable on a machine that has left. They
   // used to share one array, so typing in the search box narrowed the dropdowns
   // too — searching "pump" left only pumps to report a fault against.
-  // The second list is always in service, whatever the toggle says: the toggle is
-  // about what this screen *shows*, never about what new work may be started on.
   const [rows, inService] = await Promise.all([
-    api(`/equipment?service=${retired ? 'all' : 'active'}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+    api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
     api('/equipment?service=active'),
   ]);
   equipmentRows = rows;
@@ -71,14 +78,9 @@ export async function loadEquipment() {
       ${statusCell(e)}
       ${actions(e)}
     </tr>`).join('')
-    // With retired machines hidden, "no match" has two possible causes and only one
-    // of them is the search box. Saying so where the list is empty is cheaper than a
-    // support call asking why a machine vanished.
-    || emptyRow(6, retired
-      ? (q ? `No machine matches "${q}". Clear the search to see them all.`
-        : 'No machines yet. Add the first one and it will appear here.')
-      : `${q ? `Nothing in service matches "${q}".` : 'Nothing in service.'}`
-        + ' Machines that have left are hidden — tick Show retired.');
+    || emptyRow(6, q
+      ? `Nothing in this filter matches "${q}". Clear the search to see the rest.`
+      : view.empty);
 
   const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;

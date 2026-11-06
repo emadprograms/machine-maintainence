@@ -60,9 +60,8 @@ export function equipmentFilter(query = {}) {
   // called this list changes behaviour.
   if (query.service === 'active') where.push(IN_SERVICE_SQL);
   if (query.service === 'retired') where.push(RETIRED_SQL);
-  // `status` is the raw column (active/down/retired). `down` is derived now, so a
-  // request filtered on it would answer wrongly — the list route derives afterwards.
-  if (query.status) { where.push('e.status = ?'); params.push(String(query.status)); }
+  // No `status` clause here on purpose: `down` is derived from the work orders, so
+  // the route filters the finished list instead. `service` is the stored column.
 
   return whereOf(where, params);
 }
