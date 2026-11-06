@@ -2,7 +2,7 @@
 quick_id: 261106-eqt
 slug: retired-machines-out-of-the-way
 date: 2026-11-06
-status: in_progress
+status: complete
 files_modified: [app/filters.js, app/routes/equipment.js, app/public/machines.js, app/public/index.html, app/public/app.css, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
