@@ -2,6 +2,53 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v3.0 — The record
+
+**Shipped:** 2026-11-06
+**Phases:** 3 | **Plans:** 3 | **Checks:** 203 → 240
+
+### What Was Built
+
+- A machine's history (open jobs included) and a History screen of closed work with a
+  date range; three distinct empty states, because "nothing matches" and "no machine
+  chosen" are different sentences.
+- Search on every list, composing with each existing filter, with `%` and `_` escaped;
+  every WHERE clause moved into `filters.js` so each screen and its CSV are one query.
+- Labour hours, a configurable hourly rate, a cost per job computed in SQL, and a
+  monthly report with its own export.
+
+### What Worked
+
+- **Moving the filter into a shared module before adding search.** Because export and
+  screen then called the same function, "the file matches the screen" stopped being a
+  promise and became an invariant — and the mutation that broke it (`export ignores q`)
+  was caught immediately.
+- **Writing a mutation for every phase.** Eight mutations were run across three phases;
+  all eight failed the assertion named for them. Two assertions were found vacuous this
+  way or by reading: a dialog count hard-coded to 5, and a `type="search"` check whose
+  pattern could never match the markup.
+
+### What Did Not Work
+
+- **An unfaithful mutation.** Replacing `hours * ?` with `hours * 0` changed the number
+  of bound parameters, so the server errored and an earlier phase crashed instead of the
+  intended assertion failing. A mutation must break exactly the thing it claims to.
+- **Trusting `node --check`.** A duplicated top-level `const` passed it and only failed
+  at module load. After a large insert, run the suite.
+- **A heredoc that appended an anchor instead of replacing it**, duplicating a section
+  header. `grep -c` after every insert would have caught it in one second.
+
+### Cumulative Quality
+
+| Milestone | Checks | Notable proof |
+|---|---|---|
+| v1.0 | 47 | `kill -9` durability; offline audit |
+| v1.1 | 119 | stock rollback on cancel; PM generation |
+| v2.0 | 203 | every screen reachable and populated; 23 jsdom render checks |
+| v3.0 | 240 | export matches screen; cost is exactly 125; sessions survive restart |
+
+---
+
 ## Milestone: v1.0 — Lean core, offline, on Windows
 
 **Shipped:** 2026-11-05
@@ -102,3 +149,7 @@
    to assert on.
 2. Exercise the product on its real platform before claiming it ships.
 3. Let tooling derive what tooling can derive from the repository.
+4. A mutation must break exactly the defect it names; one that breaks the plumbing proves
+   nothing.
+5. An assertion that cannot fail is worse than no assertion — it buys false confidence.
+   Count named things, not rows; match what the markup actually says.
