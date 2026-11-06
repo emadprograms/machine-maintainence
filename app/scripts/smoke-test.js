@@ -59,15 +59,20 @@ function makeClient() {
   let cookie = '';
   // `rawBody` sends bytes verbatim, so a test can prove what the server does with
   // a body it cannot parse. Without it this client can only ever send valid JSON.
-  return async (path, { method = 'GET', body, rawBody } = {}) => {
+  // A photograph is bytes, not JSON, and the answer comes back as bytes too, so
+  // the client can override the content type and always keeps the raw reply.
+  return async (path, { method = 'GET', body, rawBody, contentType } = {}) => {
     const res = await fetch(BASE + path, {
       method,
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': contentType || 'application/json', cookie },
       body: rawBody !== undefined ? rawBody : (body == null ? undefined : JSON.stringify(body)),
     });
     const setCookie = res.headers.get('set-cookie');
     if (setCookie) cookie = setCookie.split(';')[0];
-    return { status: res.status, data: await res.json().catch(() => ({})) };
+    const bytes = Buffer.from(await res.arrayBuffer());
+    let data = {};
+    try { data = JSON.parse(bytes.toString('utf8')); } catch { /* not JSON */ }
+    return { status: res.status, data, bytes, headers: res.headers };
   };
 }
 
@@ -751,7 +756,11 @@ ok('the client has no login timer at all',
 
 console.log('\nPhase 13 — one visual language');
 
-const uiCss = (html.match(/<style>([\s\S]*?)<\/style>/) || ['', ''])[1];
+// The stylesheet is its own file since 261106-eqs: index.html passed 600 lines
+// when the machine photograph was added.
+const uiCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+ok('the page loads its stylesheet from the app itself, not the internet',
+  /<link rel="stylesheet" href="\/app\.css" \/>/.test(html));
 const appSrc13 = readFileSync(join(root, 'public', 'app.js'), 'utf8');
 
 // Every screen opens with a header: name, purpose, and its action.
@@ -790,10 +799,16 @@ ok('each creating screen has its own dialog',
   `expected ${CREATING_DIALOGS.join(',')} — got ${creatingIds.join(',')}`);
 ok('the machine editor is a dialog too, and it is not a creating form',
   allDialogs.some((d) => dialogId(d) === 'equipment-edit'));
-ok('an editing dialog is filled before it is shown, never used to create',
-  /-edit$/.test('equipment-edit')
-  && /function editEquipment[\s\S]{0,600}openForm\('equipment-edit'\)/.test(
-    readFileSync(join(root, 'public', 'machines.js'), 'utf8')));
+// A fixed character budget was a proxy for the real rule, and the photograph
+// preview pushed the dialog past it. The rule is order: fill, then open.
+{
+  const src = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
+  const body = (src.match(/export function editEquipment[\s\S]*?\n\}/) || [''])[0];
+  ok('an editing dialog is filled before it is shown, never used to create',
+    body.includes('#ee-name') && body.includes('#ee-photo-preview')
+    && body.indexOf("openForm('equipment-edit')") > body.indexOf('#ee-name'),
+    body ? 'prefill after open, or missing' : 'editEquipment() is not defined');
+}
 // One close button per dialog, counted rather than hard-coded, so a dialog
 // added later cannot ship without a way to close it.
 const dialogCount = (html.match(/<dialog id="[\w-]+"/g) || []).length;
@@ -922,8 +937,20 @@ const dashText = JSON.stringify(capped.data);
 ok('the dashboard never carries an email address', !/@/.test(dashText.replace(/[^@]*$/, '')),
   'a user field leaked into the payload');
 ok('the dashboard carries no password field', !/password/i.test(dashText));
+// This used to scan the text for the words email/role/active, which was a
+// value-level test: the machine rows now carry service_status 'active' and it
+// failed on a payload with no user in it at all. A leaked user record is
+// recognised by its *keys*.
+const dashKeys = [];
+(function walk(v) {
+  if (Array.isArray(v)) v.forEach(walk);
+  else if (v && typeof v === 'object') {
+    for (const [k, x] of Object.entries(v)) { dashKeys.push(k); walk(x); }
+  }
+}(capped.data));
 ok('the dashboard carries no user records',
-  !/(^|\W)(email|role|active)(\W|$)/.test(dashText), 'user-shaped keys present');
+  !dashKeys.some((k) => /^(email|password|password_hash|role|active|salt)$/.test(k)),
+  `user-shaped keys present: ${dashKeys.join(',')}`);
 ok('an anonymous dashboard request is refused',
   (await fetch(BASE + '/api/dashboard')).status === 401);
 
@@ -1282,31 +1309,43 @@ ok('an empty machine, an empty range and a failed load read differently',
   'one of the three empty states is missing');
 ok('the history screen is reachable and the machine row opens it',
   appUrl.includes("{ key: 'history', label: 'History' }")
-  && /openMachineHistory\(\$\{e\.id\}/.test(clientSrc),
+  && /openMachineHistory\(\$\{machine\.id\}/.test(clientSrc),
   'no sidebar entry or no way in from a machine');
 
-console.log('\nMachines — correcting a record');
+console.log('\nMachines — who may edit, and where the state comes from');
 
-// Until now a machine could be added, retired, restored and deleted, but never
-// corrected: a typo in its name was permanent, and status 'down' — which the
-// dashboard counts — could not be set from any screen.
+// Until 261106-eqs a machine's state was a field on an edit form, so two things
+// could be true at once: a job saying "being replaced" and a badge saying "down"
+// because nobody went back to the second screen. The state is now derived from
+// the work orders (app/status.js), an administrator is the only person who may
+// correct what is recorded, and the photograph is a real file beside the database.
+
+const machineById = async (machineId) =>
+  (await c('/api/equipment')).data.find((e) => e.id === machineId) || {};
+
+// ---- the record itself ----------------------------------------------------
 const fixable = await c('/api/equipment', { method: 'POST', body: {
   name: 'Forklift typo', asset_tag: 'FL-9', category: 'forklift', location: 'Bay 9' } });
+ok('a new machine is running — nothing has gone wrong with it yet',
+  fixable.data.status === 'active', `status=${fixable.data.status}`);
+
 const fixed = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: {
   name: 'Forklift A', asset_tag: 'FL-001', category: 'Handling', location: 'Bay 1',
-  manufacturer: 'Toyota', status: 'down', notes: 'Mast repaired in March' } });
+  manufacturer: 'Toyota', notes: 'Mast repaired in March' } });
 ok('a machine can be renamed', fixed.data.name === 'Forklift A', String(fixed.data.name));
 ok('the whole record is corrected, not just the name',
   fixed.data.asset_tag === 'FL-001' && fixed.data.category === 'Handling'
   && fixed.data.location === 'Bay 1' && fixed.data.notes === 'Mast repaired in March',
   JSON.stringify(fixed.data));
-ok('a machine can be marked down',
-  fixed.data.status === 'down',
-  `status=${fixed.data.status} — "Machines down" on the dashboard had no screen that could set it`);
+ok('the barcode is stored and comes back', fixed.data.asset_tag === 'FL-001',
+  String(fixed.data.asset_tag));
 ok('the manufacturer is stored and comes back',
   fixed.data.manufacturer === 'Toyota', String(fixed.data.manufacturer));
 ok('the search sees the new name at once',
   (await c('/api/equipment?q=Forklift')).data.some((e) => e.name === 'Forklift A'));
+ok('the response says what is stored and what is derived',
+  fixed.data.service_status === 'active' && fixed.data.status === 'active',
+  JSON.stringify({ service_status: fixed.data.service_status, status: fixed.data.status }));
 
 const nameless = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { name: '   ' } });
 ok('a machine cannot be renamed to nothing',
@@ -1314,32 +1353,224 @@ ok('a machine cannot be renamed to nothing',
 ok('editing a machine that is gone is a 404',
   (await c('/api/equipment/999999', { method: 'PUT', body: { name: 'Ghost' } })).status === 404);
 
-// The wiring. The API above could always do this; the screen is what was missing,
-// and no browser exists here to click it, so the controls are checked by reading.
+// ---- the state cannot be typed -------------------------------------------
+const typed = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'down' } });
+ok('a machine cannot simply be marked down', typed.status === 400, JSON.stringify(typed.data));
+ok('the refusal sends the reader to the work order, not the field',
+  /work order/i.test(typed.data.error || ''), String(typed.data.error));
+ok('an unknown state is refused too',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'broken' } })).status === 400);
+ok('retiring is still an administrator decision',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } }))
+    .data.status === 'retired');
+await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
+
+// ---- the state follows the work orders ------------------------------------
+const statusOf = async (machineId) => (await machineById(machineId)).status;
+const whyOf = async (machineId) => String((await machineById(machineId)).status_reason || '');
+const job = async (body) => (await c('/api/work-orders', { method: 'POST', body })).data;
+const setJob = (jobId, body) => c(`/api/work-orders/${jobId}`, { method: 'PATCH', body });
+
+const urgent = await job({ equipment_id: fixable.data.id, title: 'Mast cracked', priority: 'high' });
+ok('a high-priority job that is still open puts the machine down',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+ok('and the list says which job did it',
+  /Mast cracked/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+ok('the dashboard counts the same machine as down',
+  (await c('/api/dashboard')).data.machines.items.some((m) => m.id === fixable.data.id),
+  'the card and the list disagree about a machine');
+
+await setJob(urgent.id, { status: 'done' });
+ok('closing that job brings the machine back to running',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+
+const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
+ok('a low-priority job that is only open does not stop production',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(routine.id, { status: 'in_progress' });
+ok('but a job somebody is working on right now does',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+ok('the reason names the work in progress',
+  /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+await setJob(routine.id, { status: 'done' });
+
+const elsewhere = await job({ equipment_id: fixable.data.id, title: 'Been replaced', priority: 'high' });
+ok('a retired machine reads retired, not down, even with a job on it',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } }))
+    .data.status === 'retired');
+await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
+ok('restoring it does not hide the job that is still open',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(elsewhere.id, { status: 'done' });
+
+// ---- a technician keeps the doors they need ------------------------------
+await c('/api/users', { method: 'POST', body: {
+  name: 'Shop floor', email: 'shop@local', password: 'shop-password', role: 'tech' } });
+const shop = makeClient();
+await shop('/api/login', { method: 'POST', body: { email: 'shop@local', password: 'shop-password' } });
+
+const techEdit = await shop(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { name: 'Nope' } });
+ok('a technician cannot edit a machine', techEdit.status === 403, `status ${techEdit.status}`);
+ok('a technician cannot upload a photograph — the route is shut before the bytes are read',
+  (await shop(`/api/equipment/${fixable.data.id}/photo`, {
+    method: 'POST', contentType: 'image/jpeg',
+    rawBody: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]) })).status === 403);
+ok('a technician cannot remove a photograph',
+  (await shop(`/api/equipment/${fixable.data.id}/photo`, { method: 'DELETE' })).status === 403);
+ok('a technician cannot retire a machine',
+  (await shop(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } })).status === 403);
+const techAdded = await shop('/api/equipment', { method: 'POST', body: { name: 'Press 3' } });
+ok('but a technician can still add a machine', techAdded.status === 201, `status ${techAdded.status}`);
+ok('and can still report a job on it',
+  (await shop('/api/work-orders', { method: 'POST', body: {
+    equipment_id: techAdded.data.id, title: 'Guard loose', priority: 'high' } })).status === 201);
+ok('which is enough to take that machine out of service',
+  (await machineById(techAdded.data.id)).status === 'down');
+
+// ---- the photograph is a file, and the server decides what it is ----------
+const photosDir = join(root, 'data', 'photos');
+const photoCount = () => (existsSync(photosDir) ? readdirSync(photosDir).length : 0);
+const jpegBytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+  Buffer.alloc(600, 7), Buffer.from([0xff, 0xd9])]);
+
+ok('a machine with no photograph says so',
+  (await c(`/api/equipment/${fixable.data.id}/photo`)).status === 404);
+const beforePhoto = photoCount();
+const shot = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph can be attached', shot.status === 200, JSON.stringify(shot.data));
+ok('the stored name is not the one the client would have sent',
+  Boolean(shot.data.photo) && !/jpegBytes|photo\.jpg/.test(shot.data.photo), String(shot.data.photo));
+const fetched = await c(`/api/equipment/${fixable.data.id}/photo`);
+ok('it comes back byte for byte', fetched.status === 200 && fetched.bytes.equals(jpegBytes),
+  `${fetched.status}, ${fetched.bytes.length} bytes`);
+ok('it comes back as an image, not as JSON',
+  /^image\//.test(String(fetched.headers.get('content-type'))), String(fetched.headers.get('content-type')));
+ok('the list now says the machine has a photograph',
+  Boolean((await machineById(fixable.data.id)).photo));
+
+const replaced = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/png',
+  rawBody: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 1)]) });
+ok('replacing it is allowed', replaced.status === 200, JSON.stringify(replaced.data));
+ok('and leaves one file behind, not two', photoCount() === beforePhoto + 1,
+  `${beforePhoto} -> ${photoCount()}`);
+
+const textAsJpeg = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.from('this is not an image, whatever the header says') });
+ok('text sent as a JPEG is refused on its bytes, not its header',
+  textAsJpeg.status === 400 && /JPEG, PNG or WebP/.test(textAsJpeg.data.error || ''),
+  JSON.stringify(textAsJpeg.data));
+
+const huge = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
+ok('a photograph over the cap is refused with 413, not buffered',
+  huge.status === 413, `status ${huge.status}`);
+
+ok('the photograph can be removed without touching the record',
+  (await c(`/api/equipment/${fixable.data.id}/photo`, { method: 'DELETE' })).status === 200
+  && !(await machineById(fixable.data.id)).photo);
+ok('and the file goes with it', photoCount() === beforePhoto, String(photoCount()));
+
+await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+const storedName = (await machineById(fixable.data.id)).photo;
+await c(`/api/equipment/${fixable.data.id}`, { method: 'DELETE' });
+ok('deleting a machine deletes its photograph',
+  !storedName || !existsSync(join(photosDir, storedName)), String(storedName));
+await c(`/api/equipment/${techAdded.data.id}`, { method: 'DELETE' });
+
+// ---- what the screen does, read as text (no browser exists here) ---------
 const appEq = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
 const indexEq = readFileSync(join(root, 'public', 'index.html'), 'utf8');
-const editFn = (appEq.match(/function editEquipment\([\s\S]*?\n\}/) || [''])[0];
-const saveFn = (appEq.match(/async function saveEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+const editFn = (appEq.match(/export function editEquipment\([\s\S]*?\n\}/) || [''])[0];
+const saveFn = (appEq.match(/export async function saveEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+const actionsFn = (appEq.match(/function actions\(machine\) \{[\s\S]*?\n\}/) || [''])[0];
+
+// Prose is not behaviour: an assertion that reads raw source cannot tell a rule
+// from a comment describing it, and one of the checks below failed on exactly
+// that. Comments come out before the code assertions run.
+const codeOnly = (text) => text
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 ok('every machine row offers Edit',
-  /onclick="editEquipment\(\$\{e\.id\}\)"/.test(appEq), 'no control, no edit');
-ok('the edit form carries every field the record has',
-  ['ee-name', 'ee-tag', 'ee-cat', 'ee-loc', 'ee-maker', 'ee-status', 'ee-notes', 'ee-id']
+  /onclick="editEquipment\(\$\{machine\.id\}\)"/.test(appEq), 'no control, no edit');
+ok('the edit form carries every field a machine has',
+  ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
     .every((f) => indexEq.includes(`id="${f}"`)),
   'a field missing from the form is a field nobody can correct');
-ok('the edit form can say a machine is down',
-  /<option value="down">/.test(indexEq));
+ok('and no longer carries a status control at all',
+  !indexEq.includes('id="ee-status"') && !/<option value="down">/.test(indexEq));
+ok('the editor says where the state comes from', /work orders/i.test(indexEq));
 ok('the form is filled from the row that was clicked, not from a second request',
   editFn.includes('equipmentRows.find') && editFn.includes('#ee-name')
-  && editFn.includes('#ee-status') && editFn.includes('openForm(\'equipment-edit\')'),
+  && editFn.includes('#ee-maker') && editFn.includes("openForm('equipment-edit')"),
   editFn ? 'prefill missing' : 'editEquipment() is not defined');
-ok('saving sends a PUT for that machine',
-  /method: 'PUT'/.test(saveFn) && /\/equipment\/\$\{machineId\}/.test(saveFn),
-  saveFn ? 'wrong verb or wrong URL' : 'saveEquipment() is not defined');
+ok('saving sends a PUT for that machine, without a status',
+  /method: 'PUT'/.test(saveFn) && /\/equipment\/\$\{machineId\}/.test(saveFn)
+  && !/\bstatus\s*:/.test(codeOnly(saveFn)),
+  saveFn ? 'wrong verb, wrong URL, or a status still being sent' : 'no saveEquipment()');
 ok('saving refuses an empty name before it reaches the server',
   /formError\('equipment-edit'/.test(saveFn) && /!name/.test(saveFn));
+ok('saving sends the photograph when one was chosen',
+  /uploadPhoto\(machineId, file\)/.test(saveFn), saveFn ? 'chosen file dropped' : 'no saveEquipment()');
+ok('a photograph over 2 MB is refused in the browser too',
+  /2 \* 1024 \* 1024/.test(appEq));
+ok('the photograph is uploaded as bytes to the machine\'s own route',
+  /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
+ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
+ok('the row explains why a machine is down', appEq.includes('status_reason'));
+ok('Edit, Retire and Delete are drawn only for an admin',
+  /const admin = window\.me\?\.role === 'admin'/.test(actionsFn)
+  && actionsFn.includes('editEquipment') && actionsFn.includes('toggleStatus')
+  && actionsFn.includes('removeEquipment'), actionsFn ? 'no gate' : 'actions() is not defined');
+ok('History is offered to everybody',
+  !/admin \? `<button[^`]*openMachineHistory/.test(actionsFn) && actionsFn.includes('openMachineHistory'));
+ok('the app remembers who signed in', /window\.me = user/.test(
+  readFileSync(join(root, 'public', 'app.js'), 'utf8')));
+const equipmentSrc = codeOnly(readFileSync(join(root, 'routes', 'equipment.js'), 'utf8'));
+const dashboardSrc = codeOnly(readFileSync(join(root, 'routes', 'dashboard.js'), 'utf8'));
+ok('no route decides what "down" means for itself',
+  !/['"]down['"]/.test(equipmentSrc) && !/["']down["']/.test(dashboardSrc)
+  && /downMachines\(\)/.test(dashboardSrc),
+  'a route still has its own opinion about what down means');
 
-await c(`/api/equipment/${fixable.data.id}`, { method: 'DELETE' });   // leave no fixture behind
+// ---- a database written by the old form ----------------------------------
+// The engine of this test is the migration itself: put a machine back into the
+// state the previous version could store, start the app against that file, and
+// look at the row again.
+{
+  const legacyDb = join(root, 'data', 'legacy.db');
+  rmSync(legacyDb, { force: true });
+  const env = { ...process.env, MM_DB: legacyDb };
+  spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"],
+    { cwd: root, env });
+  const seed = new DatabaseSync(legacyDb);
+  seed.prepare(`INSERT INTO equipment (name, status) VALUES ('Old press', 'down')`).run();
+  seed.close();
+  const started = spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"], { cwd: root, env });
+  const after = new DatabaseSync(legacyDb);
+  const row = after.prepare(`SELECT status FROM equipment WHERE name = 'Old press'`).get();
+  after.close();
+  ok('a machine left "down" by the old form is released on start-up',
+    row && row.status === 'active', row ? String(row.status) : 'row missing');
+  ok('and the log says how many it fixed',
+    /migrated: \d+ machine status/.test(String(started.stdout)),
+    String(started.stdout).trim().split('\n').pop());
+  const rerun = spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"], { cwd: root, env });
+  const again = new DatabaseSync(legacyDb);
+  const stillThere = again.prepare(`SELECT status FROM equipment WHERE name = 'Old press'`).get();
+  again.close();
+  ok('running the migration again changes nothing and says nothing',
+    stillThere.status === 'active' && !/machine status/.test(String(rerun.stdout)),
+    String(rerun.stdout).trim());
+  rmSync(legacyDb, { force: true });
+}
 
 console.log('\nDashboard — the last six months');
 

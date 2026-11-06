@@ -48,19 +48,22 @@ Check with `node --version`.
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
 | `values.js` | Turns what a browser sends into what the database may store | 54 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 296 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 316 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 131 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
+| `status.js` | What state a machine is in, worked out from its work orders | 78 |
+| `photos.js` | Machine photographs: type sniffed from the bytes, size capped | 71 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: styles, screens, forms | 599 |
+| `public/index.html` | The whole UI shell: every screen and form | 414 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 203 |
 | `public/app.js` | Fetches data and draws the main screens | 543 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 106 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 277 behaviours | 1,464 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 168 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 326 behaviours | 1,769 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -70,15 +73,15 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 43 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete | 48 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 110 |
 | `routes/work-orders.js` | work orders, work-orders.csv | 95 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 68 |
-| `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 73 |
+| `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 75 |
 | `routes/admin.js` | users, assignable people, backup | 81 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 56 |
 
-Total application code: **about 3,150 lines**, and about 1,370 of tests. No file is past the
+Total application code: **about 3,970 lines**, and about 1,920 of tests. No file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -108,8 +111,13 @@ Adding an endpoint means opening the file for that screen and adding one entry:
 rejects a malformed body before your handler sees it.
 
 ### `public/app.js` — the screen
-One function per page (`loadEquipment`, `loadWork`, ...) that calls `api('/equipment')`
-and writes HTML into a table.
+One function per page (`loadWork`, `loadParts`, ...) that calls `api('/equipment')` and
+writes HTML into a table. Screens big enough to have their own file — `machines.js`,
+`history.js` — use the same helpers, so there is one `api()` and one `badge()`.
+
+### `public/app.css` — how it looks
+One stylesheet, no framework and no CDN. It moved out of `index.html` when the machine
+photograph pushed that page past 600 lines.
 
 ---
 
@@ -122,9 +130,17 @@ and writes HTML into a table.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
-* **A machine can be corrected.** Edit on its row opens everything the record holds —
-  name, tag, category, location, manufacturer, status and notes — so a typo is fixable and
-  a machine can be marked *down* without retiring it.
+* **A machine can be corrected — by an administrator.** Edit on its row opens what the
+  record holds: name, barcode, manufacturer, category, location, notes and a photograph.
+  A technician sees History on every row but not Edit, Retire or Delete; the server refuses
+  those requests too, so the hidden button is not the protection.
+* **A machine's state comes from its work orders.** Nobody types *down*. The stored field
+  says only *active* or *retired*; `status.js` derives the rest: retired wins, otherwise any
+  unfinished job that is high priority or in progress means the machine is down, and the
+  list says which job put it there. Close the job and the badge clears itself.
+* **A machine can have a photograph.** JPEG, PNG or WebP up to 2 MB, stored as a file in
+  `photos/` beside the database. The type is decided by the first bytes of the file, not by
+  the name or the header the browser sent, and the filename is chosen by the server.
 * **A machine has a history.** The History button on its row opens every job ever
   reported against it, open ones included.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
@@ -223,9 +239,13 @@ function, and `sites: loadSites` to the `loaders` object in `showPage`.
   A power cut cannot leave a half-written database the way it can when the whole file is
   rewritten on every request.
 * **Nothing is written when you only view pages.** Opening a list does not touch the disk.
+* **A photograph is a file, not a blob.** The row keeps a filename the server chose, the
+  bytes live in `photos/`, and deleting the machine or replacing its picture deletes the
+  old file. A 2 MB cap is applied while reading, so a wrong pick cannot fill the disk.
 * Every change is a real transaction. If a step fails, the earlier steps are undone — for
   example, using 99 of a part with only 3 in stock leaves the stock exactly as it was.
-* `maintain.db` is your data. Copy it to back up; delete it to start over.
+* `maintain.db` is your data, and `photos/` holds the machine photographs beside it. Copy
+  the folder to back up; delete it to start over.
   `secret.txt` is the per-install signing key — keep it, or everyone is logged out.
 * **The side file is merged back after every save.** WAL mode normally leaves recent
   writes in `maintain.db-wal` until something closes the database, which meant a copy of
@@ -252,6 +272,20 @@ app.
 Upgrading from v2.0 needs nothing: on first start the app finds `data/maintain.db`, copies
 it (with `-wal`, `-shm` and `secret.txt`) to the new location, and says so. The old folder
 is left untouched.
+
+The folder holds four things:
+
+| | |
+|---|---|
+| `maintain.db` | every record |
+| `secret.txt` | the signing key: keep it, or everyone is signed out |
+| `backup-*.db` | snapshots taken by the Backup button |
+| `photos/` | machine photographs, one file each |
+
+That last one is why "copy the folder" is the instruction rather than "copy the database":
+the Backup button snapshots `maintain.db`, and a photograph is a file beside it. Restoring
+on the same machine is unaffected — the files are still there. Moving to another machine
+means copying `photos/` too.
 
 ### Back up
 
@@ -305,10 +339,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 277 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 326 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`277 passed, 0 failed`.
+`326 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.
@@ -331,6 +365,15 @@ native modules. You should see `OFFLINE-SAFE`.
 * The session lives in an **HttpOnly cookie**, so browser scripts cannot read it.
 * Signing out removes the session on the server; an old cookie will not work again.
 * There is **no public sign-up**. Accounts are created by an admin.
+* **Editing a machine is admin-only**: its record, its photograph, retiring it and deleting
+  it. A technician can add a machine and report a job on it — that is how a fault gets
+  written down — but the routes refuse a `PUT` from anyone else, so hiding the button is a
+  courtesy, not the protection.
+* **A machine's state is not typeable.** `PUT /api/equipment/:id` accepts `active` or
+  `retired` and answers 400 to `down`, pointing at the work order instead.
+* **An uploaded photograph is checked by its bytes.** JPEG/PNG/WebP is decided from the
+  file's first bytes, not from its name or the `Content-Type` header, and the stored name is
+  generated by the server.
 * The server listens on `0.0.0.0:3000`, which means other PCs on the workshop network can
   reach it. If you only want this PC, change `HOST` to `'127.0.0.1'` in `server.js`.
 

@@ -65,19 +65,21 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
 - **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
   code plus ~370 lines of test code. All eleven requirements validated; archived under
   `.planning/milestones/v1.0-*`.
-- **Codebase now (2026-11-06):** `app/` — about 3,150 lines of application code and
-  1,370 of tests. `server.js` is 116 lines of startup and routing; the handlers live in
-  `routes/`, one file per screen group (auth 52, record 43, equipment 40, work-orders 95,
-  parts 135, pm 68, dashboard 69, admin 81, report 56). Shared plumbing: `http.js` (106),
-  `values.js` (54), `who.js` (26), `db.js` (296), `filters.js` (131), `report.js` (97).
-  Client: `index.html` (544), `app.js` (585), `shell.js` (121), `dashboard.js` (91),
-  `history.js` (143), `report.js` (79). Eight tables (users,
+- **Codebase now (2026-11-06):** `app/` — about 3,970 lines of application code and
+  1,920 of tests. `server.js` is 116 lines of startup and routing; the handlers live in
+  `routes/`, one file per screen group (auth 52, record 43, equipment 110, work-orders 95,
+  parts 135, pm 68, dashboard 75, admin 81, report 56). Shared plumbing: `http.js` (135),
+  `values.js` (54), `who.js` (26), `db.js` (316), `filters.js` (131), `report.js` (97),
+  `status.js` (78) and `photos.js` (71) — the two new modules for 261106-eqs. Client:
+  `index.html` (414), `app.css` (203), `app.js` (543), `shell.js` (121), `dashboard.js`
+  (136), `history.js` (143), `report.js` (79), `machines.js` (168). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
-  `ensureColumn` migrations).
-- **Test suite:** **277 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+  `ensureColumn` migrations), and machine photographs as files in `photos/`.
+- **Test suite:** **326 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
-  month's costs adding up. Offline audit reports `OFFLINE-SAFE`.
+  month's costs adding up, and the machine-state matrix: high-priority open ⇒ down, job
+  closed ⇒ running, retired outranking both. Offline audit reports `OFFLINE-SAFE`.
 - **Known technical debt:** concurrent edits are last-write-wins (single process, never
   tested with two browsers).
   `node:sqlite` is still experimental on Node 22, so every entry point passes

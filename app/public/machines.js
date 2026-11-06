@@ -6,6 +6,43 @@
 // api, $, searchTerm, openForm, closeForm, formError, formDone) rather than
 // repeating them: this is one page, not a bundle of independent widgets.
 
+// ---- what a row shows ------------------------------------------------------
+// Status is not a field any more: status.js derives it from the work orders and
+// sends `status` plus `status_reason`. The screen explains rather than decides,
+// so a red badge always comes with the job that caused it.
+
+const STATUS_WORD = { active: 'Running', down: 'Down', retired: 'Retired' };
+const STATUS_KIND = { active: 'green', down: 'red', retired: 'grey' };
+
+function thumbnail(machine) {
+  if (machine.photo) {
+    return `<img class="thumb" src="/api/equipment/${machine.id}/photo"
+      alt="${esc(machine.name)}" loading="lazy" />`;
+  }
+  return `<span class="thumb thumb-empty" aria-hidden="true">${esc((machine.name || '?').slice(0, 1))}</span>`;
+}
+
+function statusCell(machine) {
+  const why = machine.status === 'down' && machine.status_reason
+    ? `<span class="status-why">${esc(machine.status_reason)}</span>` : '';
+  return `<td>${badge(STATUS_WORD[machine.status] || machine.status, STATUS_KIND[machine.status] || 'grey')}${why}</td>`;
+}
+
+/** Editing, retiring and deleting are an administrator's business. A technician
+ *  still gets the way into a machine's history, because that is reading. */
+function actions(machine) {
+  const admin = window.me?.role === 'admin';
+  const edit = admin
+    ? `<button class="ghost small" onclick="editEquipment(${machine.id})">Edit</button>` : '';
+  const retire = admin
+    ? `<button class="ghost small" onclick="toggleStatus(${machine.id}, '${machine.service_status}')">
+        ${machine.service_status === 'retired' ? 'Restore' : 'Retire'}
+      </button>` : '';
+  const remove = admin
+    ? `<button class="ghost small danger" onclick="removeEquipment(${machine.id})">Delete</button>` : '';
+  return `<td>${edit}<button class="ghost small" onclick="openMachineHistory(${machine.id}, this)">History</button>${retire}${remove}</td>`;
+}
+
 // The list as last loaded. Edit needs the whole record to fill its form, and
 // looking it up here beats inventing a GET /api/equipment/:id that nothing else
 // would use.
@@ -17,16 +54,10 @@ export async function loadEquipment() {
   equipmentRows = rows;
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
-      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.category)}${soft(e.location)}
-      <td>${badge(e.status, e.status === 'active' ? 'green' : e.status === 'down' ? 'red' : 'grey')}</td>
-      <td>
-        <button class="ghost small" onclick="editEquipment(${e.id})">Edit</button>
-        <button class="ghost small" onclick="toggleStatus(${e.id}, '${e.status}')">
-          ${e.status === 'retired' ? 'Restore' : 'Retire'}
-        </button>
-        <button class="ghost small" onclick="openMachineHistory(${e.id}, this)">History</button>
-        <button class="ghost small danger" onclick="removeEquipment(${e.id})">Delete</button>
-      </td>
+      <td class="cell-thumb">${thumbnail(e)}</td>
+      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.manufacturer)}
+      ${statusCell(e)}
+      ${actions(e)}
     </tr>`).join('')
     || emptyRow(6, searchTerm('#eq-search')
       ? `No machine matches "${searchTerm('#eq-search')}". Clear the search to see them all.`
@@ -61,15 +92,39 @@ export function editEquipment(idToEdit) {
   $('#ee-cat').value = machine.category || '';
   $('#ee-loc').value = machine.location || '';
   $('#ee-maker').value = machine.manufacturer || '';
-  $('#ee-status').value = machine.status || 'active';
   $('#ee-notes').value = machine.notes || '';
+  // A file input cannot be filled from script, so an empty one means "keep what
+  // is there". The preview is what tells the admin a photograph already exists.
+  $('#ee-photo').value = '';
+  $('#ee-photo-clear').checked = false;
+  $('#ee-photo-preview').innerHTML = machine.photo
+    ? `<img src="/api/equipment/${machine.id}/photo?t=${Date.now()}" alt="${esc(machine.name)}" />`
+    : '<span>No photograph yet</span>';
   $('#equipment-edit-title').textContent = `Edit ${machine.name}`;
   openForm('equipment-edit');
 }
 
-/** Save the whole record. An omitted field would mean "leave it alone" on the
- *  server, and an empty box means "there is nothing here", so empty text is sent
- *  as null rather than as ''. */
+/** Send the bytes as they are. The server sniffs the type and picks the name;
+ *  the header below is a courtesy, not a claim it will believe. */
+async function uploadPhoto(machineId, file) {
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error('That photograph is larger than 2 MB. Resize it and try again.');
+  }
+  const res = await fetch(`/api/equipment/${machineId}/photo`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!res.ok) {
+    const problem = await res.json().catch(() => ({}));
+    throw new Error(problem.error || 'The photograph could not be saved');
+  }
+}
+
+/** Save the record, then the photograph if one was chosen. Two calls because the
+ *  photograph is bytes and the rest is JSON, and because a failed upload must not
+ *  lose a corrected name. */
 export async function saveEquipment() {
   const machineId = Number($('#ee-id').value);
   const name = $('#ee-name').value.trim();
@@ -80,19 +135,26 @@ export async function saveEquipment() {
     category: $('#ee-cat').value.trim() || null,
     location: $('#ee-loc').value.trim() || null,
     manufacturer: $('#ee-maker').value.trim() || null,
-    status: $('#ee-status').value,
     notes: $('#ee-notes').value.trim() || null,
+    // No status: it is not a field. The server refuses one anyway, with a message
+    // that says to close the job instead.
   };
   try {
     await api(`/equipment/${machineId}`, { method: 'PUT', body: JSON.stringify(body) });
+    const file = $('#ee-photo').files?.[0];
+    if (file) await uploadPhoto(machineId, file);
+    else if ($('#ee-photo-clear').checked) {
+      await api(`/equipment/${machineId}/photo`, { method: 'DELETE' });
+    }
     formDone('equipment-edit');
     loadEquipment();
   } catch (e) { formError('equipment-edit', e.message); }
 }
 
-export async function toggleStatus(id, status) {
+/** Retire or restore. `service_status` is what is stored; the badge is derived. */
+export async function toggleStatus(id, serviceStatus) {
   await api(`/equipment/${id}`, { method: 'PUT', body: JSON.stringify({
-    status: status === 'retired' ? 'active' : 'retired',
+    status: serviceStatus === 'retired' ? 'active' : 'retired',
   })});
   loadEquipment();
 }

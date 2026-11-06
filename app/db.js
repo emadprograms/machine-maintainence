@@ -174,6 +174,23 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('equipment', 'manufacturer', 'TEXT');
+// The machine's photograph is a file beside the database; this column remembers
+// which file. Storing megabytes inside SQLite would make every backup and every
+// copy of maintain.db carry them.
+ensureColumn('equipment', 'photo', 'TEXT');
+
+// Since 261106-eqs the machine's *state* is computed from its work orders, and the
+// column only records whether an admin withdrew it from service. Any row still
+// saying 'down' was written by the old form, so it becomes 'active' and the work
+// orders are asked instead. Idempotent: after the first upgrade there is nothing
+// to change.
+{
+  const stale = db.prepare("SELECT COUNT(*) AS n FROM equipment WHERE status = 'down'").get();
+  if (Number(stale.n) > 0) {
+    db.exec("UPDATE equipment SET status = 'active' WHERE status = 'down'");
+    console.log(`  migrated: ${stale.n} machine status(es) now follow their work orders`);
+  }
+}
 // Fixed threshold of 5 became per-part in phase 7; the default keeps every
 // existing part behaving exactly as it did before the upgrade.
 ensureColumn('parts', 'reorder_level', 'INTEGER NOT NULL DEFAULT 5');

@@ -14,6 +14,8 @@ export const send = (res, status, body) => {
 // otherwise each handler has to remember a null check, and the one that forgets
 // leaks "Cannot read properties of null" to the user (found in review of 7).
 class BadBody extends Error {}
+/** A body past the limit is refused before it is buffered, never after. */
+export class TooLarge extends Error {}
 
 // A request stream can only be read once, so the parse promise is cached on the
 // request. That lets route() populate `req.body` for every request while the
@@ -36,6 +38,28 @@ export const readBody = (req) => {
 
 // Only methods that can carry a body. A GET's stream is already at EOF, so
 // attaching listeners to it would wait for an 'end' that has already fired.
+/** A body of bytes rather than JSON: the one route that accepts a photograph.
+ *  The cap is applied while reading, so an enormous upload never lands in memory.
+ *
+ *  A refused body is drained and thrown away rather than cut off. Destroying the
+ *  socket the moment the cap is passed is the obvious implementation and it was
+ *  the first one here — but it kills the connection before the 413 can be sent,
+ *  so the browser sees a network error instead of "that file is too large".
+ *  Draining keeps memory at the cap and the answer deliverable. */
+export const readBytes = (req, max) => new Promise((resolve, reject) => {
+  const chunks = [];
+  let size = 0;
+  let tooLarge = false;
+  req.on('data', (chunk) => {
+    if (tooLarge) return;                       // keep reading, keep nothing
+    size += chunk.length;
+    if (size > max) { tooLarge = true; chunks.length = 0; return; }
+    chunks.push(chunk);
+  });
+  req.on('end', () => (tooLarge ? reject(new TooLarge('too large')) : resolve(Buffer.concat(chunks))));
+  req.on('error', reject);
+});
+
 const HAS_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** Wraps a handler so one bad request can never kill the server. */
@@ -49,11 +73,16 @@ export const route = (fn, opts = {}) => async (req, res) => {
     // Handlers may read req.body directly. Before phase 9 nothing assigned it,
     // so `req.body?.on` was silently always undefined — the bug this phase exists
     // to fix. Populating it here means the next handler cannot repeat that.
-    if (HAS_BODY.has(req.method)) req.body = await readBody(req);
+    // A route that takes a file says so with `{ raw: true }`; parsing a JPEG as
+    // JSON would answer 400 to every photograph.
+    if (HAS_BODY.has(req.method) && !opts.raw) req.body = await readBody(req);
     await fn(req, res);
   } catch (err) {
     if (err instanceof BadBody) {
       return send(res, 400, { error: 'The request body is not valid JSON' });
+    }
+    if (err instanceof TooLarge) {
+      return send(res, 413, { error: 'That file is too large' });
     }
     // Turn database constraint errors into messages a workshop user can act on.
     const raw = String(err.message);

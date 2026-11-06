@@ -93,6 +93,11 @@ function showLogin() {
 function showApp(user) {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
+  // Screens that live in their own module need to know who is looking: the
+  // Machines screen draws Edit/Retire/Delete only for an admin. The server
+  // enforces it regardless — this is so a technician is not offered a door that
+  // will not open.
+  window.me = user;
   $('#who').textContent = `${user.name} (${user.role})`;
   buildTabs(user);
   showPage('dashboard');

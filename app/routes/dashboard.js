@@ -6,6 +6,7 @@ import { send, route } from '../http.js';
 import { all } from '../db.js';
 import { workOrderFilter } from '../filters.js';
 import { monthlyTrend } from '../trend.js';
+import { downMachines } from '../status.js';
 
 export default {
   // ---- dashboard. One request, four answers.
@@ -40,8 +41,9 @@ export default {
       SELECT part.id, part.name, part.qty, part.reorder_level
       FROM parts part WHERE part.qty <= part.reorder_level
       ORDER BY (part.qty - part.reorder_level) ASC`);
-    const downRows = all(
-      `SELECT id, name, status FROM equipment WHERE status = 'down' ORDER BY name`);
+    // Not a second opinion: the same derivation the Machines screen uses, so the
+    // card and the list cannot disagree about which machines are out of service.
+    const downRows = downMachines();
 
     // The count is always the true total; only the list is capped. Capping the
     // count as well would make a card say "5" when 40 parts are low.

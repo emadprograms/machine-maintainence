@@ -24,7 +24,8 @@ const ok = (name, cond, detail = '') => {
 
 // ------------------------------------------------------- 1. static scan
 // Only the files that actually ship to the browser and run on the server.
-const SHIPPED = ['server.js', 'db.js', 'auth.js', 'public/index.html', 'public/app.js'];
+const SHIPPED = ['server.js', 'db.js', 'auth.js',
+  'public/index.html', 'public/app.css', 'public/app.js'];
 
 console.log('\nStatic scan of shipped files');
 for (const rel of SHIPPED) {

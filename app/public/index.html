@@ -4,191 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Machine Maintenance</title>
-<style>
-  /* Palette borrowed from the reviewed repo's tailwind config (Apple-style blues). */
-  :root {
-    --bg: #f5f5f7; --card: #ffffff; --ink: #1d1d1f; --soft: #6e6e73;
-    --line: #e8e8ed; --brand: #0071e3; --brand-soft: #eef6ff;
-    --red: #d92d20; --amber: #b54708; --green: #067647;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); }
-  header {
-    display: flex; align-items: center; gap: 16px; padding: 12px 20px;
-    background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0;
-  }
-  header h1 { font-size: 16px; margin: 0; flex: 1; }
-  /* ---- layout: a fixed sidebar beside fluid content ---- */
-  .layout { display: flex; min-height: calc(100vh - 57px); }
-  main { flex: 1; padding: 28px 32px; max-width: 1240px; min-width: 0; }
+  <link rel="stylesheet" href="/app.css" />
 
-  /* ---- sidebar ---- */
-  #sidebar {
-    width: 232px; flex: 0 0 232px; background: var(--card);
-    border-right: 1px solid var(--line); padding: 16px 12px;
-    display: flex; flex-direction: column; gap: 4px;
-    position: sticky; top: 57px; height: calc(100vh - 57px);
-    transition: width .16s ease, flex-basis .16s ease;
-  }
-  #sidebar.collapsed { width: 68px; flex-basis: 68px; }
-  #sidebar.collapsed .side-label { display: none; }
-  #sidebar.collapsed .side-link { justify-content: center; padding: 10px 0; }
-  #sidebar.collapsed .side-game { display: none; }
-  .side-brand {
-    display: flex; align-items: center; gap: 10px;
-    padding: 4px 8px 16px; font-weight: 600; font-size: 14px;
-  }
-  .side-mark {
-    display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px;
-    border-radius: 9px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700;
-  }
-  .side-nav { display: flex; flex-direction: column; gap: 2px; }
-  .side-link, .side-toggle {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    border: 0; background: none; color: var(--soft); cursor: pointer;
-    padding: 9px 10px; border-radius: 9px; font: inherit; font-size: 14px;
-    text-align: left;
-  }
-  .side-link svg, .side-toggle svg { width: 18px; height: 18px; flex: 0 0 18px; }
-  .side-link:hover, .side-toggle:hover { background: #f2f4f7; color: var(--ink); }
-  .side-link.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
-  .side-toggle { margin-top: auto; }
-  #sidebar.collapsed .side-toggle svg { transform: rotate(180deg); }
-  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-
-  /* ---- dashboard ---- */
-  .dash-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  .dash-card { display: flex; flex-direction: column; margin-bottom: 0; }
-  .dash-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
-  .dash-label { font-size: 13px; color: var(--soft); font-weight: 500; }
-  .dash-count { font-size: 30px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .dash-card.has-items .dash-count { color: var(--brand); }
-  .dash-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-  .dash-list li { display: flex; flex-direction: column; gap: 1px; }
-  .dash-item-main { font-size: 14px; }
-  .dash-item-meta { font-size: 12px; color: var(--soft); }
-  .dash-empty { color: var(--soft); font-size: 13px; margin: 0 0 12px; }
-  .dash-more { color: var(--soft); font-size: 12px; margin: 0 0 12px; }
-  .dash-link {
-    margin-top: auto; align-self: flex-start; border: 0; background: none;
-    color: var(--brand); font: inherit; font-size: 13px; font-weight: 500;
-    padding: 6px 0; cursor: pointer; text-align: left;
-  }
-  .dash-link:hover { text-decoration: underline; }
-  .dash-error { border-color: #f5c2c0; }
-
-  /* ---- dashboard charts: hand-drawn SVG, no library, nothing fetched ---- */
-  .charts-grid { display: grid; gap: 16px; margin-top: 16px;
-                 grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-  .chart-card { margin-bottom: 0; }
-  .chart-head { display: flex; align-items: baseline; justify-content: space-between; }
-  .chart-title { font-size: 14px; font-weight: 600; }
-  .chart-note { font-size: 12px; color: var(--soft); }
-  .chart-svg { width: 100%; height: auto; display: block; margin-top: 6px; }
-  .chart-grid { stroke: var(--line); stroke-width: 1; }
-  .chart-axis { font-size: 10px; fill: var(--soft); font-variant-numeric: tabular-nums; }
-  .chart-bar.t-brand { fill: var(--brand); }
-  .chart-bar.t-soft { fill: #a8c9f0; }
-  .chart-bar { transition: opacity .12s ease; }
-  .chart-svg:hover .chart-bar { opacity: .85; }
-  .chart-legend { list-style: none; display: flex; gap: 16px; margin: 10px 0 0; padding: 0;
-                  font-size: 12px; color: var(--soft); }
-  .chart-legend li { display: flex; align-items: center; gap: 6px; }
-  .chart-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
-  .chart-dot.t-brand { background: var(--brand); }
-  .chart-dot.t-soft { background: #a8c9f0; }
-  /* ---- surfaces ---- */
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-          padding: 16px; margin-bottom: 16px; }
-  .card-pad { padding: 22px; }
-  .card-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-  .card-toolbar select { width: auto; min-width: 150px; }
-
-  /* ---- page header: every screen starts here ---- */
-  .page-head { display: flex; align-items: flex-start; gap: 20px;
-               justify-content: space-between; margin: 0 0 18px; flex-wrap: wrap; }
-  .page-head h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 3px; }
-  .page-sub { margin: 0; color: var(--soft); font-size: 13.5px; }
-  .head-actions { display: flex; gap: 8px; align-items: center; }
-  .head-actions select { width: auto; }
-
-  /* ---- tables: rows read as records ---- */
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--soft); font-weight: 500; font-size: 11.5px; text-transform: uppercase;
-       letter-spacing: .05em; white-space: nowrap; }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover td { background: #fafbfc; }
-  .cell-strong { font-weight: 550; color: var(--ink); }
-  .cell-muted { color: var(--soft); }
-  .cell-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .cell-say { color: var(--soft); font-size: 13px; padding: 26px 10px; text-align: center; }
-  .cell-error { color: var(--red); }
-  .table-wrap { overflow-x: auto; }
-
-  /* ---- forms ---- */
-  input, select, textarea {
-    font: inherit; padding: 8px 10px; border: 1px solid var(--line);
-    border-radius: 8px; background: #fff; width: 100%; color: var(--ink);
-  }
-  input:focus, select:focus, textarea:focus { border-color: var(--brand); }
-  .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-  .form-grid-wide { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .field { display: flex; flex-direction: column; gap: 5px; }
-  .field-wide { grid-column: 1 / -1; }
-  .field > span { font-size: 12.5px; color: var(--soft); font-weight: 500; }
-  .form-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
-  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--soft); }
-  .check input { width: auto; }
-
-  /* ---- buttons ---- */
-  button { font: inherit; cursor: pointer; }
-  button.primary { background: var(--brand); color: #fff; border: 1px solid var(--brand);
-                   padding: 9px 16px; border-radius: 9px; font-weight: 600; font-size: 14px; }
-  button.primary:hover { background: #0062c4; border-color: #0062c4; }
-  button.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line);
-                 padding: 8px 14px; border-radius: 9px; font-size: 14px; }
-  button.ghost:hover { background: #f7f8fa; }
-  button.small { padding: 5px 11px; font-size: 12.5px; border-radius: 7px; }
-  button.danger { color: var(--red); border-color: #f5c2c0; background: #fff; }
-  button.danger:hover { background: #fef3f2; }
-  .icon-btn { border: 0; background: none; font-size: 22px; line-height: 1;
-              color: var(--soft); padding: 2px 6px; border-radius: 7px; }
-  .icon-btn:hover { background: #f2f4f7; color: var(--ink); }
-  td button { margin-left: 4px; }
-
-  /* ---- the create dialog ---- */
-  dialog.sheet {
-    border: 0; padding: 0; border-radius: 16px; width: min(620px, calc(100vw - 32px));
-    box-shadow: 0 24px 60px rgba(16, 24, 40, .18), 0 2px 8px rgba(16, 24, 40, .06);
-    color: var(--ink);
-  }
-  dialog.sheet::backdrop { background: rgba(16, 24, 40, .38); }
-  .sheet-inner { padding: 24px 24px 20px; }
-  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-  .sheet-head h3 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
-  .sheet-sub { color: var(--soft); font-size: 13px; margin: 0 0 18px; }
-  .sheet-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
-
-  /* ---- small things ---- */
-  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px;
-           font-size: 11.5px; font-weight: 500; }
-  .b-red { background: #fef3f2; color: var(--red); }
-  .b-amber { background: #fffaeb; color: var(--amber); }
-  .b-green { background: #ecfdf3; color: var(--green); }
-  .b-grey { background: #f2f4f7; color: var(--soft); }
-  .muted { color: var(--soft); font-size: 13px; }
-  /* The History screen's date range sits in the same toolbar as the other
-     filters, so the labels are inline there rather than stacked. */
-  .summary-line { color: var(--soft); font-size: 13px; margin: 0 0 10px; }
-  .card-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--soft); }
-  .card-toolbar input[type="date"],
-  .card-toolbar input[type="search"] { width: auto; min-width: 240px; }
-  #login { max-width: 340px; margin: 12vh auto; }
-  .error { color: var(--red); font-size: 13px; min-height: 18px; }
-  .hidden { display: none !important; }
-</style>
 </head>
 <body>
 
@@ -261,7 +78,7 @@
                  oninput="searchEquipment()" />
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Name</th><th>Tag</th><th>Category</th><th>Location</th><th>Status</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th class="cell-thumb"></th><th>Name</th><th>Barcode</th><th>Manufacturer</th><th>Status</th><th></th></tr></thead>
             <tbody id="equipment-rows"></tbody></table>
         </div>
       </div>
@@ -293,25 +110,23 @@
             <h3 id="equipment-edit-title">Edit machine</h3>
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-edit')">&times;</button>
           </div>
-          <p class="sheet-sub">Correcting a name changes it everywhere: the jobs, the history
-            and the monthly report all read this one record.</p>
+          <p class="sheet-sub">What this machine <em>is</em>. Its state comes from its work orders: open a job, or close one, and the list follows.</p>
           <div class="form-grid form-grid-wide">
             <label class="field"><span>Name</span><input id="ee-name" placeholder="e.g. CNC lathe" /></label>
-            <label class="field"><span>Asset tag</span><input id="ee-tag" placeholder="e.g. MM-014" /></label>
+            <label class="field"><span>Barcode</span><input id="ee-tag" placeholder="e.g. MM-014" /></label>
+            <label class="field"><span>Manufacturer</span><input id="ee-maker" placeholder="e.g. Mazak" /></label>
             <label class="field"><span>Category</span><input id="ee-cat" placeholder="e.g. Machining" /></label>
             <label class="field"><span>Location</span><input id="ee-loc" placeholder="e.g. Bay 2" /></label>
-            <label class="field"><span>Manufacturer</span><input id="ee-maker" placeholder="e.g. Mazak" /></label>
-            <label class="field"><span>Status</span>
-              <select id="ee-status">
-                <option value="active">Running</option>
-                <option value="down">Down</option>
-                <option value="retired">Retired</option>
-              </select>
-            </label>
-            <label class="field field-wide"><span>Notes</span>
-              <textarea id="ee-notes" rows="3" placeholder="Anything the next person should know"></textarea></label>
-            <input type="hidden" id="ee-id" />
+            <label class="field field-wide"><span>Notes</span><textarea id="ee-notes" rows="2" placeholder="Anything the next person should know"></textarea></label>
           </div>
+          <div class="photo-row">
+            <div id="ee-photo-preview" class="photo-preview"></div>
+            <div class="photo-pick">
+              <label class="field"><span>Photograph — JPEG, PNG or WebP, under 2 MB</span><input id="ee-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+              <label class="check"><input id="ee-photo-clear" type="checkbox" /> Remove the photograph</label>
+            </div>
+          </div>
+          <input type="hidden" id="ee-id" />
           <p class="form-error"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('equipment-edit')">Cancel</button>
