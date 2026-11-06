@@ -63,7 +63,7 @@ Check with `node --version`.
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 234 |
 | `public/app.js` | Fetches data and draws the main screens | 560 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 273 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 372 behaviours | 1,981 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 401 behaviours | 2,168 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -360,10 +360,21 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 372 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 401 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`372 passed, 0 failed`.
+`401 passed, 0 failed`.
+
+Three of those checks are about the tests themselves, because a suite that stops asking is
+the failure nobody notices:
+
+* **every endpoint is named somewhere in the suite** — read from `routes/`, so a route added
+  tomorrow and never exercised shows up as a failure rather than as silence;
+* **every dialog has a heading and no button is blank**, which is what a screen reader is
+  otherwise left to announce as "dialog, button";
+* the two pure helpers every screen leans on — `parseDay()` and `likeParam()` — are asked
+  directly, in a child process with its own database, because their edge cases (`2026-02-30`,
+  a search for `100%`) never appear on a screen.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

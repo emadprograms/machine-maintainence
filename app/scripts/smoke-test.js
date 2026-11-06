@@ -1947,6 +1947,193 @@ ok('a database adopted from v2.0 keeps its recent writes', keptRecent === 1,
   'the recent write lived in the side file and did not come across');
 for (const dir of [legacyFrom, legacyTo]) rmSync(dir, { recursive: true, force: true });
 
+console.log('\nCoverage — the questions nothing was asking');
+
+// Everything below signs in for itself. By this point in the run the client the rest
+// of the suite was using is no longer valid — an earlier restart rotated the signing
+// key — so a test appended here would get 401 and could "pass" for the wrong reason.
+// That was the first thing this block found, before it had asserted anything.
+const late = makeClient();
+const lateIn = await late('/api/login', { method: 'POST', body: {
+  email: 'admin@local', password: 'smoke-test-password' } });
+ok('the end of the suite can still sign in and be answered', lateIn.status === 200,
+  `status ${lateIn.status}`);
+
+
+// ---- signing out -----------------------------------------------------------
+// POST /api/logout has existed since v1.0 and no check ever called it: the suite
+// signed in, tested everything, and never left. Two browsers, one sign-out, is the
+// contract that matters — the session that signed out dies and the other lives.
+await late('/api/users', { method: 'POST', body: {
+  name: 'Two browsers', email: 'browsers@local', password: 'two-browsers-1', role: 'tech' } });
+const browserA = makeClient();
+const browserB = makeClient();
+const browserCreds = { email: 'browsers@local', password: 'two-browsers-1' };
+ok('two browsers can hold two sessions for the same person',
+  (await browserA('/api/login', { method: 'POST', body: browserCreds })).status === 200
+  && (await browserB('/api/login', { method: 'POST', body: browserCreds })).status === 200);
+ok('and both work before either signs out',
+  (await browserA('/api/me')).status === 200 && (await browserB('/api/me')).status === 200);
+const signedOut = await browserA('/api/logout', { method: 'POST' });
+ok('signing out answers', signedOut.status === 200, JSON.stringify(signedOut.data));
+ok('and the cookie that signed out stops working', (await browserA('/api/me')).status === 401);
+ok('while the other browser is still signed in', (await browserB('/api/me')).status === 200);
+ok('signing out a session that is already gone is not an error',
+  (await browserB('/api/logout', { method: 'POST' })).status === 200
+  && (await browserB('/api/logout', { method: 'POST' })).status === 200);
+ok('and the second browser is signed out too', (await browserB('/api/me')).status === 401);
+
+// The header matters as much as the session row: without Max-Age=0 the browser
+// keeps the cookie and sends it forever, and every request pays for a lookup that
+// can never succeed.
+{
+  const raw = await fetch(BASE + '/api/logout', { method: 'POST' });
+  const cookie = raw.headers.get('set-cookie') || '';
+  ok('signing out tells the browser to drop the cookie',
+    /sid=;/.test(cookie) && /Max-Age=0/.test(cookie), cookie || '(no cookie header)');
+}
+
+// The browser forgetting is not the same as the server forgetting. This is the
+// stolen-cookie case: keep a copy of the session cookie, sign out, present the copy.
+// Removing `revokeSession()` from the logout route passed every other check, because
+// the client had already been told to drop its cookie — so this is the check that
+// actually holds the server to its side of the promise.
+{
+  const rawLogin = await fetch(BASE + '/api/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(browserCreds) });
+  const keptCookie = String(rawLogin.headers.get('set-cookie') || '').split(';')[0];
+  ok('a session cookie can be captured for this test', /^sid=./.test(keptCookie), keptCookie);
+  ok('that cookie works while the session is live',
+    (await fetch(BASE + '/api/me', { headers: { cookie: keptCookie } })).status === 200);
+  await fetch(BASE + '/api/logout', { method: 'POST', headers: { cookie: keptCookie } });
+  ok('a copy of the cookie taken before signing out no longer works',
+    (await fetch(BASE + '/api/me', { headers: { cookie: keptCookie } })).status === 401,
+    'the session outlived the sign-out');
+}
+
+// ---- history.csv: the export nothing downloaded ---------------------------
+// The History screen could always download a file; no check ever asked the endpoint
+// for one, so a broken content type or a missing filter would have gone unnoticed.
+const historyClient = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const csvMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'CSV press' } })).data;
+const closedForCsv = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: csvMachine.id, title: 'Closed for the file', priority: 'low' } })).data;
+await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done' } });
+
+const historyCsv = await historyClient(`/api/export/history.csv?equipment_id=${csvMachine.id}`);
+ok('the history export answers', historyCsv.status === 200, `status ${historyCsv.status}`);
+ok('with a file name and a spreadsheet type',
+  /text\/csv/.test(String(historyCsv.headers.get('content-type')))
+  && /history\.csv/.test(String(historyCsv.headers.get('content-disposition'))),
+  String(historyCsv.headers.get('content-disposition')));
+const historyLines = historyCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
+ok('its first line is the column names',
+  /^Machine,Job,Status/.test(historyLines[0] || ''), historyLines[0]);
+ok('and it carries the closed job it was asked for',
+  historyCsv.text.includes('Closed for the file'), 'the file does not contain the job');
+ok('filtered by machine, it carries nothing else',
+  historyLines.length === 2, `${historyLines.length} lines for one machine`);
+ok('an anonymous request for the history file is refused',
+  (await fetch(BASE + '/api/export/history.csv')).status === 401);
+await late(`/api/equipment/${csvMachine.id}`, { method: 'DELETE' });
+
+// ---- LIKE is escaped, not merely trimmed ---------------------------------
+// A search for `100%` must mean a literal percent. Without the escape it matches
+// every row, which is the quiet way a search box stops being trustworthy.
+const someMachine = (await late('/api/equipment?service=active')).data[0];
+const pctA = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: someMachine.id, title: 'Reduce load to 100% of rated', priority: 'low' } })).data;
+const pctB = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: someMachine.id, title: 'Ordered 100 spare filters', priority: 'low' } })).data;
+const pctHits = (await late('/api/work-orders?q=100%25')).data;
+ok('a search for "100%" finds the literal percent, not everything',
+  pctHits.some((w) => w.id === pctA.id) && !pctHits.some((w) => w.id === pctB.id),
+  pctHits.map((w) => w.title).join(' | '));
+await late(`/api/work-orders/${pctA.id}`, { method: 'DELETE' });
+await late(`/api/work-orders/${pctB.id}`, { method: 'DELETE' });
+
+// ---- the two helpers everything else rests on ----------------------------
+// Dates and search patterns are pure functions with edge cases no screen shows, so
+// they are asked directly — in a child process with its own database, because
+// importing `filters.js` pulls in `db.js`, which must not open the one under test.
+const unitDb = join(root, 'data', 'unit.db');
+rmSync(unitDb, { force: true });
+const unit = spawnSync(process.execPath,
+  ['--no-warnings=ExperimentalWarning', '--input-type=module', '-e', `
+    import { parseDay, nowStamp } from './dates.js';
+    import { likeParam } from './filters.js';
+    const BS = String.fromCharCode(92);
+    console.log(JSON.stringify({
+      feb30: parseDay('2026-02-30').error || null,
+      month13: parseDay('2026-13-01').error || null,
+      shortMonth: parseDay('2026-1-01').error || null,
+      notADate: parseDay('yesterday').error || null,
+      leap: parseDay('2024-02-29').value || null,
+      ordinary: parseDay('2026-11-06').value || null,
+      stamp: /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(nowStamp()),
+      percent: likeParam('100%') === '%100' + BS + '%%',
+      underscore: likeParam('a_b') === '%a' + BS + '_b%',
+      backslash: likeParam('a' + BS + 'b') === '%a' + BS + BS + 'b%',
+      padded: likeParam('  pump  ') === '%pump%',
+      empty: likeParam('   ') === '%%',
+    }));
+  `], { cwd: root, env: { ...process.env, MM_DB: unitDb }, encoding: 'utf8' });
+let pure = {};
+try { pure = JSON.parse(unit.stdout.trim().split('\n').pop()); }
+catch { /* reported by the check below, with the stderr that explains it */ }
+ok('the pure helpers can be asked directly',
+  Object.keys(pure).length === 12, String(unit.stderr || unit.stdout).slice(0, 300));
+
+ok('a date that does not exist is refused, not rolled into the next month',
+  /not a real calendar date/.test(pure.feb30 || '') && /not a real calendar date/.test(pure.month13 || ''),
+  `${pure.feb30} / ${pure.month13}`);
+ok('a loosely written date is refused too',
+  /YYYY-MM-DD/.test(pure.shortMonth || '') && /YYYY-MM-DD/.test(pure.notADate || ''));
+ok('a leap day in a leap year is accepted, and a plain day round-trips',
+  pure.leap === '2024-02-29' && pure.ordinary === '2026-11-06');
+ok('the timestamp is the shape SQLite sorts', pure.stamp === true, String(pure.stamp));
+ok('a search pattern escapes the wildcards and the escape character itself',
+  pure.percent === true && pure.underscore === true && pure.backslash === true,
+  JSON.stringify({ percent: pure.percent, underscore: pure.underscore, backslash: pure.backslash }));
+ok('and trims what was typed before wrapping it',
+  pure.padded === true && pure.empty === true);
+rmSync(unitDb, { force: true });
+rmSync(unitDb + '-wal', { force: true });
+rmSync(unitDb + '-shm', { force: true });
+
+// ---- the page speaks for itself -----------------------------------------
+// A dialog with no heading is announced as "dialog" and nothing else; a button
+// with no text or label is announced as "button".
+{
+  const dialogBlocks = html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [];
+  const nameless = dialogBlocks.filter((d) => !/<h3[\s>]/.test(d));
+  ok('every dialog names itself with a heading',
+    dialogBlocks.length > 0 && nameless.length === 0,
+    `${nameless.length} dialog(s) without a heading`);
+  const emptyButtons = html.match(/<button[^>]*>\s*<\/button>/g) || [];
+  ok('no button is a blank rectangle', emptyButtons.length === 0, emptyButtons.join(' '));
+}
+
+// ---- no endpoint is unknown to the suite --------------------------------
+// A floor rather than a proof: every route in `routes/` must at least be *named*
+// here, which is the least that is true of a route that is tested. It is how
+// POST /api/logout and the history export were noticed missing.
+{
+  const routeKeys = [];
+  for (const file of readdirSync(join(root, 'routes'))) {
+    const src = readFileSync(join(root, 'routes', file), 'utf8');
+    for (const m of src.matchAll(/'([A-Z]+) (\/api[^']*)':/g)) {
+      routeKeys.push({ key: `${m[1]} ${m[2]}`, stem: m[2].split('/:')[0], file });
+    }
+  }
+  const suiteText = readFileSync(join(root, 'scripts', 'smoke-test.js'), 'utf8');
+  const unheard = routeKeys.filter(({ stem }) => !suiteText.includes(stem));
+  ok('every endpoint is exercised somewhere in this suite',
+    routeKeys.length >= 35 && unheard.length === 0,
+    unheard.map((r) => `${r.key} (${r.file})`).join(', '));
+}
+
 console.log('\n--- stopping ---');
 srv.child.kill('SIGKILL');
 await srv.exited;

@@ -75,11 +75,15 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
   (136), `history.js` (147), `report.js` (79), `machines.js` (273). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
   `ensureColumn` migrations), and machine photographs as files in `photos/`.
-- **Test suite:** **372 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **401 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up, and the machine-state matrix: high-priority open ⇒ down, job
-  closed ⇒ running, retired outranking both. Offline audit reports `OFFLINE-SAFE`.
+  closed ⇒ running, retired outranking both. Since 261106-eqz it also proves that signing
+  out revokes the session server-side (a captured cookie stops working), that the history
+  export honours its filter, and that every endpoint in `routes/` is named somewhere in the
+  suite — a coverage floor read from the source, not a hand-written list. Offline audit
+  reports `OFFLINE-SAFE`.
 - **Known technical debt:** concurrent edits are last-write-wins (single process, never
   tested with two browsers).
   `node:sqlite` is still experimental on Node 22, so every entry point passes
