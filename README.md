@@ -2,7 +2,7 @@
 
 A small, offline web app for keeping a maintenance record of industrial machines:
 what they are, what work has been reported against them, what is due next, what is in
-the spare-parts store — and, since v3.0, what the work is costing.
+the spare-parts store — and, since v3.0, what the work is costing and how that is trending.
 
 It runs on one Windows machine on a network with no internet access. There is no
 installer, no database server and no build step: Node.js runs the files in this
@@ -38,7 +38,7 @@ node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 ```
 
-The first starts its own server on a throwaway database and checks 245 behaviours; the
+The first starts its own server on a throwaway database and checks 262 behaviours; the
 second proves the app reaches nothing outside the machine. Both must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.

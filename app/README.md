@@ -51,15 +51,16 @@ Check with `node --version`.
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 296 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 131 |
 | `report.js` | One month of work, added up | 97 |
+| `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: styles, screens, forms | 544 |
+| `public/index.html` | The whole UI shell: styles, screens, forms | 565 |
 | `public/app.js` | Fetches data and draws the main screens | 585 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` | One module per screen group | 121 · 91 · 143 · 79 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 245 behaviours | 1,365 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 262 behaviours | 1,464 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -73,7 +74,7 @@ The route files, one per screen group:
 | `routes/work-orders.js` | work orders, work-orders.csv | 95 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 68 |
-| `routes/dashboard.js` | the landing screen's four answers | 69 |
+| `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 73 |
 | `routes/admin.js` | users, assignable people, backup | 81 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 56 |
 
@@ -128,6 +129,9 @@ and writes HTML into a table.
 * **Report** adds a month up: jobs closed, hours, parts cost, labour cost and total, plus
   the machines that took the most work. The hourly rate that turns hours into money is a
   field on that screen, not a number in the source.
+* **The Dashboard draws two charts** — jobs closed per month and what each month cost,
+  parts under labour — for the last six months. They are drawn as SVG in the page: no
+  charting library, no request to anything outside the machine.
 
 ### Worked example: add a "Serial number" field to machines
 
@@ -298,10 +302,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 245 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 262 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`245 passed, 0 failed`.
+`262 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

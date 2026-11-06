@@ -5,6 +5,8 @@
 // /api/dashboard, because a number the database knows should not be recomputed
 // in the browser where nothing tests it.
 
+import { stackedBars, legend } from './charts.js';
+
 const escapeHtml = (v) => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -61,12 +63,55 @@ function card({ key, label, empty }, section) {
   </div>`;
 }
 
-/** Render the four cards. `data` is the endpoint's response verbatim. */
+// Money on an axis does not need cents; a bar's tooltip does not need them
+// either, but 12.50 must not become 13.
+const money = (n) => {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+};
+
+/** The last six months, as two charts. Empty until something has been closed —
+ *  a chart of six zeroes looks like a broken chart, so it is replaced by a
+ *  sentence that says what to do instead. */
+function chartsRow(charts) {
+  const trend = Array.isArray(charts?.trend) ? charts.trend : [];
+  const anyWork = trend.some((m) => Number(m.closed) > 0 || Number(m.total) > 0);
+  if (!trend.length || !anyWork) {
+    return `<div class="card"><p class="dash-empty">
+      No finished work in the last six months yet. Close a work order and the
+      trend appears here.</p></div>`;
+  }
+
+  const labels = trend.map((m) => m.label);
+  const closed = [{ name: 'Jobs closed', values: trend.map((m) => m.closed), tone: 'brand' }];
+  const cost = [
+    { name: 'Parts', values: trend.map((m) => m.parts_cost), tone: 'soft' },
+    { name: 'Labour', values: trend.map((m) => m.labour_cost), tone: 'brand' },
+  ];
+
+  return `<div class="charts-grid">
+    <div class="card chart-card">
+      <div class="chart-head"><span class="chart-title">Jobs closed</span>
+        <span class="chart-note">last 6 months</span></div>
+      ${stackedBars({ labels, series: closed, title: 'Jobs closed per month',
+        format: (n) => String(Math.round(Number(n) || 0)) })}
+      ${legend(closed)}
+    </div>
+    <div class="card chart-card">
+      <div class="chart-head"><span class="chart-title">What it cost</span>
+        <span class="chart-note">parts + labour</span></div>
+      ${stackedBars({ labels, series: cost, title: 'Cost per month', format: money })}
+      ${legend(cost)}
+    </div>
+  </div>`;
+}
+
+/** Render the four cards and the charts. `data` is the endpoint's response verbatim. */
 export function renderDashboard(container, data) {
   if (!container) return;
   container.innerHTML = `<div class="dash-grid">${
     CARD_ORDER.map((c) => card(c, data?.[c.key])).join('')
-  }</div>`;
+  }</div>${chartsRow(data?.charts)}`;
 
   container.querySelectorAll('[data-goto]').forEach((btn) => {
     btn.addEventListener('click', () => {

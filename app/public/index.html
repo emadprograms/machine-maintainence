@@ -77,6 +77,27 @@
   }
   .dash-link:hover { text-decoration: underline; }
   .dash-error { border-color: #f5c2c0; }
+
+  /* ---- dashboard charts: hand-drawn SVG, no library, nothing fetched ---- */
+  .charts-grid { display: grid; gap: 16px; margin-top: 16px;
+                 grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .chart-card { margin-bottom: 0; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .chart-title { font-size: 14px; font-weight: 600; }
+  .chart-note { font-size: 12px; color: var(--soft); }
+  .chart-svg { width: 100%; height: auto; display: block; margin-top: 6px; }
+  .chart-grid { stroke: var(--line); stroke-width: 1; }
+  .chart-axis { font-size: 10px; fill: var(--soft); font-variant-numeric: tabular-nums; }
+  .chart-bar.t-brand { fill: var(--brand); }
+  .chart-bar.t-soft { fill: #a8c9f0; }
+  .chart-bar { transition: opacity .12s ease; }
+  .chart-svg:hover .chart-bar { opacity: .85; }
+  .chart-legend { list-style: none; display: flex; gap: 16px; margin: 10px 0 0; padding: 0;
+                  font-size: 12px; color: var(--soft); }
+  .chart-legend li { display: flex; align-items: center; gap: 6px; }
+  .chart-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .chart-dot.t-brand { background: var(--brand); }
+  .chart-dot.t-soft { background: #a8c9f0; }
   /* ---- surfaces ---- */
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
           padding: 16px; margin-bottom: 16px; }

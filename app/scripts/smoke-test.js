@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { rmSync, existsSync, statSync, readdirSync, readFileSync, copyFileSync, mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -1266,6 +1266,62 @@ ok('the history screen is reachable and the machine row opens it',
   appUrl.includes("{ key: 'history', label: 'History' }")
   && /openMachineHistory\(\$\{e\.id\}/.test(appUrl),
   'no sidebar entry or no way in from a machine');
+
+console.log('\nDashboard — the last six months');
+
+const chartPayload = await c('/api/dashboard');
+const trend = chartPayload.data?.charts?.trend ?? [];
+ok('the dashboard carries six months of history', trend.length === 6, `got ${trend.length}`);
+const monthKeys = trend.map((m) => m.month);
+ok('the months run oldest first',
+  monthKeys.every((m, i) => i === 0 || m > monthKeys[i - 1]), monthKeys.join(','));
+const currentMonth = new Date().toISOString().slice(0, 7);
+ok('the last bar is the month we are in', monthKeys.at(-1) === currentMonth, monthKeys.at(-1));
+
+// A bar and the Report screen must be the same arithmetic, or the dashboard is a
+// second opinion about the owner's money. report.js builds both; this checks it.
+const reportNow = await c(`/api/report?month=${currentMonth}`);
+const barNow = trend.at(-1) || {};
+ok('a bar equals the report for that month',
+  Number(barNow.total) === Number(reportNow.data.total)
+  && Number(barNow.closed) === Number(reportNow.data.jobs),
+  `bar=${JSON.stringify(barNow)} report=${reportNow.data.total}/${reportNow.data.jobs}`);
+ok('the month where a job was closed shows a bar above zero',
+  Number(barNow.closed) > 0 && Number(barNow.total) > 0, JSON.stringify(barNow));
+
+// The chart module builds strings and touches no DOM, so it can be checked here
+// rather than hoped about. Geometry and escaping are the two ways a chart fails.
+const charts = await import(pathToFileURL(join(root, 'public', 'charts.js')).href);
+const sample = charts.stackedBars({
+  labels: ['A', 'B'],
+  series: [{ name: 'Jobs', values: [1, 4], tone: 'brand' }],
+  title: 'sample',
+});
+const barHeights = [...sample.matchAll(/<rect[^>]*height="([\d.]+)"/g)].map((m) => Number(m[1]));
+ok('a chart draws one bar per value', barHeights.length === 2, barHeights.join(','));
+ok('the taller value draws the taller bar',
+  barHeights.length === 2 && Math.abs(barHeights[1] / barHeights[0] - 4) < 0.02,
+  barHeights.join(','));
+ok('a month with nothing in it draws no bar',
+  !/<rect/.test(charts.stackedBars({ labels: ['A'], series: [{ name: 'Jobs', values: [0] }] })));
+const sneaky = charts.stackedBars({
+  labels: ['<script>alert(1)</script>'],
+  series: [{ name: '<b>name</b>', values: [1], tone: 'brand' }],
+  title: '<img onerror=x>',
+});
+ok('a chart escapes every label it draws',
+  !sneaky.includes('<script>') && !sneaky.includes('<b>') && !sneaky.includes('<img')
+  && sneaky.includes('&lt;script&gt;'),
+  sneaky.slice(0, 160));
+ok('every bar names its own value for a screen reader',
+  /<title>A — Jobs: 1<\/title>/.test(sample), 'a bar without a title is a rectangle');
+
+const chartsSrc = readFileSync(join(root, 'public', 'charts.js'), 'utf8');
+const dashClient = readFileSync(join(root, 'public', 'dashboard.js'), 'utf8');
+ok('the chart module fetches nothing and ships no library',
+  !/https?:\/\//.test(chartsSrc.replace(/\/\/[^\n]*/g, '')) && chartsSrc.split('\n').length < 200);
+ok('the dashboard draws its charts from that module',
+  /from '\.\/charts\.js'/.test(dashClient) && /stackedBars\(/.test(dashClient));
 
 console.log('\nPersistence — a restart, a file copy, and a forgotten password');
 

@@ -5,6 +5,7 @@
 import { send, route } from '../http.js';
 import { all } from '../db.js';
 import { workOrderFilter } from '../filters.js';
+import { monthlyTrend } from '../trend.js';
 
 export default {
   // ---- dashboard. One request, four answers.
@@ -55,6 +56,9 @@ export default {
       due_soon: section(dueRows, dueRows, '#due'),
       low_stock: section(lowRows, lowRows, '#parts'),
       machines: section(downRows, downRows, '#equipment'),
+      // The charts. Same request as the cards: one load, one error state, and no
+      // way for a bar to describe a different workshop than the numbers above it.
+      charts: { trend: monthlyTrend(6) },
     });
   }),
 
