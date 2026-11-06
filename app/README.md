@@ -62,8 +62,8 @@ Check with `node --version`.
 | `public/index.html` | The whole UI shell: every screen and form | 416 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 205 |
 | `public/app.js` | Fetches data and draws the main screens | 552 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 180 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 340 behaviours | 1,827 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 185 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 341 behaviours | 1,829 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -344,10 +344,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 340 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 341 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`340 passed, 0 failed`.
+`341 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

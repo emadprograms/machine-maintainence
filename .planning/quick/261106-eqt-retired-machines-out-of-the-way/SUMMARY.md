@@ -42,7 +42,7 @@ behind a toggle.
 
 ## Mutation proofs
 
-Eight mutations, **eight caught** — after one assertion proved too weak to fail.
+Nine mutations, **nine caught** — after one assertion proved too weak to fail.
 
 | Mutation | Caught by |
 |---|---|
@@ -54,6 +54,7 @@ Eight mutations, **eight caught** — after one assertion proved too weak to fai
 | the toggle is ignored | *the list asks for the service the toggle names* |
 | the toggle starts checked | *and it starts off, so the everyday list is machines in service* |
 | the toggle is removed | *the Machines screen offers a "show retired" toggle*, + the id-lookup check |
+| the empty state stops mentioning the toggle | *an empty list says that retired machines are hidden* |
 
 **The weak one, kept in the record:** `?service=retired` was first asserted as "contains the
 scrapped machine" — which the *unfiltered* list also satisfies, so deleting the filter clause

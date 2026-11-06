@@ -1585,6 +1585,8 @@ ok('the dropdowns that start new work never come from the filtered table',
   /const \[rows, inService\] = await Promise\.all/.test(appEq)
   && /inService\.map\(\(e\) => `<option/.test(appEq)
   && !/rows\.map\(\(e\) => `<option/.test(appEq), 'the search box still narrows the dropdowns');
+ok('an empty list says that retired machines are hidden',
+  /tick Show retired/.test(appEq), 'the empty state blames the search box for a retired machine');
 ok('and they ask for machines in service with no search term',
   /api\('\/equipment\?service=active'\)/.test(appEq));
 ok('the app remembers who signed in', /window\.me = user/.test(

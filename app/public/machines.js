@@ -71,9 +71,14 @@ export async function loadEquipment() {
       ${statusCell(e)}
       ${actions(e)}
     </tr>`).join('')
-    || emptyRow(6, searchTerm('#eq-search')
-      ? `No machine matches "${searchTerm('#eq-search')}". Clear the search to see them all.`
-      : 'No machines yet. Add the first one and it will appear here.');
+    // With retired machines hidden, "no match" has two possible causes and only one
+    // of them is the search box. Saying so where the list is empty is cheaper than a
+    // support call asking why a machine vanished.
+    || emptyRow(6, retired
+      ? (q ? `No machine matches "${q}". Clear the search to see them all.`
+        : 'No machines yet. Add the first one and it will appear here.')
+      : `${q ? `Nothing in service matches "${q}".` : 'Nothing in service.'}`
+        + ' Machines that have left are hidden — tick Show retired.');
 
   const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;
