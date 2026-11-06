@@ -5,8 +5,9 @@ what they are, what work has been reported against them, what is due next, what 
 the spare-parts store — and, since v3.0, what the work is costing and how that is trending.
 A machine's state is not typed in: it follows its work orders, so the badge clears itself
 when the job is closed. Records and photographs are corrected by an administrator; anybody
-can add a machine and report a fault. A retired machine leaves the everyday list and stops
-being offered when new work is started, without losing anything it has.
+can add a machine and report a fault. A retired machine leaves the everyday list, stops being
+offered when new work is started, and stops generating maintenance reminders — without
+losing anything it has.
 
 It runs on one Windows machine on a network with no internet access. There is no
 installer, no database server and no build step: Node.js runs the files in this
@@ -42,7 +43,7 @@ node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 ```
 
-The first starts its own server on a throwaway database and checks 341 behaviours; the
+The first starts its own server on a throwaway database and checks 348 behaviours; the
 second proves the app reaches nothing outside the machine. Both must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.

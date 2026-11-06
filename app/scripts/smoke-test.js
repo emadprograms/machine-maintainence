@@ -1490,6 +1490,13 @@ await c(`/api/equipment/${techAdded.data.id}`, { method: 'DELETE' });
 // new work is started, and the everyday list stops showing it.
 const scrapped = (await c('/api/equipment', { method: 'POST', body: {
   name: 'Old press (scrapped)', asset_tag: 'OP-1', category: 'Pressing' } })).data;
+// The maintenance schedule is created *before* the machine leaves, on purpose. The
+// first version created it afterwards, which meant a retirement that deleted the
+// schedule would have been invisible — the mutation run proved it could not fail.
+const parked = await c('/api/pm', { method: 'POST', body: {
+  equipment_id: scrapped.id, task: 'Grease the ways', interval_days: 30, next_due: '2020-01-01' } });
+ok('a machine in service carries a maintenance schedule', parked.status === 201,
+  `status ${parked.status}`);
 await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
 
 const everyMachine = (await c('/api/equipment')).data;
@@ -1515,10 +1522,31 @@ ok('the service filter composes with the search box',
   && (await c('/api/equipment?service=all&q=scrapped')).data.some((e) => e.id === scrapped.id));
 ok('the retired machine keeps its history',
   (await c(`/api/history?equipment_id=${scrapped.id}`)).status === 200);
+
+// Maintenance stops too. A machine that has left must not keep generating "grease
+// it on Tuesday" tasks — the schedule is parked, not deleted, so restoring the
+// machine brings the reminders back.
+const dueAll = (await c('/api/pm/due?days=45')).data;
+const dueActive = (await c('/api/pm/due?days=45&service=active')).data;
+ok('but it is not on the list of what is due',
+  !dueActive.some((p) => p.id === parked.data.id) && dueAll.some((p) => p.id === parked.data.id),
+  `${dueAll.length} due in total, ${dueActive.length} in service`);
+ok('nor on the maintenance list',
+  !(await c('/api/pm?service=active')).data.some((p) => p.id === parked.data.id)
+  && (await c('/api/pm')).data.some((p) => p.id === parked.data.id));
+const cardAfterParking = (await c('/api/dashboard')).data.due_soon;
+ok('nor in the dashboard due-soon card',
+  !cardAfterParking.items.some((p) => p.equipment_name === 'Old press (scrapped)'),
+  cardAfterParking.items.map((p) => p.equipment_name).join(', '));
 await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'active' } });
 ok('restoring it puts it back in service',
   (await c('/api/equipment?service=active')).data.some((e) => e.id === scrapped.id));
+ok('and its maintenance comes back with it — nothing was deleted',
+  (await c('/api/pm/due?days=45&service=active')).data.some((p) => p.id === parked.data.id)
+  && (await c('/api/dashboard')).data.due_soon.items
+    .some((p) => p.equipment_name === 'Old press (scrapped)'));
 await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
+await c(`/api/pm/${parked.data.id}/done`, { method: 'POST', body: { on: '2020-01-02' } });
 
 // ---- what the screen does, read as text (no browser exists here) ---------
 const appEq = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
@@ -1585,6 +1613,11 @@ ok('the dropdowns that start new work never come from the filtered table',
   /const \[rows, inService\] = await Promise\.all/.test(appEq)
   && /inService\.map\(\(e\) => `<option/.test(appEq)
   && !/rows\.map\(\(e\) => `<option/.test(appEq), 'the search box still narrows the dropdowns');
+ok('the due list asks only for machines in service',
+  appSrc13.includes('service=active') && /\/pm\/due\?days=\$\{days\}&service=active/.test(appSrc13),
+  'the due list still shows maintenance on machines that have left');
+ok('the maintenance list asks the same way',
+  appSrc13.includes("api('/pm?service=active')"), 'the two lists can disagree');
 ok('an empty list says that retired machines are hidden',
   /tick Show retired/.test(appEq), 'the empty state blames the search box for a retired machine');
 ok('and they ask for machines in service with no search term',

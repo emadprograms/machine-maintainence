@@ -4,24 +4,33 @@
 import { send, readBody, route, id, day } from '../http.js';
 import { all, get, run } from '../db.js';
 import { parseDay } from '../dates.js';
+import { IN_SERVICE_SQL } from '../status.js';
 
 export default {
   // ---- preventive maintenance  (the feature the reviewed repo lacks)
-  'GET /api/pm': route(async (_req, res) => send(res, 200, all(`
-    SELECT p.*, e.name AS equipment_name,
-           CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
-    FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
-    ORDER BY p.next_due`))),
+  // `?service=active` leaves out schedules belonging to retired machines, so a
+  // workshop that has scrapped a press stops being told to grease it. No parameter
+  // still returns everything: the schedule is not deleted, only not offered.
+  'GET /api/pm': route(async (req, res) => {
+    const only = req.query.service === 'active' ? `WHERE ${IN_SERVICE_SQL}` : '';
+    send(res, 200, all(`
+      SELECT p.*, e.name AS equipment_name,
+             CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
+      FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
+      ${only}
+      ORDER BY p.next_due`));
+  }),
 
   // "Due soon": due within N days, or already overdue.
 
   'GET /api/pm/due': route(async (req, res) => {
     const days = Number(req.query.days) || 7;
+    const inService = req.query.service === 'active' ? `AND ${IN_SERVICE_SQL}` : '';
     send(res, 200, all(`
       SELECT p.*, e.name AS equipment_name,
              CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
       FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
-      WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days')
+      WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days') ${inService}
       ORDER BY p.next_due`, days));
   }),
 

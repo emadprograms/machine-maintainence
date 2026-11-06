@@ -49,11 +49,11 @@ Check with `node --version`.
 | `values.js` | Turns what a browser sends into what the database may store | 54 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 316 |
-| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 138 |
+| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
-| `status.js` | What state a machine is in, worked out from its work orders | 78 |
+| `status.js` | What state a machine is in, from its work orders; also what "in service" means to a query | 86 |
 | `photos.js` | Machine photographs: type sniffed from the bytes, size capped | 71 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
@@ -61,9 +61,9 @@ Check with `node --version`.
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 416 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 205 |
-| `public/app.js` | Fetches data and draws the main screens | 552 |
+| `public/app.js` | Fetches data and draws the main screens | 557 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 185 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 341 behaviours | 1,829 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 348 behaviours | 1,862 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -76,8 +76,8 @@ The route files, one per screen group:
 | `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 113 |
 | `routes/work-orders.js` | work orders, work-orders.csv | 95 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
-| `routes/pm.js` | recurring maintenance | 68 |
-| `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 75 |
+| `routes/pm.js` | recurring maintenance | 77 |
+| `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
 | `routes/admin.js` | users, assignable people, backup | 81 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 56 |
 
@@ -133,8 +133,10 @@ photograph pushed that page past 600 lines.
 * **A retired machine is out of the way.** It keeps its record, history and photographs, but
   it is not in the everyday list — the **Show retired** box in the Machines toolbar brings it
   back — and it is never offered in the dropdowns that start new work (report a job, add
-  maintenance). Restoring it returns it everywhere. The API asks for this explicitly with
-  `?service=active`; with no parameter the list is everything, as it always was.
+  maintenance). Its maintenance stops being a reminder too: parked schedules leave *Due soon*,
+  the Maintenance screen and the dashboard card, and come back when the machine does. The API
+  asks for this explicitly with `?service=active` (on the machine list, `/api/pm` and
+  `/api/pm/due`); with no parameter each list is everything, as it always was.
 * **A machine can be corrected — by an administrator.** Edit on its row opens what the
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
@@ -344,10 +346,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 341 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 348 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`341 passed, 0 failed`.
+`348 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

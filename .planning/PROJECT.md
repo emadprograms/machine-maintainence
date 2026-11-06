@@ -68,14 +68,14 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
 - **Codebase now (2026-11-06):** `app/` — about 3,970 lines of application code and
   1,920 of tests. `server.js` is 116 lines of startup and routing; the handlers live in
   `routes/`, one file per screen group (auth 52, record 43, equipment 113, work-orders 95,
-  parts 135, pm 68, dashboard 75, admin 81, report 56). Shared plumbing: `http.js` (135),
-  `values.js` (54), `who.js` (26), `db.js` (316), `filters.js` (138), `report.js` (97),
-  `status.js` (78) and `photos.js` (71) — the two new modules for 261106-eqs. Client:
-  `index.html` (416), `app.css` (205), `app.js` (552), `shell.js` (121), `dashboard.js`
+  parts 135, pm 77, dashboard 76, admin 81, report 56). Shared plumbing: `http.js` (135),
+  `values.js` (54), `who.js` (26), `db.js` (316), `filters.js` (139), `report.js` (97),
+  `status.js` (86) and `photos.js` (71) — the two new modules for 261106-eqs. Client:
+  `index.html` (416), `app.css` (205), `app.js` (557), `shell.js` (121), `dashboard.js`
   (136), `history.js` (143), `report.js` (79), `machines.js` (185). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
   `ensureColumn` migrations), and machine photographs as files in `photos/`.
-- **Test suite:** **341 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **348 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up, and the machine-state matrix: high-priority open ⇒ down, job

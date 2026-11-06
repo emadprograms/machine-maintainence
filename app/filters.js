@@ -5,6 +5,7 @@
 // differ only in what they do with the rows. Two copies of a filter drift the
 // moment one of them grows a new field.
 import { parseDay } from './dates.js';
+import { IN_SERVICE_SQL, RETIRED_SQL } from './status.js';
 
 /**
  * A LIKE pattern built from what somebody typed.
@@ -57,8 +58,8 @@ export function equipmentFilter(query = {}) {
   // Retired machines are not offered for new work (261106-eqt). The screen asks with
   // ?service=active; no parameter still means everything, so nothing that already
   // called this list changes behaviour.
-  if (query.service === 'active') where.push("e.status <> 'retired'");
-  if (query.service === 'retired') where.push("e.status = 'retired'");
+  if (query.service === 'active') where.push(IN_SERVICE_SQL);
+  if (query.service === 'retired') where.push(RETIRED_SQL);
   // `status` is the raw column (active/down/retired). `down` is derived now, so a
   // request filtered on it would answer wrongly — the list route derives afterwards.
   if (query.status) { where.push('e.status = ?'); params.push(String(query.status)); }

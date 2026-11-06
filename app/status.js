@@ -24,6 +24,14 @@ import { all } from './db.js';
 /** The states an administrator may set. Everything else is a consequence. */
 export const SERVICE_STATES = ['active', 'retired'];
 
+/**
+ * What "in service" means to a query. One definition, because three screens now
+ * ask it — the machine list, the maintenance list and the dashboard's due-soon
+ * card — and a retired machine must not appear on any of them.
+ */
+export const IN_SERVICE_SQL = "e.status <> 'retired'";
+export const RETIRED_SQL = "e.status = 'retired'";
+
 /** Every unfinished job, worst first, so the reason shown is the most serious one. */
 function openJobsByMachine() {
   const jobs = all(`

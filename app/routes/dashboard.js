@@ -6,7 +6,7 @@ import { send, route } from '../http.js';
 import { all } from '../db.js';
 import { workOrderFilter } from '../filters.js';
 import { monthlyTrend } from '../trend.js';
-import { downMachines } from '../status.js';
+import { downMachines, IN_SERVICE_SQL } from '../status.js';
 
 export default {
   // ---- dashboard. One request, four answers.
@@ -36,6 +36,7 @@ export default {
              CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
       FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
       WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days')
+        AND ${IN_SERVICE_SQL}
       ORDER BY p.next_due`, DUE_DAYS);
     const lowRows = all(`
       SELECT part.id, part.name, part.qty, part.reorder_level

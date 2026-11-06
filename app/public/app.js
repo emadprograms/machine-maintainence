@@ -430,7 +430,10 @@ async function loadDashboard() {
 
 async function loadDue() {
   const days = $('#due-days').value || 7;
-  const rows = await api(`/pm/due?days=${days}`);
+  // `service=active`: a machine that has left the workshop has no maintenance to
+  // do. The schedule is not deleted — park the machine and it waits; restore it
+  // and the reminders come back.
+  const rows = await api(`/pm/due?days=${days}&service=active`);
   $('#due-rows').innerHTML = rows.map((p) => `
     <tr>
       ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
@@ -442,7 +445,9 @@ async function loadDue() {
 }
 
 async function loadPm() {
-  const rows = await api('/pm');
+  // Same rule as Due soon, asked for the same way, so the two lists cannot disagree
+  // about which machines still have maintenance.
+  const rows = await api('/pm?service=active');
   $('#pm-rows').innerHTML = rows.map((p) => `
     <tr>
       ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
