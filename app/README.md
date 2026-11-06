@@ -59,11 +59,11 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 421 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 204 |
-| `public/app.js` | Fetches data and draws the main screens | 557 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 187 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 356 behaviours | 1,910 |
+| `public/index.html` | The whole UI shell: every screen and form | 443 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 234 |
+| `public/app.js` | Fetches data and draws the main screens | 560 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 273 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 372 behaviours | 1,981 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -130,6 +130,13 @@ photograph pushed that page past 600 lines.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
+* **Everything about one machine sits behind three dots** at the end of its row —
+  edit, history, retire and delete — instead of four buttons repeated on every row.
+* **Deleting is a dialog, not a `confirm()`.** It counts what will go ("3 work orders and 1
+  maintenance task"), says the history and the photograph go too, and the button stays
+  disabled until the sentence *delete machine &lt;name&gt;* is typed; the same check runs again
+  before the request is sent. The server cascades: deleting a machine really does delete its
+  work orders, their parts, its maintenance schedules and its photograph.
 * **The machine table shows what a machine is**: a photograph, its name, barcode,
   manufacturer, category, location and state — one column each, in that order. The empty
   table spans exactly the columns its header names, and the suite checks that rather than
@@ -353,10 +360,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 356 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 372 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`356 passed, 0 failed`.
+`372 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

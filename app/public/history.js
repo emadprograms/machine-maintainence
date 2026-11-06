@@ -116,7 +116,11 @@ function machineHistoryRow(w) {
  * an apostrophe in a name would break the markup.
  */
 export async function openMachineHistory(id, el) {
-  const name = el?.closest('tr')?.querySelector('td')?.textContent?.trim() || 'This machine';
+  // The name column, by class — not the first cell, which has been the photograph
+  // since 261106-eqs. Reading `td` there titled the dialog "A" for a machine with
+  // no picture, because the placeholder shows its first letter.
+  const name = el?.closest('tr')?.querySelector('.cell-strong')?.textContent?.trim()
+    || 'This machine';
   $('#machine-history-title').textContent = name;
   $('#machine-history-rows').innerHTML = emptyRow(5, 'Loading this machine’s history…');
   openForm('machine-history');

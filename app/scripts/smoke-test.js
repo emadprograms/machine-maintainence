@@ -872,7 +872,11 @@ ok('a failed load cannot fall through to an empty list', swallowed.length === 0,
 
 // Destructive actions name the record and the consequence.
 ok('deleting a machine names it and says what happens',
-  /Delete "\$\{name\}"/.test(clientSrc) && /cannot be undone/i.test(clientSrc));
+  clientSrc.includes('Delete ${machine.name}?')
+  && clientSrc.includes('Deleting this machine deletes')
+  && clientSrc.includes('its photograph')
+  && /This cannot be undone\./.test(html),
+  'the destructive dialog no longer says what it destroys');
 ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(appSrc13));
 
 console.log('\nPhase 12 — the dashboard');
@@ -1485,6 +1489,22 @@ ok('deleting a machine deletes its photograph',
   !storedName || !existsSync(join(photosDir, storedName)), String(storedName));
 await c(`/api/equipment/${techAdded.data.id}`, { method: 'DELETE' });
 
+// The delete dialog tells the reader that the work orders, the maintenance and the
+// photograph go with the machine. That promise is checked here, because a dialog
+// that overstates what it destroys is worse than no dialog at all.
+const doomed = (await c('/api/equipment', { method: 'POST', body: { name: 'Doomed press' } })).data;
+const doomedJob = (await c('/api/work-orders', { method: 'POST', body: {
+  equipment_id: doomed.id, title: 'Scrap it', priority: 'low' } })).data;
+const doomedPm = (await c('/api/pm', { method: 'POST', body: {
+  equipment_id: doomed.id, task: 'Last grease', interval_days: 30 } })).data;
+ok('a machine can have a job and a schedule before it is deleted',
+  Boolean(doomedJob.id) && Boolean(doomedPm.id));
+await c(`/api/equipment/${doomed.id}`, { method: 'DELETE' });
+ok('deleting a machine deletes its work orders — as the dialog promises',
+  (await c('/api/work-orders')).data.every((w) => w.equipment_id !== doomed.id));
+ok('and its maintenance schedules',
+  (await c('/api/pm')).data.every((p) => p.equipment_id !== doomed.id));
+
 // ---- retired machines stay out of the way ---------------------------------
 // Retiring used to be a label. It is still not deletion — every job, photograph
 // and history entry stays — but a machine that has left is no longer offered when
@@ -1608,6 +1628,57 @@ ok('the machine table names every column it shows',
   eqHead || 'the machines header is not where it was');
 // With real columns, a second line under the name would print the same fact twice.
 // A mutation that restored it passed every other check, so the name cell is named.
+ok('everything about a machine sits behind three dots',
+  appEq.includes('<details class="row-menu">') && appEq.includes('aria-label="Actions for')
+  && appEq.includes('&#8943;'), 'the row still shows a row of buttons');
+ok('and the menu holds edit, history, retire and delete',
+  ['editEquipment', 'openMachineHistory', 'toggleStatus', 'openEquipmentDelete']
+    .every((fn) => actionsFn.includes(fn))
+  && ['Edit machine', 'History', 'Retire machine', 'Delete machine']
+    .every((label) => appEq.includes(label)), 'an action went missing from the menu');
+ok('delete is the red item in it',
+  /class="danger" onclick="openEquipmentDelete/.test(appEq)
+  && /\.row-menu \.menu button\.danger\s*\{[^}]*var\(--red\)/.test(uiCss),
+  'a destructive item that looks like the others');
+// A menu in the last row sits inside `.table-wrap`, which scrolls sideways and
+// therefore clips its children. Fixed positioning is the fix; this checks the fix
+// and the code that places it.
+ok('the menu is not clipped by the table it lives in',
+  /\.row-menu \.menu \{[^}]*position: fixed/.test(uiCss)
+  && /getBoundingClientRect\(\)/.test(appEq) && /style\.top =/.test(appEq),
+  'an absolutely positioned menu is clipped by the scrolling table');
+ok('and it closes when the page moves under it',
+  /addEventListener\('scroll', closeMenus, true\)/.test(appEq));
+// The History dialog used to read the machine's name from the row\'s first cell.
+// Since the photograph has that cell, it titled itself "A" for a pictureless machine.
+ok('the history dialog reads the name column, not the first cell',
+  /querySelector\('\.cell-strong'\)/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
+  'the dialog is named after the photo cell');
+ok('a menu closes when it is used and when you click away',
+  /closest\('\.row-menu \.menu button'\)/.test(appEq)
+  && /closest\('\.row-menu'\)/.test(appEq));
+
+// ---- the sentence you have to type
+const confirmFn = (appEq.match(/export async function confirmEquipmentDelete[\s\S]*?\n\}/) || [''])[0];
+ok('deleting asks for a typed sentence, not just a click',
+  indexEq.includes('id="equipment-delete"') && indexEq.includes('id="equipment-delete-confirm"')
+  && indexEq.includes('id="equipment-delete-phrase"'),
+  'the dialog cannot ask for what it does not have');
+ok('the button is disabled until the sentence is typed',
+  /id="equipment-delete-go"[^>]*disabled/.test(indexEq)
+  && /\$\('#equipment-delete-go'\)\.disabled = true/.test(appEq));
+ok('the sentence names the machine that will go',
+  appEq.includes('delete machine ${machine.name}'), 'the sentence is not about this machine');
+ok('typing is compared case- and space-insensitively, so the sentence still has to be the sentence',
+  (appEq.match(/replace\(\/\\s\+\/g, ' '\)/g) || []).length >= 2,
+  'one of the two comparisons is missing');
+ok('confirming checks the sentence again before calling the server',
+  confirmFn.includes("typed !== pendingDelete.phrase")
+  && confirmFn.indexOf('removeEquipment(') > confirmFn.indexOf("typed !== pendingDelete.phrase"),
+  confirmFn ? 'the server call comes first' : 'confirmEquipmentDelete() is not defined');
+ok('the dialog counts what is about to be destroyed',
+  appEq.includes('work order${jobs.length === 1') && appEq.includes('maintenance task${mine.length === 1'),
+  'it says "everything" without saying how much');
 ok('the name column carries only the name',
   /strong\(e\.name\)/.test(appEq) && !/strong\(e\.name,/.test(appEq),
   'category and location are shown twice');
@@ -1621,7 +1692,7 @@ ok('an empty table spans exactly the columns the header names',
 ok('Edit, Retire and Delete are drawn only for an admin',
   /const admin = window\.me\?\.role === 'admin'/.test(actionsFn)
   && actionsFn.includes('editEquipment') && actionsFn.includes('toggleStatus')
-  && actionsFn.includes('removeEquipment'), actionsFn ? 'no gate' : 'actions() is not defined');
+  && actionsFn.includes('openEquipmentDelete'), actionsFn ? 'no gate' : 'actions() is not defined');
 ok('History is offered to everybody',
   !/admin \? `<button[^`]*openMachineHistory/.test(actionsFn) && actionsFn.includes('openMachineHistory'));
 ok('the Machines screen filters by a named view, not a hidden-retired checkbox',

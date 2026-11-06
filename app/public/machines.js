@@ -28,22 +28,56 @@ function statusCell(machine) {
   return `<td>${badge(STATUS_WORD[machine.status] || machine.status, STATUS_KIND[machine.status] || 'grey')}${why}</td>`;
 }
 
-/** Editing, retiring and deleting are an administrator's business. A technician
- *  still gets the way into a machine's history, because that is reading. */
+/**
+ * Everything you can do to one machine, behind three dots. It used to be four
+ * buttons on every row, which made a table of twenty machines look like a toolbar;
+ * and the ones a technician may not use were drawn for them anyway, in the hope
+ * that the server would say no.
+ */
 function actions(machine) {
   const admin = window.me?.role === 'admin';
-  const edit = admin
-    ? `<button class="ghost small" onclick="editEquipment(${machine.id})">Edit</button>` : '';
-  const retire = admin
-    ? `<button class="ghost small" onclick="toggleStatus(${machine.id}, '${machine.service_status}')">
-        ${machine.service_status === 'retired' ? 'Restore' : 'Retire'}
-      </button>` : '';
-  const remove = admin
-    ? `<button class="ghost small danger" onclick="removeEquipment(${machine.id})">Delete</button>` : '';
-  return `<td>${edit}<button class="ghost small" onclick="openMachineHistory(${machine.id}, this)">History</button>${retire}${remove}</td>`;
+  const items = [
+    admin ? `<button type="button" onclick="editEquipment(${machine.id})">Edit machine</button>` : '',
+    `<button type="button" onclick="openMachineHistory(${machine.id}, this)">History</button>`,
+    admin ? `<button type="button" onclick="toggleStatus(${machine.id}, '${machine.service_status}')">${
+      machine.service_status === 'retired' ? 'Return to service' : 'Retire machine'}</button>` : '',
+    admin ? `<button type="button" class="danger" onclick="openEquipmentDelete(${machine.id})">Delete machine</button>` : '',
+  ].filter(Boolean).join('');
+  return `<td class="cell-actions"><details class="row-menu">
+      <summary aria-label="Actions for ${esc(machine.name)}">&#8943;</summary>
+      <div class="menu">${items}</div>
+    </details></td>`;
 }
 
-// The list as last loaded. Edit needs the whole record to fill its form, and
+// One listener for the whole page: a menu closes when you pick something from it,
+// and when you click anywhere else. A `<details>` open in a table row is otherwise
+// the kind of thing that stays open behind the next dialog.
+const closeMenus = () => document.querySelectorAll('details.row-menu[open]')
+  .forEach((d) => d.removeAttribute('open'));
+
+document.addEventListener('click', (event) => {
+  const item = event.target.closest('.row-menu .menu button');
+  if (item) closeMenus();
+  else if (!event.target.closest('.row-menu')) closeMenus();
+});
+
+// The menu is `position: fixed`, so its place is worked out when it opens: below
+// the three dots, right-aligned to them, and lifted left on the last column so it
+// cannot run off the screen.
+document.addEventListener('toggle', (event) => {
+  const details = event.target;
+  if (!details.classList?.contains('row-menu') || !details.open) return;
+  const dot = details.querySelector('summary').getBoundingClientRect();
+  const list = details.querySelector('.menu');
+  list.style.top = `${dot.bottom + 6}px`;
+  list.style.left = `${Math.max(8, dot.right - 196)}px`;
+}, true);
+
+// A fixed menu would stay behind while the page moves under it.
+window.addEventListener('scroll', closeMenus, true);
+window.addEventListener('resize', closeMenus);
+
+// The list as last loaded.// The list as last loaded. Edit needs the whole record to fill its form, and
 // looking it up here beats inventing a GET /api/equipment/:id that nothing else
 // would use.
 let equipmentRows = [];
@@ -178,10 +212,62 @@ export async function toggleStatus(id, serviceStatus) {
   loadEquipment();
 }
 
+/** What a delete would destroy, counted before it happens: "3 work orders and 1
+ *  maintenance task" is a different decision from "this machine". */
+let pendingDelete = null;
+
+export async function openEquipmentDelete(id) {
+  const machine = equipmentRows.find((e) => e.id === id);
+  if (!machine) return;
+  // The server cascades work orders, their parts and maintenance schedules; this is
+  // the only chance to say so before it happens.
+  const [jobs, schedules] = await Promise.all([
+    api(`/work-orders?equipment_id=${id}`),
+    api('/pm'),
+  ]);
+  const mine = schedules.filter((s) => Number(s.equipment_id) === Number(id));
+  const phrase = `delete machine ${machine.name}`;
+  pendingDelete = { id, phrase: phrase.toLowerCase() };
+
+  $('#equipment-delete-title').textContent = `Delete ${machine.name}?`;
+  $('#equipment-delete-phrase').textContent = phrase;
+  $('#equipment-delete-confirm').value = '';
+  $('#equipment-delete-go').disabled = true;
+  formError('equipment-delete', '');
+
+  const counted = [];
+  if (jobs.length) counted.push(`${jobs.length} work order${jobs.length === 1 ? '' : 's'}`);
+  if (mine.length) counted.push(`${mine.length} maintenance task${mine.length === 1 ? '' : 's'}`);
+  $('#equipment-delete-consequences').textContent =
+    `Deleting this machine deletes ${counted.length ? counted.join(' and ') : 'everything recorded against it'},`
+    + ' the whole of its history, and its photograph. There is no undo.';
+  openForm('equipment-delete');
+}
+
+/** The button stays disabled until the sentence matches. Two guards, not one:
+ *  a disabled button for the honest mistake, and this check for the rest. */
+export function checkDeletePhrase() {
+  if (!pendingDelete) return;
+  const typed = $('#equipment-delete-confirm').value.trim().toLowerCase().replace(/\s+/g, ' ');
+  $('#equipment-delete-go').disabled = typed !== pendingDelete.phrase;
+}
+
+export async function confirmEquipmentDelete() {
+  if (!pendingDelete) return;
+  const typed = $('#equipment-delete-confirm').value.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (typed !== pendingDelete.phrase) {
+    return formError('equipment-delete', 'Type the sentence exactly as it is written above.');
+  }
+  try {
+    await removeEquipment(pendingDelete.id);
+    pendingDelete = null;
+    formDone('equipment-delete');
+    loadEquipment();
+  } catch (e) { formError('equipment-delete', e.message); }
+}
+
+/** The call itself. No `confirm()` any more: the dialog is the confirmation, and
+ *  it knows how much is about to go. */
 export async function removeEquipment(id) {
-  const row = (await api('/equipment')).find((e) => e.id === id);
-  const name = row ? row.name : 'this machine';
-  if (!confirm(`Delete "${name}"?\n\nIts work orders and maintenance history go with it. This cannot be undone.`)) return;
-  try { await api(`/equipment/${id}`, { method: 'DELETE' }); loadEquipment(); }
-  catch (e) { alert(e.message); }
+  await api(`/equipment/${id}`, { method: 'DELETE' });
 }

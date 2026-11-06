@@ -142,6 +142,28 @@
         </form>
       </dialog>
 
+      <dialog id="equipment-delete" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-delete-title">Delete machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-delete')">&times;</button>
+          </div>
+          <div class="danger-box">
+            <p class="danger-lead">This cannot be undone.</p>
+            <p id="equipment-delete-consequences"></p>
+          </div>
+          <label class="field"><span>Type <code id="equipment-delete-phrase"></code> to confirm</span>
+            <input id="equipment-delete-confirm" autocomplete="off" spellcheck="false"
+                   placeholder="delete machine …" oninput="checkDeletePhrase()" /></label>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-delete')">Cancel</button>
+            <button class="danger-btn" type="button" id="equipment-delete-go" disabled
+                    onclick="confirmEquipmentDelete()">Delete permanently</button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog id="machine-history" class="sheet">
         <div class="sheet-inner">
           <div class="sheet-head">

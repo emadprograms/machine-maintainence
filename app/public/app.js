@@ -171,6 +171,9 @@ function editEquipment(idToEdit) { (machinesReady).then((m) => m.editEquipment(i
 function saveEquipment() { (machinesReady).then((m) => m.saveEquipment()); }
 async function toggleStatus(id, status) { return (await machinesReady).toggleStatus(id, status); }
 async function removeEquipment(id) { return (await machinesReady).removeEquipment(id); }
+function openEquipmentDelete(id) { (machinesReady).then((m) => m.openEquipmentDelete(id)); }
+function checkDeletePhrase() { (machinesReady).then((m) => m.checkDeletePhrase()); }
+function confirmEquipmentDelete() { (machinesReady).then((m) => m.confirmEquipmentDelete()); }
 
 // ------------------------------------------------------------ work orders
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };

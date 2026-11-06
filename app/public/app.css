@@ -151,6 +151,36 @@
   .photo-preview span { font-size: 12px; color: var(--soft); text-align: center; padding: 8px; }
   .status-why { display: block; font-size: 11.5px; color: var(--soft); margin-top: 4px; max-width: 220px; }
   .row-sub { display: block; font-size: 11.5px; color: var(--soft); margin-top: 3px; }
+  /* ---- the row menu: everything about one machine, behind three dots ---- */
+  .cell-actions { width: 48px; text-align: right; }
+  .row-menu { position: relative; display: inline-block; }
+  .row-menu summary { list-style: none; cursor: pointer; width: 30px; height: 30px;
+                      border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                      color: var(--soft); font-size: 18px; line-height: 1; user-select: none; }
+  .row-menu summary::-webkit-details-marker { display: none; }
+  .row-menu summary:hover, .row-menu[open] summary { background: #f2f4f7; color: var(--ink); }
+  /* Positioned against the viewport, not the cell: `.table-wrap` scrolls sideways,
+     and an absolutely-positioned menu on the last row is clipped by it. The
+     coordinates are set in machines.js when the menu opens. */
+  .row-menu .menu { position: fixed; z-index: 60; min-width: 190px;
+                    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+                    box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12); padding: 6px; text-align: left; }
+  .row-menu .menu button { display: block; width: 100%; text-align: left; border: 0; background: none;
+                           font: inherit; font-size: 13.5px; color: var(--ink); padding: 8px 10px;
+                           border-radius: 8px; cursor: pointer; }
+  .row-menu .menu button:hover { background: var(--bg); }
+  .row-menu .menu button.danger { color: var(--red); }
+  .row-menu .menu button.danger:hover { background: #fef3f2; }
+  .danger-box { border: 1px solid #fecdca; background: #fef3f2; border-radius: 12px;
+                padding: 14px 16px; margin: 4px 0 16px; }
+  .danger-box p { margin: 0; font-size: 13.5px; color: #912018; }
+  .danger-box .danger-lead { font-weight: 650; margin-bottom: 6px; }
+  .danger-box code, .field code { background: #fff; border: 1px solid #fecdca; border-radius: 6px;
+                                  padding: 1px 6px; font-size: 12.5px; color: #912018; }
+  .danger-btn { background: var(--red); color: #fff; border: 1px solid var(--red); border-radius: 10px;
+                padding: 10px 16px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .danger-btn:hover:not(:disabled) { background: #b42318; }
+  .danger-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .field > span { font-size: 12.5px; color: var(--soft); font-weight: 500; }
   .form-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
   .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--soft); }
