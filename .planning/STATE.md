@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-06 — quick task 261106-eqw: category, location and photo columns
+Last activity: 2026-11-06 — quick task 261106-eqx: row menu and a guarded delete
 
 ## Quick Tasks Completed
 
@@ -40,6 +40,7 @@ Last activity: 2026-11-06 — quick task 261106-eqw: category, location and phot
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
+| 2026-11-06 | 261106-eqx | Machine row actions behind three dots; red delete that counts what it destroys and demands the sentence "delete machine <name>"; menu escapes the table's overflow; history dialog reads the name column | `7b9d64c` |
 | 2026-11-06 | 261106-eqw | Machines table: photo, category and location get columns and headings; empty row's span derived from the header | `a8e97f6` |
 | 2026-11-06 | 261106-eqv | Machines filter by view — in service / down / retired / all — instead of a show-retired checkbox; `?status=` now filters the derived state | `2376216` |
 | 2026-11-06 | 261106-equ | No maintenance for retired machines: Due soon, the Maintenance screen and the dashboard card all ask for machines in service; schedules are parked, not deleted | `138b085` |
