@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-06 — quick task 261106-erb: every machine visible by default
+Last activity: 2026-11-06 — quick task 261106-erc: a fault report that says what, who and what it looked like, and a close that says what was done
 
 ## Quick Tasks Completed
 
@@ -40,6 +40,7 @@ Last activity: 2026-11-06 — quick task 261106-erb: every machine visible by de
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
+| 2026-11-06 | 261106-erc | Work order carries notes, who reported it and a photo of the fault (`1ee67af`); closing asks what was done, hours, who checked it and which parts, and the server refuses a close without an account (`8473f68`); work screen split into `public/work.js` | `8473f68` |
 | 2026-11-06 | 261106-erb | Machines list opens on All machines (was In service); retired rows dimmed, not hidden; fallback view is everything | `ecb54e5` |
 | 2026-11-06 | 261106-era | Barcode example is 101220054, and both machine dialogs now label the field "Barcode" | `d263281` |
 | 2026-11-06 | 261106-eqz | Tests for what nothing asked: sign-out revocation (captured cookie), history.csv, LIKE/date edge cases, and three meta-checks that notice an untested endpoint, a nameless dialog or a blank button | `3bc3fd5` |
