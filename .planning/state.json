@@ -1,33 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v2.0 \u2014 Dashboard",
+  "milestone": "v3.0 — The record",
   "phases": [
     {
-      "number": "7",
-      "name": "Parts become maintainable",
+      "number": "14",
+      "name": "The record",
       "status": "complete"
     },
     {
-      "number": "8",
-      "name": "Work belongs to somebody",
-      "status": "complete"
+      "number": "15",
+      "name": "Find it",
+      "status": "pending"
     },
     {
-      "number": "9",
-      "name": "Honest dates and real exports",
-      "status": "complete"
-    },
-    {
-      "number": "10",
-      "name": "Login hardening",
-      "status": "complete"
+      "number": "16",
+      "name": "What it cost",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd-progress",
-    "label": "Show progress",
-    "reason": "Unsure of state \u2014 showing progress"
+    "command": "/gsd-plan-phase 15",
+    "label": "Plan phase 15",
+    "reason": "Phase 14 is complete; search is next"
   },
   "updated_at": "2026-11-05T15:16:52.902Z"
 }

@@ -103,6 +103,7 @@
   .cell-muted { color: var(--soft); }
   .cell-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .cell-say { color: var(--soft); font-size: 13px; padding: 26px 10px; text-align: center; }
+  .cell-error { color: var(--red); }
   .table-wrap { overflow-x: auto; }
 
   /* ---- forms ---- */
@@ -156,6 +157,11 @@
   .b-green { background: #ecfdf3; color: var(--green); }
   .b-grey { background: #f2f4f7; color: var(--soft); }
   .muted { color: var(--soft); font-size: 13px; }
+  /* The History screen's date range sits in the same toolbar as the other
+     filters, so the labels are inline there rather than stacked. */
+  .summary-line { color: var(--soft); font-size: 13px; margin: 0 0 10px; }
+  .card-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--soft); }
+  .card-toolbar input[type="date"] { width: auto; }
   #login { max-width: 340px; margin: 12vh auto; }
   .error { color: var(--red); font-size: 13px; min-height: 18px; }
   .hidden { display: none !important; }
@@ -253,6 +259,23 @@
           </div>
         </form>
       </dialog>
+
+      <dialog id="machine-history" class="sheet">
+        <div class="sheet-inner">
+          <div class="sheet-head">
+            <h3 id="machine-history-title">Machine history</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeMachineHistory()">&times;</button>
+          </div>
+          <p class="sheet-sub">Every job ever reported against this machine, newest first.</p>
+          <div class="table-wrap">
+            <table class="table"><thead><tr><th>Job</th><th>Status</th><th>Owner</th><th>Opened</th><th>Closed</th></tr></thead>
+              <tbody id="machine-history-rows"></tbody></table>
+          </div>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeMachineHistory()">Close</button>
+          </div>
+        </div>
+      </dialog>
     </section>
 
     <!-- Work orders -->
@@ -308,6 +331,31 @@
     </section>
 
     <!-- Parts -->
+    <!-- History -->
+    <section data-page="history" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>History</h2>
+          <p class="page-sub">Everything that has been finished, and when it happened.</p>
+        </div>
+        <button class="ghost" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Closed from</span>
+            <input type="date" id="history-from" onchange="loadHistory()" /></label>
+          <label><span>Closed to</span>
+            <input type="date" id="history-to" onchange="loadHistory()" /></label>
+          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
+        </div>
+        <p id="history-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Job</th><th>Closed</th><th>Owner</th><th>Priority</th></tr></thead>
+            <tbody id="history-rows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
     <section data-page="parts" class="hidden">
       <div class="page-head">
         <div>

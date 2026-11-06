@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
-milestone: v2.0
-milestone_name: Dashboard
-status: Awaiting next milestone
+milestone: v3.0
+milestone_name: The record
+status: In progress
 last_updated: "2026-11-05T15:16:52.889Z"
-last_activity: 2026-11-05
-last_activity_desc: Milestone v2.0 completed and archived
+last_activity: 2026-11-06
+last_activity_desc: v3.0 phase 14 (the record) complete
 state_head: 5b8efcd03c86601ea1feca8f8f62811dd7831bea
 progress:
   total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
-current_phase: null
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 1
+  percent: 33
+current_phase: 14
 ---
 
 # Project State
@@ -23,13 +23,13 @@ current_phase: null
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** v1.0, v1.1 and v2.0 are closed and archived. No milestone is in progress.
+**Current focus:** v3.0 "The record" — history, search and cost. v1.0, v1.1 and v2.0 are closed and archived.
 
 ## Current Position
 
-Phase: Milestone v2.0 complete
+Phase: 14 — The record (complete)
 Plan: —
-Status: Awaiting next milestone
+Status: In progress: v3.0, phases 15 and 16 remain
 Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 
 ## Quick Tasks Completed

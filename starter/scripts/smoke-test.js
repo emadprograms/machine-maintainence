@@ -668,18 +668,24 @@ console.log('\nPhase 7+ — the page is wired to the server');
 const html = readFileSync(join(root, 'public', 'index.html'), 'utf8');
 const appUrl = readFileSync(join(root, 'public', 'app.js'), 'utf8');
 
+// Every shipped client file, not just app.js: the shell, dashboard and history
+// are modules now, and a handler in a module is still a handler.
+const clientSrc = readdirSync(join(root, 'public'))
+  .filter((f) => f.endsWith('.js'))
+  .map((f) => readFileSync(join(root, 'public', f), 'utf8'))
+  .join('\n');
 const handlers = [...html.matchAll(/on(?:click|change|input)="([A-Za-z_$][\w$]*)\(/g)]
   .map((m) => m[1]);
 const missingHandlers = [...new Set(handlers)]
-  .filter((fn) => !new RegExp(`(?:async\\s+)?function\\s+${fn}\\b`).test(appUrl)
-    && !new RegExp(`(?:const|let|var)\\s+${fn}\\s*=`).test(appUrl)
-    && !new RegExp(`${fn}\\s*[:=]\\s*(?:async\\s*)?(?:function|\\()`).test(appUrl));
+  .filter((fn) => !new RegExp(`(?:async\\s+)?function\\s+${fn}\\b`).test(clientSrc)
+    && !new RegExp(`(?:const|let|var)\\s+${fn}\\s*=`).test(clientSrc)
+    && !new RegExp(`${fn}\\s*[:=]\\s*(?:async\\s*)?(?:function|\\()`).test(clientSrc));
 ok('every button in the page calls a function that exists',
   missingHandlers.length === 0, `missing: ${missingHandlers.join(', ')}`);
 
 // Only literal ids can be checked statically; templated ones (pm-on-1) are
 // built and queried in the same function and cannot drift silently.
-const literalIds = [...new Set([...appUrl.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]))];
+const literalIds = [...new Set([...clientSrc.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]))];
 const missingIds = literalIds.filter((id) => !html.includes(`id="${id}"`));
 ok('every element the page looks up by id exists in the markup',
   missingIds.length === 0, `missing: ${missingIds.join(', ')}`);
@@ -725,14 +731,21 @@ ok('no screen opens with a form',
 ok('no form sits on a page outside a dialog',
   screenBodies.every((m) => {
     const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
-    return !/class="form-grid"/.test(withoutDialogs);
+    return !/class="form-grid/.test(withoutDialogs);
   }));
-ok('each creating screen has its own dialog',
-  (html.match(/<dialog class="sheet"|class="sheet"/g) || []).length >= 5
-  && (html.match(/<dialog id="[\w-]+"/g) || []).length === 5,
-  `${(html.match(/<dialog id="/g) || []).length} dialogs`);
+// A *creating* dialog holds a form grid. The machine-history dialog is a
+// reading dialog and must not be counted here, or this check would be satisfied
+// by adding any sixth dialog anywhere.
+const creatingDialogs = (html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [])
+  .filter((d) => /class="form-grid/.test(d));
+ok('each creating screen has its own dialog', creatingDialogs.length === 5,
+  `${creatingDialogs.length} creating dialogs`);
+// One close button per dialog, counted rather than hard-coded, so a dialog
+// added later cannot ship without a way to close it.
+const dialogCount = (html.match(/<dialog id="[\w-]+"/g) || []).length;
 ok('every dialog can be closed without JavaScript',
-  (html.match(/<button class="icon-btn" type="button" aria-label="Close"/g) || []).length === 5);
+  (html.match(/<button class="icon-btn" type="button" aria-label="Close"/g) || []).length === dialogCount,
+  `${dialogCount} dialogs`);
 ok('a create action is behind a button, not on the page',
   /onclick="openForm\('/.test(html) && /function openForm/.test(appSrc13));
 
@@ -937,6 +950,80 @@ ok('no Google Fonts / CDN / remote fetch',
 // --------------------------------------- what the owner's machine taught us
 // Four failures, one per section below. Each assertion is written so that it
 // fails again if the fix is taken out — a green run here means something.
+console.log('\nPhase 14 — the record');
+
+// A machine and two jobs of our own, so nothing here depends on what earlier
+// phases happened to leave behind.
+const histMachine = await c2('/api/equipment', {
+  method: 'POST', body: { name: 'History lathe' },
+});
+const histId = histMachine.data.id;
+const stillOpen = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: histId, title: 'Spindle noise' },
+});
+const toClose = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: histId, title: 'Oil leak' },
+});
+await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done' } });
+
+// HIST-01 — a machine's own history includes the job that is still running.
+const machineHistory = await c2(`/api/history?equipment_id=${histId}`);
+ok('a machine lists every job against it, open ones included',
+  machineHistory.status === 200 && machineHistory.data.rows.length === 2,
+  `got ${machineHistory.data.rows?.length} rows`);
+ok('the history row carries the machine name and the dates',
+  machineHistory.data.rows.every((r) => r.equipment_name === 'History lathe' && r.created_at)
+  && machineHistory.data.rows.some((r) => r.closed_at),
+  JSON.stringify(machineHistory.data.rows?.[0]));
+
+// HIST-02 — the screen asks for closed work only, and gets it.
+const closedOnly = await c2(`/api/history?status=done&equipment_id=${histId}`);
+ok('the History screen shows closed jobs only',
+  closedOnly.data.rows.length === 1 && closedOnly.data.rows[0].title === 'Oil leak',
+  JSON.stringify(closedOnly.data.rows));
+
+// HIST-03 — a date range narrows the list, and a bad date is a sentence.
+const excluding = await c2(`/api/history?status=done&equipment_id=${histId}&from=2020-01-01&to=2020-12-31`);
+ok('a range that excludes the job returns nothing, and says the total is zero',
+  excluding.data.total === 0 && excluding.data.rows.length === 0,
+  JSON.stringify(excluding.data));
+const including = await c2(`/api/history?status=done&equipment_id=${histId}&from=2020-01-01&to=2999-12-31`);
+ok('a range that includes the job returns it',
+  including.data.total === 1 && including.data.rows.length === 1,
+  JSON.stringify(including.data));
+ok('the response says how many were shown as well as how many exist',
+  including.data.shown === including.data.rows.length
+  && typeof including.data.total === 'number');
+const badDate = await c2('/api/history?from=yesterday');
+ok('a malformed date is a readable 400, not a 500',
+  badDate.status === 400 && /YYYY-MM-DD/.test(badDate.data.error || ''),
+  `${badDate.status} ${JSON.stringify(badDate.data)}`);
+const impossible = await c2('/api/history?from=2026-02-30');
+ok('an impossible date is refused rather than rolled into March',
+  impossible.status === 400 && /real calendar date/.test(impossible.data.error || ''),
+  JSON.stringify(impossible.data));
+const reversed = await c2('/api/history?from=2026-12-01&to=2026-01-01');
+ok('a range that ends before it starts is refused',
+  reversed.status === 400 && /after its end/.test(reversed.data.error || ''),
+  JSON.stringify(reversed.data));
+const unknownMachine = await c2('/api/history?equipment_id=999999');
+ok('a machine with nothing in it is an empty list, not an error',
+  unknownMachine.status === 200 && unknownMachine.data.rows.length === 0
+  && unknownMachine.data.total === 0);
+
+// HIST-04 — three different situations, three different sentences. A screen
+// that says "nothing closed" when the request failed is lying.
+const histSrc = readFileSync(join(root, 'public', 'history.js'), 'utf8');
+ok('an empty machine, an empty range and a failed load read differently',
+  /Nothing has been reported against/.test(histSrc)
+  && /Nothing was closed between those dates/.test(histSrc)
+  && /Could not load the history/.test(histSrc),
+  'one of the three empty states is missing');
+ok('the history screen is reachable and the machine row opens it',
+  appUrl.includes("{ key: 'history', label: 'History' }")
+  && /openMachineHistory\(\$\{e\.id\}/.test(appUrl),
+  'no sidebar entry or no way in from a machine');
+
 console.log('\nPersistence — a restart, a file copy, and a forgotten password');
 
 // 1. Sessions are rows in the database. They used to be a Map in memory, so a

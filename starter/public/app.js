@@ -6,6 +6,7 @@ const $ = (s) => document.querySelector(s);
 // globals; the module is loaded once here and reached through window.shell.
 const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
+const historyReady = import('/history.js').then((m) => { return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ------------------------------------------------------- dialogs and empty states
@@ -100,6 +101,7 @@ const PAGES = [
   { key: 'due', label: 'Due soon' },
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
+  { key: 'history', label: 'History' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
   { key: 'users', label: 'Users', adminOnly: true },
@@ -125,7 +127,7 @@ function showPage(key) {
   const loaders = {
     dashboard: loadDashboard,
     due: loadDue, equipment: loadEquipment, work: loadWork,
-    pm: loadPm, parts: loadParts, users: loadUsers,
+    history: loadHistory, pm: loadPm, parts: loadParts, users: loadUsers,
   };
   loaders[key]?.();
 }
@@ -141,6 +143,7 @@ async function loadEquipment() {
         <button class="ghost small" onclick="toggleStatus(${e.id}, '${e.status}')">
           ${e.status === 'retired' ? 'Restore' : 'Retire'}
         </button>
+        <button class="ghost small" onclick="openMachineHistory(${e.id}, this)">History</button>
         <button class="ghost small danger" onclick="removeEquipment(${e.id})">Delete</button>
       </td>
     </tr>`).join('')
@@ -384,6 +387,12 @@ function dueKind(days) {
   if (days < 0) return badge(`${-days} days overdue`, 'red');
   if (days === 0) return badge('today', 'amber');
   return badge(`in ${days} days`, days <= 7 ? 'amber' : 'grey');
+}
+
+// The History screen lives in its own module. This waits for it and hands over,
+// so showPage stays the one place that knows which screens exist.
+async function loadHistory() {
+  return (await historyReady).loadHistory();
 }
 
 async function loadDashboard() {

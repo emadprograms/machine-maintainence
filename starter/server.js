@@ -7,6 +7,8 @@ import { all, get, run, transaction, backup, close } from './db.js';
 import { DATA_DIR, DB_PATH, rememberFirstPassword, forgetFirstPassword } from './db.js';
 import { open as openSession, userIdOf, revoke as revokeSession, purgeExpired } from './sessions.js';
 import { createLoginLog } from './login-log.js';
+import { nowStamp, parseDay } from './dates.js';
+import { historyFilter, historySql } from './history-query.js';
 import { hashPassword, verifyPassword, signToken, verifyToken, randomPassword } from './auth.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -139,25 +141,6 @@ function stockValue(raw, fallback) {
   return { value: n };
 }
 
-/** The current moment in the same format SQLite's datetime('now') writes, so a
- *  column holding both reads consistently and sorts as text. */
-function nowStamp() {
-  return new Date().toISOString().slice(0, 19).replace('T', ' ');
-}
-
-/** A calendar date as YYYY-MM-DD, or an error naming the field.
- *  Round-trips through Date so 2026-02-30 is refused rather than rolled into March. */
-function parseDay(raw, field = 'date') {
-  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return { error: `${field} must be a date written as YYYY-MM-DD` };
-  }
-  const d = new Date(`${raw}T00:00:00Z`);
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) {
-    return { error: `${field} is not a real calendar date` };
-  }
-  return { value: raw };
-}
-
 /** A user id to own a job, or null to unassign. Validated against the table so a
  *  bad id is a sentence, not "FOREIGN KEY constraint failed". */
 function assigneeValue(raw) {
@@ -264,6 +247,20 @@ const api = {
   }, { public: true }),
 
   'GET /api/me': route(async (req, res) => send(res, 200, req.user)),
+
+  // ---- history. The record: what has been closed, and everything that ever
+  // happened to one machine. One endpoint serves both because they are the same
+  // query with a different filter, and because phase 15 exports through it.
+  'GET /api/history': route(async (req, res) => {
+    const filter = historyFilter(req.query);
+    if (filter.error) return send(res, 400, { error: filter.error });
+    const sql = historySql(filter);
+    const total = Number(get(sql.total, ...filter.params)?.n ?? 0);
+    const rows = all(sql.rows, ...filter.params);
+    // The list is capped on purpose; the count is not, so a screen can say
+    // "showing 500 of 812" instead of quietly lying about the size of the past.
+    send(res, 200, { rows, total, shown: rows.length });
+  }),
 
   // ---- equipment
   'GET /api/equipment': route(async (_req, res) =>
