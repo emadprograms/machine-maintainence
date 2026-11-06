@@ -39,10 +39,10 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
-| 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | this commit |
-| 2026-11-06 | 261106-dsh | Dashboard graphs: jobs closed and monthly cost, six months, hand-drawn SVG | this commit |
-| 2026-11-06 | review | Code review: disabled sessions were still live; backup filename collision; role spelling | `.planning/CODE-REVIEW-2026-11-06.md` |
-| 2026-11-06 | v3.0 ph16 | What it cost: labour hours, a configured rate, cost per job, and a monthly report | this commit |
+| 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
+| 2026-11-06 | 261106-dsh | Dashboard graphs: jobs closed and monthly cost, six months, hand-drawn SVG | `91b45df` |
+| 2026-11-06 | review | Code review: disabled sessions were still live; backup filename collision; role spelling | `641059d`, `.planning/CODE-REVIEW-2026-11-06.md` |
+| 2026-11-06 | v3.0 ph16 | What it cost: labour hours, a configured rate, cost per job, and a monthly report | `b1f0e12` |
 | 2026-11-05 | 261105-rst | Stop the password lockout: keep the first password, keep sessions across a restart, keep `maintain.db` copyable, move data out of the app folder | `1d3bf71` |
 
 ## Evidence log

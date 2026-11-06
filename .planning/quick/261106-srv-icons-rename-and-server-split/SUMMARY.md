@@ -1,3 +1,12 @@
+---
+quick_id: 261106-srv
+slug: icons-rename-and-server-split
+date: 2026-11-06
+status: complete
+commit: abb82d9, 641059d
+files_modified: [app/public/shell.js, app/server.js, app/http.js, app/values.js, app/who.js, app/routes/auth.js, app/routes/record.js, app/routes/equipment.js, app/routes/work-orders.js, app/routes/parts.js, app/routes/pm.js, app/routes/dashboard.js, app/routes/admin.js, app/routes/report.js, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md, .gitignore, and the starter/ → app/ rename itself]
+---
+
 # Quick task 261106-srv — done
 
 **Commits:** `abb82d9` (icons, rename, split), and the review fixes that follow it.

@@ -1,3 +1,12 @@
+---
+quick_id: 261106-dsh
+slug: dashboard-graphs
+date: 2026-11-06
+status: complete
+commit: 91b45df
+files_modified: [.planning/PROJECT.md, .planning/STATE.md, .planning/quick/261106-dsh-dashboard-graphs/PLAN.md, .planning/quick/261106-dsh-dashboard-graphs/SUMMARY.md, README.md, app/README.md, app/public/charts.js, app/public/dashboard.js, app/public/index.html, app/routes/dashboard.js, app/scripts/smoke-test.js, app/trend.js]
+---
+
 # Quick task 261106-dsh — done
 
 **New files:** `app/trend.js` (47), `app/public/charts.js` (101).
