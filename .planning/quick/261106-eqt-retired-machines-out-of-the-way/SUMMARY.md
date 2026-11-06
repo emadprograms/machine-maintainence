@@ -62,6 +62,9 @@ still passed. It is now "only retired machines, and it is there". This is the se
 this task that a containment check could not fail; the shape of the mistake is always the
 same, and the mutation run is what catches it.
 
+A follow-up commit (`02cfa18`) fixed the empty state: with retired machines hidden,
+"clear the search" was the wrong advice when the machine being looked for had simply left.
+
 ## Verified against the running app
 
 The preview server was driven with `curl`: the machined list without a parameter still returns
