@@ -1620,8 +1620,11 @@ ok('saving refuses an empty name before it reaches the server',
   /formError\('equipment-edit'/.test(saveFn) && /!name/.test(saveFn));
 ok('saving sends the photograph when one was chosen',
   /uploadPhoto\(machineId, file\)/.test(saveFn), saveFn ? 'chosen file dropped' : 'no saveEquipment()');
+// The refusal moved to app.js when work orders got a fault photograph: one
+// uploader serves both forms now, so the claim is about the client, not one file.
 ok('a photograph over 2 MB is refused in the browser too',
-  /2 \* 1024 \* 1024/.test(appEq));
+  /2 \* 1024 \* 1024/.test(clientSrc) && /postPhoto/.test(appEq),
+  'the size check or the shared uploader is missing');
 ok('the photograph is uploaded as bytes to the machine\'s own route',
   /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
 ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
@@ -1967,8 +1970,6 @@ ok('a database adopted from v2.0 keeps its recent writes', keptRecent === 1,
   'the recent write lived in the side file and did not come across');
 for (const dir of [legacyFrom, legacyTo]) rmSync(dir, { recursive: true, force: true });
 
-console.log('\nCoverage — the questions nothing was asking');
-
 // Everything below signs in for itself. By this point in the run the client the rest
 // of the suite was using is no longer valid — an earlier restart rotated the signing
 // key — so a test appended here would get 401 and could "pass" for the wrong reason.
@@ -1978,6 +1979,140 @@ const lateIn = await late('/api/login', { method: 'POST', body: {
   email: 'admin@local', password: 'smoke-test-password' } });
 ok('the end of the suite can still sign in and be answered', lateIn.status === 200,
   `status ${lateIn.status}`);
+
+// ---- what a fault report carries ------------------------------------------
+// A title is a headline. It cannot hold "only above 20 m/min", cannot say who saw
+// it, and cannot show what it looked like at 3am — so the report carries notes, a
+// name and a photograph, and all three are optional.
+const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const pngBytes = Buffer.concat([PNG_HEAD, Buffer.alloc(64, 3)]);
+
+const reportMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Press (reporting)' } })).data;
+
+const reportJob = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Bearing noise', priority: 'high',
+  reported_by: '  Ada on line 2  ', notes: '  Only above 20 m/min  ' } });
+ok('a work order carries who reported it and what was seen', reportJob.status === 201
+  && reportJob.data.reported_by === 'Ada on line 2' && reportJob.data.notes === 'Only above 20 m/min',
+  JSON.stringify({ reported_by: reportJob.data.reported_by, notes: reportJob.data.notes }));
+
+const bareJob = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Vibration' } });
+ok('both are optional, and nothing is invented when they are left out',
+  bareJob.status === 201 && bareJob.data.reported_by === null && bareJob.data.notes === null,
+  JSON.stringify({ reported_by: bareJob.data.reported_by, notes: bareJob.data.notes }));
+
+const blankReporter = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Oil leak', reported_by: '   ' } });
+ok('a reporter typed as spaces is nobody, not a blank name',
+  blankReporter.data.reported_by === null, JSON.stringify(blankReporter.data.reported_by));
+
+const longReporter = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Overlong reporter', reported_by: 'n'.repeat(121) } });
+ok('a reporter name beyond 120 characters is refused with a sentence',
+  longReporter.status === 400 && /120 characters/.test(longReporter.data.error || ''),
+  JSON.stringify(longReporter.data));
+ok('and nothing is written when the name is refused',
+  !(await late('/api/work-orders')).data.some((w) => w.title === 'Overlong reporter'));
+
+const corrected = await late(`/api/work-orders/${bareJob.data.id}`, { method: 'PATCH', body: {
+  title: 'Vibration at speed', notes: '  Worse when warm  ', reported_by: '  Night shift  ' } });
+ok('the report can be corrected afterwards, and is trimmed again',
+  corrected.status === 200 && corrected.data.reported_by === 'Night shift'
+  && corrected.data.notes === 'Worse when warm', JSON.stringify(corrected.data));
+const untouched = await late(`/api/work-orders/${bareJob.data.id}`, { method: 'PATCH', body: {
+  priority: 'low' } });
+ok('a change that does not mention them leaves them alone',
+  untouched.data.reported_by === 'Night shift' && untouched.data.notes === 'Worse when warm');
+
+// ---- the photograph of the fault ------------------------------------------
+const faultsBefore = photoCount();
+ok('a job with no photograph says so',
+  (await late(`/api/work-orders/${reportJob.data.id}/photo`)).status === 404);
+const faultShot = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph of the fault can be attached', faultShot.status === 200,
+  JSON.stringify(faultShot.data));
+ok('the file is named by the server, never by the client',
+  Boolean(faultShot.data.photo) && !/jpeg|photo\./i.test(faultShot.data.photo),
+  String(faultShot.data.photo));
+const faultFetched = await late(`/api/work-orders/${reportJob.data.id}/photo`);
+ok('and comes back byte for byte, typed from the file rather than the header',
+  faultFetched.status === 200 && faultFetched.bytes.equals(jpegBytes)
+  && faultFetched.headers.get('content-type') === 'image/jpeg',
+  `${faultFetched.status} ${faultFetched.headers.get('content-type')}`);
+ok('the list says which jobs have one',
+  Boolean((await late('/api/work-orders')).data.find((w) => w.id === reportJob.data.id)?.photo));
+ok('the photograph is a file beside the database, not bytes inside it',
+  photoCount() === faultsBefore + 1, `${faultsBefore} -> ${photoCount()}`);
+ok('a photograph is not readable without signing in',
+  (await fetch(`${BASE}/api/work-orders/${reportJob.data.id}/photo`)).status === 401);
+ok('a photograph for a job that does not exist is a 404, not a stray file',
+  (await late('/api/work-orders/999999/photo', {
+    method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes })).status === 404);
+
+// The deliberate difference from a machine photograph: the person who finds the
+// fault is a technician, so an admin-only route would be one nobody who needs it
+// can use. Deleting the machine stays admin-only; deleting a blurred photo does not.
+// A fresh technician, because the one created near the top of the run has been
+// renamed, demoted and disabled many times since; borrowing that account makes
+// this test fail for reasons that have nothing to do with photographs.
+const floorUser = await late('/api/users', { method: 'POST', body: {
+  name: 'Rafael on nights', email: 'rafael@local', password: 'fault-photo-1', role: 'tech' } });
+const floor = makeClient();
+const floorIn = await floor('/api/login', { method: 'POST', body: {
+  email: 'rafael@local', password: 'fault-photo-1' } });
+ok('a technician can sign in to photograph a fault', floorUser.status === 201 && floorIn.status === 200,
+  JSON.stringify(floorIn.data));
+const floorShot = await floor(`/api/work-orders/${bareJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/png', rawBody: pngBytes });
+ok('a technician can photograph a fault — this is the route they need',
+  floorShot.status === 200, JSON.stringify(floorShot.data));
+ok('and can take a blurred one back out',
+  (await floor(`/api/work-orders/${bareJob.data.id}/photo`, { method: 'DELETE' })).status === 200);
+
+const faultText = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: Buffer.from('this is not an image') });
+ok('text sent as a JPEG is refused on its bytes here too',
+  faultText.status === 400 && /JPEG, PNG or WebP/.test(faultText.data.error || ''),
+  JSON.stringify(faultText.data));
+const faultHuge = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
+ok('a fault photograph over the cap is refused with 413, not buffered',
+  faultHuge.status === 413, `status ${faultHuge.status}`);
+
+// The jobs go when the machine does (ON DELETE CASCADE); their photographs must
+// go too, or a workshop backup grows files nothing can ever point at again.
+const keptFaultName = faultShot.data.photo;
+await late(`/api/equipment/${reportMachine.id}`, { method: 'DELETE' });
+ok('deleting the machine takes the photographs of its jobs with it',
+  !existsSync(join(photosDir, keptFaultName)),
+  `still on disk: ${keptFaultName}`);
+ok('and the jobs themselves are gone', (await late(`/api/work-orders/${reportJob.data.id}`)).status === 404
+  || !(await late('/api/work-orders')).data.some((w) => w.id === reportJob.data.id));
+
+// ---- the form that asks for all of it -------------------------------------
+const workForm = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the report form asks what was seen, who saw it and for a photograph',
+  workForm.includes('id="w-notes"') && workForm.includes('id="w-reporter"')
+  && workForm.includes('id="w-photo"'), workForm ? 'a field is missing' : 'work-form is gone');
+const createWorkFn = (appUrl.match(/async function addWorkOrder\(\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the report sends the notes and the name it was given',
+  createWorkFn.includes('#w-notes') && createWorkFn.includes('#w-reporter'),
+  createWorkFn ? 'a field is read but not sent' : 'addWorkOrder() is not defined');
+ok('the photograph is uploaded only after the job exists to hold it',
+  createWorkFn.includes("api('/work-orders'")
+  && createWorkFn.indexOf("api('/work-orders'") < createWorkFn.indexOf('postPhoto('),
+  'the upload happens before there is an id to upload to');
+ok('a job with a photograph offers a link to it beside the problem',
+  /link-photo/.test(appUrl) && /api\/work-orders\/\$\{w\.id\}\/photo/.test(appUrl),
+  'nothing on the row points at the photograph');
+ok('the link is styled, so it does not read as a stray word',
+  /\.link-photo \{/.test(uiCss) && /\.link-photo:hover/.test(uiCss));
+
+console.log('\nCoverage — the questions nothing was asking');
 
 
 // ---- signing out -----------------------------------------------------------

@@ -137,7 +137,20 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field-wide { grid-column: 1 / -1; }
   /* ---- machine photographs ---- */
-  /* A retired machine is in the list, not out of sight: visible enough to find and
+  /* A fault photograph is evidence, so it is a link on the problem rather than a
+   column: the table is about the job, and the picture is what you open next. */
+.link-photo {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link-photo:hover { color: var(--ink); border-color: var(--ink-soft); }
+
+/* A retired machine is in the list, not out of sight: visible enough to find and
    reopen, quiet enough not to compete with the machines that are running. */
 .row-quiet td { opacity: .6; }
 .row-quiet:hover td { opacity: 1; }

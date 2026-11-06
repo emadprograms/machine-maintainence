@@ -75,8 +75,14 @@ export default {
   'DELETE /api/equipment/:id': route(async (req, res) => {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     const row = photoOf(id(req.params.id));
+    // The jobs go with the machine (ON DELETE CASCADE), and each of them may have
+    // photographed the fault. Collect the names first: after the delete there is
+    // nothing left to ask, and a file nobody points at is litter.
+    const jobPhotos = all('SELECT photo FROM work_orders WHERE equipment_id = ? AND photo IS NOT NULL',
+      id(req.params.id)).map((w) => w.photo);
     run('DELETE FROM equipment WHERE id = ?', id(req.params.id));
-    removePhoto(row?.photo);          // a file nobody points at is litter
+    removePhoto(row?.photo);
+    jobPhotos.forEach(removePhoto);
     send(res, 200, { ok: true });
   }),
 

@@ -19,6 +19,21 @@ export function stockValue(raw, fallback) {
 }
 
 /**
+ * Who reported a fault. Free text, trimmed, and null when nothing was written —
+ * the person who hears the noise is often standing at the machine rather than
+ * signed in, so this cannot be a user id. `undefined` still means "not
+ * mentioned", so a PATCH that does not send it leaves the name alone.
+ */
+export function reporterValue(raw) {
+  if (raw === undefined) return { missing: true };
+  if (raw === null) return { value: null };
+  const text = String(raw).trim();
+  if (!text) return { value: null };
+  if (text.length > 120) return { error: 'Reported by is too long — 120 characters at most' };
+  return { value: text };
+}
+
+/**
  * Time spent on a job. `undefined` means "not mentioned" (leave it alone),
  * empty means "clear it", and anything else must be a number that a human could
  * have worked. Nullable on purpose: a job nobody has costed is not a job that

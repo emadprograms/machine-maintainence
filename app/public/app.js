@@ -84,6 +84,29 @@ async function api(path, options = {}) {
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
+/**
+ * Upload a photograph. Bytes are not JSON, so this cannot go through api(); and
+ * the 2 MB refusal happens here as well as on the server, because a phone photo
+ * that fails at the end of an upload is worse than a sentence before it starts.
+ */
+async function postPhoto(path, file) {
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error('That photograph is larger than 2 MB. Resize it and try again.');
+  }
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (res.status === 401) { showLogin(); throw new Error('Please sign in'); }
+  if (!res.ok) {
+    const problem = await res.json().catch(() => ({}));
+    throw new Error(problem.error || 'The photograph could not be saved');
+  }
+  return res.json().catch(() => ({}));
+}
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -224,7 +247,9 @@ async function loadWork() {
         </td>
       </tr>`
     : `<tr>
-        ${strong(w.equipment_name)}<td>${esc(w.title)}</td>
+        ${strong(w.equipment_name)}<td>${esc(w.title)}${w.photo
+          ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
+                 rel="noopener">photo</a>` : ''}</td>
         <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
@@ -282,11 +307,24 @@ async function addWorkOrder() {
   const title = $('#w-title').value.trim();
   if (!title) return formError('work-form', 'Say what is wrong — even a few words is enough.');
   try {
-    await api('/work-orders', { method: 'POST', body: JSON.stringify({
+    // The job first, then its photograph: the route is /work-orders/:id/photo and a
+    // photograph of a fault that does not exist yet has nowhere to live. This is
+    // why the report form can carry a photo before any job id exists.
+    const created = await api('/work-orders', { method: 'POST', body: JSON.stringify({
       equipment_id: $('#w-equipment').value, title, priority: $('#w-priority').value,
       labour_hours: $('#w-hours')?.value || null,
+      notes: $('#w-notes')?.value.trim() || null,
+      reported_by: $('#w-reporter')?.value.trim() || null,
     })});
-    $('#w-title').value = '';
+    const file = $('#w-photo')?.files?.[0];
+    if (file) {
+      try { await postPhoto(`/api/work-orders/${created.id}/photo`, file); }
+      catch (e) { formError('work-form', `${e.message} The work order itself was saved.`); return; }
+    }
+    ['#w-title', '#w-notes', '#w-reporter', '#w-hours'].forEach((sel) => {
+      const el = $(sel); if (el) el.value = '';
+    });
+    if ($('#w-photo')) $('#w-photo').value = '';
     formDone('work-form');
     loadWork();
   } catch (e) { formError('work-form', e.message); }

@@ -162,20 +162,11 @@ export function editEquipment(idToEdit) {
 
 /** Send the bytes as they are. The server sniffs the type and picks the name;
  *  the header below is a courtesy, not a claim it will believe. */
+// The bytes-in upload and its 2 MB refusal live in app.js: a fault photograph on a
+// work order goes through exactly the same door, and two copies of that check would
+// drift the day one cap changes.
 async function uploadPhoto(machineId, file) {
-  if (file.size > 2 * 1024 * 1024) {
-    throw new Error('That photograph is larger than 2 MB. Resize it and try again.');
-  }
-  const res = await fetch(`/api/equipment/${machineId}/photo`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'content-type': file.type || 'application/octet-stream' },
-    body: file,
-  });
-  if (!res.ok) {
-    const problem = await res.json().catch(() => ({}));
-    throw new Error(problem.error || 'The photograph could not be saved');
-  }
+  return postPhoto(`/api/equipment/${machineId}/photo`, file);
 }
 
 /** Save the record, then the photograph if one was chosen. Two calls because the

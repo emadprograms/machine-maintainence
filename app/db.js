@@ -200,6 +200,14 @@ ensureColumn('users', 'created_at', "TEXT");
 // Time spent on a job. Nullable: a job nobody has costed is not a job that took
 // zero hours, and the report says so by counting only what was recorded.
 ensureColumn('work_orders', 'labour_hours', 'REAL');
+// Who reported the fault, as typed. Free text rather than a user id: the person
+// who finds the machine making a noise is often standing next to it, not signed
+// in — and "Ada on the floor" is still the only lead six hours later.
+ensureColumn('work_orders', 'reported_by', 'TEXT');
+// A photograph of the fault. The same file-beside-the-database rule as a
+// machine's photograph, and the same reason: maintain.db must stay small enough
+// to copy onto a stick.
+ensureColumn('work_orders', 'photo', 'TEXT');
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example
 
 // ---------------------------------------------------------------- helpers

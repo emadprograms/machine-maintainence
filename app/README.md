@@ -46,24 +46,24 @@ Check with `node --version`.
 | `server.js` | Starts up, decides which route a request is, serves the one page | 116 |
 | `routes/` | **One file per screen group** — see below | 40–135 each |
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
-| `values.js` | Turns what a browser sends into what the database may store | 54 |
+| `values.js` | Turns what a browser sends into what the database may store | 69 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 316 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 324 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 138 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
 | `status.js` | What state a machine is in, from its work orders; also what "in service" means to a query | 86 |
-| `photos.js` | Machine photographs: type sniffed from the bytes, size capped | 71 |
+| `photos.js` | Photographs — of a machine or of a fault: type sniffed from the bytes, size capped | 71 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 443 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 239 |
-| `public/app.js` | Fetches data and draws the main screens | 560 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 276 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 404 behaviours | 2,188 |
+| `public/index.html` | The whole UI shell: every screen and form | 449 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 252 |
+| `public/app.js` | Fetches data and draws the main screens | 598 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 267 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 431 behaviours | 2,323 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -73,8 +73,8 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 43 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 118 |
-| `routes/work-orders.js` | work orders, work-orders.csv | 95 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 124 |
+| `routes/work-orders.js` | work orders, the photo of the fault, work-orders.csv | 144 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
@@ -167,6 +167,13 @@ photograph pushed that page past 600 lines.
 * **A machine can have a photograph.** JPEG, PNG or WebP up to 2 MB, stored as a file in
   `photos/` beside the database. The type is decided by the first bytes of the file, not by
   the name or the header the browser sent, and the filename is chosen by the server.
+* **A fault report says what was seen, who saw it and what it looked like.** Notes, a
+  free-text name and a photograph of the fault, all optional, alongside the machine,
+  the problem and the priority. The photograph is bytes to `/api/work-orders/:id/photo`
+  under the same 2 MB cap and the same sniffed-type rule as a machine's photograph; the
+  difference is deliberate — **any signed-in person may attach or remove one**, because
+  the technician who finds the fault is exactly who needs to photograph it. Deleting a
+  machine still takes its jobs and their photographs with it.
 * **A machine has a history.** The History button on its row opens every job ever
   reported against it, open ones included.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
@@ -365,10 +372,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 404 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 431 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`404 passed, 0 failed`.
+`431 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

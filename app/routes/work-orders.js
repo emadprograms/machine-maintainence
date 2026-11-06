@@ -3,8 +3,9 @@
 // The export calls the same workOrderFilter() as the list, so the file cannot
 // disagree with the screen; a second query is how that bug gets shipped.
 
-import { send, readBody, route, id, sendCsv } from '../http.js';
-import { hoursValue, assigneeValue } from '../values.js';
+import { send, readBody, readBytes, route, id, sendCsv } from '../http.js';
+import { hoursValue, assigneeValue, reporterValue } from '../values.js';
+import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
 import { all, get, run } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
@@ -41,10 +42,15 @@ export default {
     // FK constraint catches a bogus machine id -> 400 instead of an orphan record.
     const hours = hoursValue(b.labour_hours);
     if (hours.error) return send(res, 400, { error: hours.error });
-    const r = run(`INSERT INTO work_orders (equipment_id, title, notes, priority, assigned_to, labour_hours)
-                   VALUES (?,?,?,?,?,?)`,
-      id(b.equipment_id), b.title.trim(), b.notes || null, b.priority || 'medium', owner.value,
-      hours.missing ? null : hours.value);
+    const reporter = reporterValue(b.reported_by);
+    if (reporter.error) return send(res, 400, { error: reporter.error });
+    const notes = b.notes === undefined || b.notes === null ? null
+      : (String(b.notes).trim() || null);
+    const r = run(`INSERT INTO work_orders
+                     (equipment_id, title, notes, priority, assigned_to, labour_hours, reported_by)
+                   VALUES (?,?,?,?,?,?,?)`,
+      id(b.equipment_id), b.title.trim(), notes, b.priority || 'medium', owner.value,
+      hours.missing ? null : hours.value, reporter.missing ? null : reporter.value);
     send(res, 201, get('SELECT * FROM work_orders WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -61,13 +67,56 @@ export default {
     if (owner.error) return send(res, 400, { error: owner.error });
     const hours = hoursValue(b.labour_hours);
     if (hours.error) return send(res, 400, { error: hours.error });
+    const reporter = reporterValue(b.reported_by);
+    if (reporter.error) return send(res, 400, { error: reporter.error });
+    const notes = b.notes === undefined ? before.notes : (String(b.notes ?? '').trim() || null);
     run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
-         labour_hours=? WHERE id=?`,
+         labour_hours=?, reported_by=? WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
-      b.status ?? before.status, b.priority ?? before.priority, b.notes ?? before.notes,
+      b.status ?? before.status, b.priority ?? before.priority, notes,
       (b.status ?? before.status) === 'done' ? (before.closed_at ?? nowStamp()) : null,
-      owner.value, hours.missing ? before.labour_hours : hours.value, id(req.params.id));
+      owner.value, hours.missing ? before.labour_hours : hours.value,
+      reporter.missing ? before.reported_by : reporter.value, id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
+  }),
+
+  // ---- the photograph of the fault. Same bytes-in/bytes-out contract as a
+  // machine's photograph, and one deliberate difference: **any signed-in person
+  // may attach and remove one.** A technician is exactly who finds the fault and
+  // photographs it, so an admin-only route would be a route nobody who needs it
+  // can use; and a blurred photograph left in the record is worse than a deleted
+  // one. The record itself stays admin-only to change.
+  'POST /api/work-orders/:id/photo': route(async (req, res) => {
+    const before = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
+    if (!before) return send(res, 404, { error: 'Work order not found' });
+    const bytes = await readBytes(req, MAX_PHOTO_BYTES);
+    const saved = savePhoto(bytes);
+    if (saved.error) return send(res, 400, { error: saved.error });
+    run('UPDATE work_orders SET photo = ? WHERE id = ?', saved.name, id(req.params.id));
+    removePhoto(before.photo);        // replacing a photograph replaces the file
+    send(res, 200, { photo: saved.name, type: saved.type });
+  }, { raw: true }),       // bytes, not JSON: parsing a JPEG would answer 400 to every photograph
+
+  'GET /api/work-orders/:id/photo': route(async (req, res) => {
+    const row = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
+    const bytes = row ? readPhoto(row.photo) : null;
+    if (!bytes) return send(res, 404, { error: 'No photograph for this work order' });
+    res.writeHead(200, {
+      'content-type': photoType(row.photo),
+      'content-length': bytes.length,
+      // The name changes when the photograph does, so the answer never is.
+      'cache-control': 'private, max-age=86400',
+    });
+    res.end(bytes);
+  }),
+
+  'DELETE /api/work-orders/:id/photo': route(async (req, res) => {
+    const row = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
+    if (!row) return send(res, 404, { error: 'Work order not found' });
+    if (!row.photo) return send(res, 200, { photo: null });
+    run('UPDATE work_orders SET photo = NULL WHERE id = ?', id(req.params.id));
+    removePhoto(row.photo);
+    send(res, 200, { photo: null });
   }),
 
   // ---- CSV export. Same filter builders as the list routes above, so the file
