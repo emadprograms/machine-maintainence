@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — Milestone v2.0 completed and archived
+Last activity: 2026-11-06 — quick task 261106-eqs: machine state follows the work orders
 
 ## Quick Tasks Completed
 
@@ -40,6 +40,7 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
+| 2026-11-06 | 261106-eqs | Machine state is derived from the work orders (one module, one answer), editing machines and photographs is admin-only, photographs are files beside the database; stylesheet split out of `index.html` | `0fd5d13` |
 | 2026-11-06 | 261106-eqp | Machines can be corrected: edit dialog for every field, `down` reachable, manufacturer writable, empty name refused | `13d3854` |
 | 2026-11-06 | 261106-dsh | Dashboard graphs: jobs closed and monthly cost, six months, hand-drawn SVG | `91b45df` |
 | 2026-11-06 | review | Code review: disabled sessions were still live; backup filename collision; role spelling | `641059d`, `.planning/CODE-REVIEW-2026-11-06.md` |

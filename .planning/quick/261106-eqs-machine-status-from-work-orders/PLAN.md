@@ -2,7 +2,7 @@
 quick_id: 261106-eqs
 slug: machine-status-from-work-orders
 date: 2026-11-06
-status: in_progress
+status: complete
 files_modified: [app/db.js, app/status.js, app/photos.js, app/http.js, app/routes/equipment.js, app/routes/dashboard.js, app/public/machines.js, app/public/index.html, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
