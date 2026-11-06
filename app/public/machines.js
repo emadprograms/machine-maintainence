@@ -73,12 +73,12 @@ export async function loadEquipment() {
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr>
       <td class="cell-thumb">${thumbnail(e)}</td>
-      ${strong(e.name, [e.category, e.location].filter(Boolean).join(' · ') || null)}
-      ${soft(e.asset_tag)}${soft(e.manufacturer)}
+      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.manufacturer)}
+      ${soft(e.category)}${soft(e.location)}
       ${statusCell(e)}
       ${actions(e)}
     </tr>`).join('')
-    || emptyRow(6, q
+    || emptyRow(8, q
       ? `Nothing in this filter matches "${q}". Clear the search to see the rest.`
       : view.empty);
 

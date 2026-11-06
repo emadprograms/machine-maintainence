@@ -59,11 +59,11 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 420 |
+| `public/index.html` | The whole UI shell: every screen and form | 421 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 204 |
 | `public/app.js` | Fetches data and draws the main screens | 557 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 187 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 353 behaviours | 1,894 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 356 behaviours | 1,910 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -130,6 +130,10 @@ photograph pushed that page past 600 lines.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
+* **The machine table shows what a machine is**: a photograph, its name, barcode,
+  manufacturer, category, location and state — one column each, in that order. The empty
+  table spans exactly the columns its header names, and the suite checks that rather than
+  trusting anyone to count.
 * **The machine list has four views.** A filter in the Machines toolbar offers *In service*
   (the default), *Down right now*, *Retired* and *All machines*; the search box narrows
   whichever view is chosen. `GET /api/equipment?service=` picks the stored state and
@@ -349,10 +353,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 353 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 356 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`353 passed, 0 failed`.
+`356 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.

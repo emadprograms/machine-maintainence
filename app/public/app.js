@@ -49,9 +49,9 @@ function emptyRow(colspan, sentence) {
 }
 
 /** A row's first cell: the thing the row is about. */
-// The heavier first cell. `sub` carries a second, smaller line — the Machines table
-// dropped its Category and Location columns when the photograph arrived, and
-// "Pressing · Bay 9" belongs under the name rather than nowhere.
+// The heavier first cell. `sub` carries a second, smaller line, for a table that
+// needs one (none does now that Machines has real Category and Location columns —
+// the argument stays because it is two lines and cheaper than a second helper).
 const strong = (v, sub) => `<td class="cell-strong">${esc(v)}${sub
   ? `<span class="row-sub">${esc(sub)}</span>` : ''}</td>`;
 /** A secondary value, or an honest absence rather than a dash. */

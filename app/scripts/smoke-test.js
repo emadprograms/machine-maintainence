@@ -1598,10 +1598,26 @@ ok('the photograph is uploaded as bytes to the machine\'s own route',
   /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
 ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
 ok('the row explains why a machine is down', appEq.includes('status_reason'));
-ok('the row still says where the machine is and what kind it is',
-  /strong\(e\.name, \[e\.category, e\.location\]/.test(appEq)
-  && /const strong = \(v, sub\)/.test(readFileSync(join(root, 'public', 'app.js'), 'utf8')),
-  'a column removed and nothing put in its place');
+// Category, location and the photograph are columns now, not a smaller line under
+// the name. The header is read once and every claim is made against it, including
+// the one that can silently break: the empty row's colspan.
+const eqHead = (indexEq.match(/<thead><tr><th class="cell-thumb">Photo<\/th>[\s\S]*?<\/tr><\/thead>/) || [''])[0];
+ok('the machine table names every column it shows',
+  ['Name', 'Barcode', 'Manufacturer', 'Category', 'Location', 'Status']
+    .every((name) => eqHead.includes(`>${name}</th>`)) && eqHead.includes('>Photo</th>'),
+  eqHead || 'the machines header is not where it was');
+// With real columns, a second line under the name would print the same fact twice.
+// A mutation that restored it passed every other check, so the name cell is named.
+ok('the name column carries only the name',
+  /strong\(e\.name\)/.test(appEq) && !/strong\(e\.name,/.test(appEq),
+  'category and location are shown twice');
+ok('the row fills the category and location columns',
+  appEq.includes('${soft(e.category)}${soft(e.location)}'),
+  'the columns exist and the row leaves them empty');
+ok('an empty table spans exactly the columns the header names',
+  /emptyRow\(\d+,/.test(appEq)
+  && appEq.includes(`emptyRow(${(eqHead.match(/<th[\s>]/g) || []).length},`),
+  `header has ${(eqHead.match(/<th[\s>]/g) || []).length} columns`);
 ok('Edit, Retire and Delete are drawn only for an admin',
   /const admin = window\.me\?\.role === 'admin'/.test(actionsFn)
   && actionsFn.includes('editEquipment') && actionsFn.includes('toggleStatus')
