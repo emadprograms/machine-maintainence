@@ -15,7 +15,7 @@ cd starter
 start.bat
 ```
 
-Then open <http://localhost:3000>. `starter/README.md` is the full guide — how the data
+Then open <http://localhost:3000>. `app/README.md` is the full guide — how the data
 is stored, how to back it up and restore it, what to do if the password is lost, and how
 to add a field or a table yourself.
 
@@ -23,8 +23,8 @@ to add a field or a table yourself.
 
 | Path | What it is |
 |---|---|
-| `starter/` | **The application.** Plain JavaScript, no dependencies, no build. |
-| `starter/README.md` | The guide for whoever runs or modifies it. Start here. |
+| `app/` | **The application.** Plain JavaScript, no dependencies, no build. `app/server.js` starts it; `app/routes/` holds the endpoints. |
+| `app/README.md` | The guide for whoever runs or modifies it. Start here. |
 | `.planning/` | The project record: milestone specs, phase plans, verification and security reports |
 | `.planning/milestones/` | Shipped milestones, archived: requirements, roadmap, review findings, UAT evidence |
 | `LOCAL-AGENT-VERIFY-PROMPT.md` | A pending task: verify the data-persistence fix on the real Windows machine |
@@ -38,7 +38,7 @@ node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 ```
 
-The first starts its own server on a throwaway database and checks 240 behaviours; the
+The first starts its own server on a throwaway database and checks 245 behaviours; the
 second proves the app reaches nothing outside the machine. Both must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.
@@ -49,7 +49,7 @@ This repository began as a hackathon project: a React/TypeScript frontend, an Ex
 backend writing its whole database to disk on every request, a Netlify function, and
 some 55 MB of stock photographs in three copies. It was reviewed
 (`.planning/milestones/v1.0-CODE-REVIEW.md`), and replaced by the small application in
-`starter/` across four milestones — v1.0 the core, v1.1 operable, v2.0 presentable,
+`app/` across four milestones — v1.0 the core, v1.1 operable, v2.0 presentable,
 v3.0 the record.
 
 The old application was removed from the working tree in November 2026. It survives in

@@ -1,5 +1,5 @@
 # App data (the live database, backups and the signing key) — never commit.
-starter/data/
+app/data/
 
 # GSD Core tooling. Re-install with:
 #   npx @opengsd/gsd-core@latest --claude --local --profile=standard

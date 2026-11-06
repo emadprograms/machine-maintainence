@@ -15,7 +15,7 @@ files_modified: [.planning/REQUIREMENTS.md, .planning/milestones/v1.1-REQUIREMEN
 ## What the code does now
 
 Every failed sign-in appends one tab-separated line to
-`starter/data/login-failures.log`: ISO timestamp, source address, the address
+`app/data/login-failures.log`: ISO timestamp, source address, the address
 attempted, and whether the account existed. Nobody is refused. Nothing is
 delayed. There is no `Retry-After` header because there is no wait.
 

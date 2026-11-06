@@ -43,7 +43,11 @@ Check with `node --version`.
 
 | File | What it does | Lines |
 |---|---|---|
-| `server.js` | Web server, login, and every API route in one table | 814 |
+| `server.js` | Starts up, decides which route a request is, serves the one page | 116 |
+| `routes/` | **One file per screen group** — see below | 40–135 each |
+| `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
+| `values.js` | Turns what a browser sends into what the database may store | 54 |
+| `who.js` | Who is asking: the session cookie, the user behind it | 26 |
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 296 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 131 |
 | `report.js` | One month of work, added up | 97 |
@@ -54,14 +58,28 @@ Check with `node --version`.
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: styles, screens, forms | 544 |
 | `public/app.js` | Fetches data and draws the main screens | 585 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` | One module per screen group | 113 · 91 · 143 · 79 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 240 behaviours | 1,327 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` | One module per screen group | 121 · 91 · 143 · 79 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 245 behaviours | 1,365 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
-Total application code: **about 3,150 lines**, and about 1,330 of tests. You can still read
-all of it, but `server.js` is now over the ~600-line mark this project uses as a signal to
-split; see **Known limitations**.
+The route files, one per screen group:
+
+| File | Routes | Lines |
+|---|---|---|
+| `routes/auth.js` | login, logout, me | 52 |
+| `routes/record.js` | history, history.csv | 43 |
+| `routes/equipment.js` | machines | 40 |
+| `routes/work-orders.js` | work orders, work-orders.csv | 95 |
+| `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
+| `routes/pm.js` | recurring maintenance | 68 |
+| `routes/dashboard.js` | the landing screen's four answers | 69 |
+| `routes/admin.js` | users, assignable people, backup | 81 |
+| `routes/report.js` | the hourly rate, the month, report.csv | 56 |
+
+Total application code: **about 3,150 lines**, and about 1,370 of tests. No file is past the
+~600-line mark this project uses as a signal to split, and the test suite now checks that
+rather than trusting anyone to remember it.
 
 ---
 
@@ -73,9 +91,20 @@ change anything.
 ### `db.js` — what is stored
 Table definitions, in order, from top to bottom. Each is a `CREATE TABLE IF NOT EXISTS`.
 
-### `server.js` — the API
-One object, `const api = { ... }`, keyed by `'METHOD /path'`. Each entry is one function.
+### `server.js` and `routes/` — the API
+`server.js` starts the program and nothing else. Every endpoint lives in `routes/`, in the
+file named after its screen: `routes/parts.js` holds the spare-parts endpoints, and so on.
+Each file exports one object keyed by `'METHOD /path'`, and `server.js` joins them together.
+
+Adding an endpoint means opening the file for that screen and adding one entry:
+
+```js
+'POST /api/parts/:id/count': route(async (req, res) => { ... }),
+```
+
 `req.user` is already filled in by the time your code runs — you don't write auth checks.
+`route()` answers a thrown error with a sentence instead of closing the server, and it
+rejects a malformed body before your handler sees it.
 
 ### `public/app.js` — the screen
 One function per page (`loadEquipment`, `loadWork`, ...) that calls `api('/equipment')`
@@ -269,10 +298,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 240 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 245 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`240 passed, 0 failed`.
+`245 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.
@@ -306,9 +335,6 @@ native modules. You should see `OFFLINE-SAFE`.
 * A restored backup signs everybody out, because sessions are rows in the database.
 * **No audit log** — who changed what is not recorded. Deliberately out of scope so far;
   it is the strongest candidate for the next milestone.
-* **`server.js` is 814 lines**, against this project's ~600-line signal to split. The route
-  table wants dividing by domain (work orders, parts, history, report, admin) before the
-  next feature lands.
 * **Concurrent edits are last-write-wins** — one process, never tested with two browsers.
 
 ---
@@ -317,7 +343,7 @@ native modules. You should see `OFFLINE-SAFE`.
 
 Built as a lean replacement for `Ilop08/SIAI`, reviewed in
 `../.planning/milestones/v1.0-CODE-REVIEW.md`. That project's code has been removed from
-this repository — `starter/` is the whole application now; the review and the old
+this repository — `app/` is the whole application now; the review and the old
 repository (up to commit `4971ea3`) are where it came from.
 Kept from that project: the scrypt password approach, the `ensureColumn` migration idea,
 the colour palette. Replaced: `sql.js` (which rewrote the whole database on every request)

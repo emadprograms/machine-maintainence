@@ -3,7 +3,7 @@ quick_id: 261105-rst
 slug: honour-a-folder-that-survives-a-restart
 date: 2026-11-05
 status: in_progress
-files_modified: [starter/db.js, starter/auth.js, starter/sessions.js, starter/server.js, starter/reset-password.js, starter/README.md, starter/start.bat, starter/scripts/smoke-test.js, .planning/quick/261105-rst-honour-a-folder-that-survives-a-restart/SUMMARY.md]
+files_modified: [app/db.js, app/auth.js, app/sessions.js, app/server.js, app/reset-password.js, app/README.md, app/start.bat, app/scripts/smoke-test.js, .planning/quick/261105-rst-honour-a-folder-that-survives-a-restart/SUMMARY.md]
 ---
 
 # Quick Task: a password you cannot lose, and data that survives being copied

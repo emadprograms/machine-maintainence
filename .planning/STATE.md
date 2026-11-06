@@ -49,8 +49,8 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 | 2026-11-05 | `node:sqlite` on Node 22.22: WAL, FK, CHECK, `VACUUM INTO` | direct `node -e` probes |
 | 2026-11-05 | Five restarts do not re-seed; `secret.txt` and `maintain.db` keep CreationTime and SHA256; a `.db` copy alone was empty (4,096 B vs 78,312 B of `-wal`) | an evidence-collection agent on the owner's Windows machine, prompt in `.planning/milestones/v2.0-LOCAL-AGENT-PROMPT.md` |
 | 2026-11-05 | Six mutations of the persistence fixes each failed their assertion | `scripts/smoke-test.js`, 203 checks |
-| 2026-11-05 | 45/45 smoke checks pass | `node starter/scripts/smoke-test.js` |
-| 2026-11-05 | Offline-safe: no external URL, no deps, no native modules | `node starter/scripts/audit-offline.js` → `OFFLINE-SAFE` |
+| 2026-11-05 | 45/45 smoke checks pass | `node app/scripts/smoke-test.js` |
+| 2026-11-05 | Offline-safe: no external URL, no deps, no native modules | `node app/scripts/audit-offline.js` → `OFFLINE-SAFE` |
 | 2026-11-05 | Data survives `SIGKILL` (machines, work orders, schedules) | smoke test, kill -9 then restart |
 | 2026-11-05 | Reads do not write: DB mtime unchanged across 5 GETs | smoke test assertion |
 | 2026-11-05 | GSD progress reads 100% (6 plans, 6 summaries) | `gsd-tools progress` |
@@ -92,7 +92,7 @@ Last activity: 2026-11-05 — Milestone v2.0 completed and archived
 |---|---|---|
 | The persistence fix (`261105-rst`) is proven on Linux only — 203 checks, 6 mutations | Pending | hand `LOCAL-AGENT-VERIFY-PROMPT.md` to an agent on the Windows machine |
 | | `node:sqlite` is experimental in Node 22 (worked on Node 26.3.0) | Risk | re-verify on Node upgrade |
-| Concurrent edits are last-write-wins | Limitation | documented in `starter/README.md` |
+| Concurrent edits are last-write-wins | Limitation | documented in `app/README.md` |
 
 ## Blockers
 

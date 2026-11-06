@@ -13,7 +13,7 @@
 // away, and a run of failures against one account at 3am is right there in the
 // file.
 //
-// The application itself can see the file at starter/data/login-failures.log.
+// The application itself can see the file at app/data/login-failures.log.
 
 import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';

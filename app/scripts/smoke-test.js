@@ -913,6 +913,21 @@ ok('every page has a matching section', pageKeys.every((k) => sectionKeys.includ
   `pages=${pageKeys.join(',')} sections=${sectionKeys.join(',')}`);
 ok('every section has a matching page', sectionKeys.every((k) => pageKeys.includes(k)),
   `sections=${sectionKeys.join(',')}`);
+// The sidebar draws its icons from ICONS in shell.js, keyed by page. A page with
+// no entry renders an empty <svg> — a blank column where the icon should be, and
+// nothing anywhere says so. This is exactly what happened to History and Report.
+const iconsBlock = (shellSrc.match(/const ICONS = \{[\s\S]*?\n\};/) || [''])[0];
+const iconKeys = [...iconsBlock.matchAll(/\n  ([\w-]+):/g)].map((m) => m[1]);
+const pagesWithoutIcons = pageKeys.filter((k) => !iconKeys.includes(k));
+ok('every screen in the sidebar has an icon', pagesWithoutIcons.length === 0,
+  `blank icons: ${pagesWithoutIcons.join(', ')} — pages=${pageKeys.join(',')} icons=${iconKeys.join(',')}`);
+ok('every icon belongs to a screen that exists',
+  iconKeys.every((k) => pageKeys.includes(k)),
+  `orphaned icons: ${iconKeys.filter((k) => !pageKeys.includes(k)).join(',')}`);
+ok('every icon is drawn with a path, not left as a stub',
+  [...iconsBlock.matchAll(/\n  [\w-]+: '([^']*)'/g)].every((m) => m[1].includes('<path') || m[1].includes('<circle')),
+  'an icon entry with no drawing renders as nothing at all');
+
 ok('the sidebar filters on the same adminOnly flag',
   /adminOnly/.test(appUrl) && /p\.adminOnly/.test(appUrl),
   'role filtering must reuse PAGES, not a second list');
@@ -926,6 +941,29 @@ ok('icons are inline svg, not files or a font',
   /<svg/.test(shellSrc) && !/\.(png|svg|woff)\b/.test(shellSrc));
 ok('no external URL was added to the shell',
   !/https?:\/\//.test(shellSrc.replace(/\/\/[^\n]*/g, '')));
+
+console.log('\nStructure — the readability rule');
+
+// The project's stated rule: anything past ~600 lines is a signal to split.
+// server.js reached 814 and nothing noticed, so the rule is checked rather than
+// remembered. Test code is exempt: smoke-test.js is long because coverage is
+// long, and nobody reads it to learn how the app works.
+const LIMIT = 600;
+const APP_FILES = [
+  ...readdirSync(root).filter((f) => f.endsWith('.js')),
+  ...readdirSync(join(root, 'routes')).map((f) => `routes/${f}`),
+  ...readdirSync(join(root, 'public')).filter((f) => f.endsWith('.js')).map((f) => `public/${f}`),
+  'public/index.html',
+];
+const tooLong = APP_FILES
+  .map((f) => ({ f, lines: readFileSync(join(root, f), 'utf8').split('\n').length }))
+  .filter((x) => x.lines > LIMIT);
+ok('no application file is past the split signal', tooLong.length === 0,
+  tooLong.map((x) => `${x.f} is ${x.lines} lines`).join('; '));
+ok('every route module is small enough to read in one sitting',
+  readdirSync(join(root, 'routes')).every((f) =>
+    readFileSync(join(root, 'routes', f), 'utf8').split('\n').length <= 200),
+  'a route file past 200 lines is probably two screens sharing a file');
 
 console.log('\nPhase 6 — offline audit');
 // Pure JavaScript on purpose: the first version of this check shelled out to

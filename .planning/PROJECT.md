@@ -65,20 +65,21 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
 - **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
   code plus ~370 lines of test code. All eleven requirements validated; archived under
   `.planning/milestones/v1.0-*`.
-- **Codebase now (2026-11-06):** `starter/` — about 3,150 lines of application code and
-  1,330 of tests. `server.js` (814), `db.js` (296), `filters.js` (131), `report.js` (97),
-  `sessions.js` (46), `settings.js` (24), `dates.js` (24), `auth.js` (56), `login-log.js`
-  (51), `reset-password.js` (58); client: `index.html` (544), `app.js` (585), `shell.js`
-  (113), `dashboard.js` (91), `history.js` (143), `report.js` (79). Eight tables (users,
+- **Codebase now (2026-11-06):** `app/` — about 3,150 lines of application code and
+  1,370 of tests. `server.js` is 116 lines of startup and routing; the handlers live in
+  `routes/`, one file per screen group (auth 52, record 43, equipment 40, work-orders 95,
+  parts 135, pm 68, dashboard 69, admin 81, report 56). Shared plumbing: `http.js` (106),
+  `values.js` (54), `who.js` (26), `db.js` (296), `filters.js` (131), `report.js` (97).
+  Client: `index.html` (544), `app.js` (585), `shell.js` (121), `dashboard.js` (91),
+  `history.js` (143), `report.js` (79). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
   `ensureColumn` migrations).
-- **Test suite:** **240 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **245 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up. Offline audit reports `OFFLINE-SAFE`.
-- **Known technical debt:** `server.js` is 814 lines, well past the ~600-line signal to
-  split — the route table should be divided by domain before the next feature.
-  Concurrent edits are last-write-wins (single process, never tested with two browsers).
+- **Known technical debt:** concurrent edits are last-write-wins (single process, never
+  tested with two browsers).
   `node:sqlite` is still experimental on Node 22, so every entry point passes
   `--no-warnings=ExperimentalWarning`. The v2.1 persistence fix has never run on Windows;
   the check for it is `LOCAL-AGENT-VERIFY-PROMPT.md`.
@@ -102,9 +103,9 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
   - colour palette from `frontend/tailwind.config.js`
 
   (Those three paths are in `Ilop08/SIAI`, not in this repository, which now holds only
-  `starter/`.)
+  `app/`.)
   - data-model shape for equipment / faults / spare parts (tables redrawn, not copied)
-- Scaffold already written (this branch, `starter/`): `db.js`, `auth.js`, `server.js`, `public/index.html`. It is a starting point to be completed and verified phase by phase, not a finished product.
+- Scaffold already written (this branch, `app/`): `db.js`, `auth.js`, `server.js`, `public/index.html`. It is a starting point to be completed and verified phase by phase, not a finished product.
 
 ## Constraints
 
