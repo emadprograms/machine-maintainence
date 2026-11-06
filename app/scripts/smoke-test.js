@@ -1594,7 +1594,15 @@ ok('the edit form carries every field a machine has',
 // status field. The question is what the editor can set.
 {
   const editor = (indexEq.match(/<dialog id="equipment-edit"[\s\S]*?<\/dialog>/) || [''])[0];
-  ok('the machine editor carries no status control at all',
+  // One field, one name, one example. The creating form called it "Asset tag" and the
+// editor called it "Barcode" — the same column, described two ways in two dialogs a
+// click apart; and both showed MM-014 while the labels on machines are numbers.
+ok('both machine forms call the same field a barcode and show the same example',
+  (indexEq.match(/<span>Barcode<\/span><input id="e-tag" placeholder="e\.g\. 101220054"/g) || []).length === 1
+  && (indexEq.match(/<span>Barcode<\/span><input id="ee-tag" placeholder="e\.g\. 101220054"/g) || []).length === 1
+  && !/Asset tag/.test(indexEq),
+  'the two dialogs describe the same column differently');
+ok('the machine editor carries no status control at all',
     editor.length > 0 && !editor.includes('id="ee-status"')
     && !/<select/.test(editor) && !/<option/.test(editor),
     editor ? 'the editor can still set a status' : 'the editor dialog is gone');

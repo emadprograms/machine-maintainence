@@ -75,7 +75,7 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
   (136), `history.js` (147), `report.js` (79), `machines.js` (273). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
   `ensureColumn` migrations), and machine photographs as files in `photos/`.
-- **Test suite:** **401 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **402 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up, and the machine-state matrix: high-priority open ⇒ down, job

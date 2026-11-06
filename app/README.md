@@ -63,7 +63,7 @@ Check with `node --version`.
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 234 |
 | `public/app.js` | Fetches data and draws the main screens | 560 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 147 · 79 · 101 · 273 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 401 behaviours | 2,168 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 402 behaviours | 2,176 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -360,10 +360,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 401 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 402 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`401 passed, 0 failed`.
+`402 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
