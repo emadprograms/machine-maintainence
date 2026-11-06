@@ -774,13 +774,26 @@ ok('no form sits on a page outside a dialog',
     const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
     return !/class="form-grid/.test(withoutDialogs);
   }));
-// A *creating* dialog holds a form grid. The machine-history dialog is a
-// reading dialog and must not be counted here, or this check would be satisfied
-// by adding any sixth dialog anywhere.
-const creatingDialogs = (html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [])
-  .filter((d) => /class="form-grid/.test(d));
-ok('each creating screen has its own dialog', creatingDialogs.length === 5,
-  `${creatingDialogs.length} creating dialogs`);
+// The five screens that create something each own one dialog. This used to be a
+// count of five, which said nothing about *which* five and failed the moment a
+// sixth form (the machine editor) was added — the same mistake as counting export
+// buttons. The names are checked instead, and the editor is checked separately.
+const allDialogs = html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [];
+const dialogId = (d) => (d.match(/id="([\w-]+)"/) || [])[1];
+const CREATING_DIALOGS = ['work-form', 'equipment-form', 'parts-form', 'pm-form', 'users-form'];
+const creatingIds = allDialogs
+  .filter((d) => /class="form-grid/.test(d) && !/-edit$/.test(dialogId(d)))
+  .map(dialogId);
+ok('each creating screen has its own dialog',
+  CREATING_DIALOGS.every((id) => creatingIds.includes(id))
+  && creatingIds.length === CREATING_DIALOGS.length,
+  `expected ${CREATING_DIALOGS.join(',')} — got ${creatingIds.join(',')}`);
+ok('the machine editor is a dialog too, and it is not a creating form',
+  allDialogs.some((d) => dialogId(d) === 'equipment-edit'));
+ok('an editing dialog is filled before it is shown, never used to create',
+  /-edit$/.test('equipment-edit')
+  && /function editEquipment[\s\S]{0,600}openForm\('equipment-edit'\)/.test(
+    readFileSync(join(root, 'public', 'machines.js'), 'utf8')));
 // One close button per dialog, counted rather than hard-coded, so a dialog
 // added later cannot ship without a way to close it.
 const dialogCount = (html.match(/<dialog id="[\w-]+"/g) || []).length;
@@ -798,14 +811,19 @@ ok('the first column is heavier', /\.cell-strong\s*\{[^}]*font-weight/.test(uiCs
 ok('secondary text is muted', /\.cell-muted\s*\{[^}]*color:/.test(uiCss));
 ok('row padding is set once for every table', /th, td \{[^}]*padding/.test(uiCss));
 ok('rows use the shared strong/soft helpers, not bare cells',
-  appSrc13.includes('strong(e.name)') && appSrc13.includes('strong(w.equipment_name)')
-  && appSrc13.includes('strong(p.name)') && appSrc13.includes('strong(u.name)'));
+  clientSrc.includes('strong(e.name)') && clientSrc.includes('strong(w.equipment_name)')
+  && clientSrc.includes('strong(p.name)') && clientSrc.includes('strong(u.name)'));
 
 // Empty states: a sentence, and only after a successful fetch.
 ok('every list has a written empty state',
   ['equipment', 'work', 'parts', 'due', 'pm', 'users'].every((fn) => {
-    const body = (appSrc13.match(new RegExp(`async function load${fn[0].toUpperCase()}${fn.slice(1)}[\\s\\S]*?\\n}`)) || [''])[0];
-    return /emptyRow\(/.test(body);
+    // app.js keeps a one-line delegating wrapper for screens that live in their
+    // own module, so every match is considered and any real body will do: a
+    // wrapper has no empty state and the module's function has one.
+    const bodies = [...clientSrc.matchAll(
+      new RegExp(`async function load${fn[0].toUpperCase()}${fn.slice(1)}[\\s\\S]*?\\n}`, 'g'))]
+      .map((m) => m[0]);
+    return bodies.some((b) => /emptyRow\(/.test(b));
   }));
 ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0,160}esc\(sentence\)/.test(appSrc13));
 // Two earlier versions of this assertion were wrong, and a mutation proved it
@@ -837,7 +855,7 @@ ok('a failed load cannot fall through to an empty list', swallowed.length === 0,
 
 // Destructive actions name the record and the consequence.
 ok('deleting a machine names it and says what happens',
-  /Delete "\$\{name\}"/.test(appSrc13) && /cannot be undone/i.test(appSrc13));
+  /Delete "\$\{name\}"/.test(clientSrc) && /cannot be undone/i.test(clientSrc));
 ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(appSrc13));
 
 console.log('\nPhase 12 — the dashboard');
@@ -1092,7 +1110,7 @@ ok('the work-order export applies the same search as the screen',
 
 // FIND-04 — "nothing matched" is not "there is nothing".
 ok('a search with no hits says so instead of showing an empty list',
-  /Nothing matches "/.test(appUrl) && /No machine matches "/.test(appUrl)
+  /Nothing matches "/.test(clientSrc) && /No machine matches "/.test(clientSrc)
   && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
   'one of the three search empty states is missing');
 
@@ -1264,8 +1282,64 @@ ok('an empty machine, an empty range and a failed load read differently',
   'one of the three empty states is missing');
 ok('the history screen is reachable and the machine row opens it',
   appUrl.includes("{ key: 'history', label: 'History' }")
-  && /openMachineHistory\(\$\{e\.id\}/.test(appUrl),
+  && /openMachineHistory\(\$\{e\.id\}/.test(clientSrc),
   'no sidebar entry or no way in from a machine');
+
+console.log('\nMachines — correcting a record');
+
+// Until now a machine could be added, retired, restored and deleted, but never
+// corrected: a typo in its name was permanent, and status 'down' — which the
+// dashboard counts — could not be set from any screen.
+const fixable = await c('/api/equipment', { method: 'POST', body: {
+  name: 'Forklift typo', asset_tag: 'FL-9', category: 'forklift', location: 'Bay 9' } });
+const fixed = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: {
+  name: 'Forklift A', asset_tag: 'FL-001', category: 'Handling', location: 'Bay 1',
+  manufacturer: 'Toyota', status: 'down', notes: 'Mast repaired in March' } });
+ok('a machine can be renamed', fixed.data.name === 'Forklift A', String(fixed.data.name));
+ok('the whole record is corrected, not just the name',
+  fixed.data.asset_tag === 'FL-001' && fixed.data.category === 'Handling'
+  && fixed.data.location === 'Bay 1' && fixed.data.notes === 'Mast repaired in March',
+  JSON.stringify(fixed.data));
+ok('a machine can be marked down',
+  fixed.data.status === 'down',
+  `status=${fixed.data.status} — "Machines down" on the dashboard had no screen that could set it`);
+ok('the manufacturer is stored and comes back',
+  fixed.data.manufacturer === 'Toyota', String(fixed.data.manufacturer));
+ok('the search sees the new name at once',
+  (await c('/api/equipment?q=Forklift')).data.some((e) => e.name === 'Forklift A'));
+
+const nameless = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { name: '   ' } });
+ok('a machine cannot be renamed to nothing',
+  nameless.status === 400 && /required/i.test(nameless.data.error || ''), JSON.stringify(nameless));
+ok('editing a machine that is gone is a 404',
+  (await c('/api/equipment/999999', { method: 'PUT', body: { name: 'Ghost' } })).status === 404);
+
+// The wiring. The API above could always do this; the screen is what was missing,
+// and no browser exists here to click it, so the controls are checked by reading.
+const appEq = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
+const indexEq = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const editFn = (appEq.match(/function editEquipment\([\s\S]*?\n\}/) || [''])[0];
+const saveFn = (appEq.match(/async function saveEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+
+ok('every machine row offers Edit',
+  /onclick="editEquipment\(\$\{e\.id\}\)"/.test(appEq), 'no control, no edit');
+ok('the edit form carries every field the record has',
+  ['ee-name', 'ee-tag', 'ee-cat', 'ee-loc', 'ee-maker', 'ee-status', 'ee-notes', 'ee-id']
+    .every((f) => indexEq.includes(`id="${f}"`)),
+  'a field missing from the form is a field nobody can correct');
+ok('the edit form can say a machine is down',
+  /<option value="down">/.test(indexEq));
+ok('the form is filled from the row that was clicked, not from a second request',
+  editFn.includes('equipmentRows.find') && editFn.includes('#ee-name')
+  && editFn.includes('#ee-status') && editFn.includes('openForm(\'equipment-edit\')'),
+  editFn ? 'prefill missing' : 'editEquipment() is not defined');
+ok('saving sends a PUT for that machine',
+  /method: 'PUT'/.test(saveFn) && /\/equipment\/\$\{machineId\}/.test(saveFn),
+  saveFn ? 'wrong verb or wrong URL' : 'saveEquipment() is not defined');
+ok('saving refuses an empty name before it reaches the server',
+  /formError\('equipment-edit'/.test(saveFn) && /!name/.test(saveFn));
+
+await c(`/api/equipment/${fixable.data.id}`, { method: 'DELETE' });   // leave no fixture behind
 
 console.log('\nDashboard — the last six months');
 

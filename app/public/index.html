@@ -136,6 +136,7 @@
   .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
   .form-grid-wide { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .field { display: flex; flex-direction: column; gap: 5px; }
+  .field-wide { grid-column: 1 / -1; }
   .field > span { font-size: 12.5px; color: var(--soft); font-weight: 500; }
   .form-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
   .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--soft); }
@@ -282,6 +283,39 @@
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('equipment-form')">Cancel</button>
             <button class="primary" type="button" onclick="addEquipment()">Add machine</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="equipment-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-edit-title">Edit machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub">Correcting a name changes it everywhere: the jobs, the history
+            and the monthly report all read this one record.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="ee-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Asset tag</span><input id="ee-tag" placeholder="e.g. MM-014" /></label>
+            <label class="field"><span>Category</span><input id="ee-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="ee-loc" placeholder="e.g. Bay 2" /></label>
+            <label class="field"><span>Manufacturer</span><input id="ee-maker" placeholder="e.g. Mazak" /></label>
+            <label class="field"><span>Status</span>
+              <select id="ee-status">
+                <option value="active">Running</option>
+                <option value="down">Down</option>
+                <option value="retired">Retired</option>
+              </select>
+            </label>
+            <label class="field field-wide"><span>Notes</span>
+              <textarea id="ee-notes" rows="3" placeholder="Anything the next person should know"></textarea></label>
+            <input type="hidden" id="ee-id" />
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveEquipment()">Save changes</button>
           </div>
         </form>
       </dialog>

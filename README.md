@@ -38,7 +38,7 @@ node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 ```
 
-The first starts its own server on a throwaway database and checks 262 behaviours; the
+The first starts its own server on a throwaway database and checks 277 behaviours; the
 second proves the app reaches nothing outside the machine. Both must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.

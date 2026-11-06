@@ -25,10 +25,18 @@ export default {
     const b = await readBody(req);
     const before = get('SELECT * FROM equipment WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Machine not found' });
-    run(`UPDATE equipment SET name=?, asset_tag=?, category=?, location=?, status=?, notes=? WHERE id=?`,
-      b.name ?? before.name, b.asset_tag ?? before.asset_tag, b.category ?? before.category,
+    // POST has always refused a nameless machine; PUT did not, and a machine whose
+    // name is '' is unidentifiable in every list it appears in.
+    if (b.name !== undefined && !String(b.name).trim()) {
+      return send(res, 400, { error: 'Name is required' });
+    }
+    // `manufacturer` was added by migration and written by nothing, so the column
+    // could only ever be null. The edit form is the first screen that shows it.
+    run(`UPDATE equipment SET name=?, asset_tag=?, category=?, location=?, status=?,
+           notes=?, manufacturer=? WHERE id=?`,
+      b.name?.trim() ?? before.name, b.asset_tag ?? before.asset_tag, b.category ?? before.category,
       b.location ?? before.location, b.status ?? before.status, b.notes ?? before.notes,
-      id(req.params.id));
+      b.manufacturer ?? before.manufacturer, id(req.params.id));
     send(res, 200, get('SELECT * FROM equipment WHERE id = ?', id(req.params.id)));
   }),
 

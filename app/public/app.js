@@ -8,6 +8,7 @@ const shellReady = import('/shell.js').then((m) => { window.shell = m; return m;
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const historyReady = import('/history.js').then((m) => { return m; });
 const reportReady = import('/report.js').then((m) => { return m; });
+const machinesReady = import('/machines.js').then((m) => { return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ------------------------------------------------------- dialogs and empty states
@@ -153,57 +154,14 @@ function showPage(key) {
 // -------------------------------------------------------------- equipment
 const searchEquipment = debounce(() => loadEquipment());
 
-async function loadEquipment() {
-  const q = searchTerm('#eq-search');
-  const rows = await api(`/equipment${q ? `?q=${encodeURIComponent(q)}` : ''}`);
-  $('#equipment-rows').innerHTML = rows.map((e) => `
-    <tr>
-      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.category)}${soft(e.location)}
-      <td>${badge(e.status, e.status === 'active' ? 'green' : e.status === 'down' ? 'red' : 'grey')}</td>
-      <td>
-        <button class="ghost small" onclick="toggleStatus(${e.id}, '${e.status}')">
-          ${e.status === 'retired' ? 'Restore' : 'Retire'}
-        </button>
-        <button class="ghost small" onclick="openMachineHistory(${e.id}, this)">History</button>
-        <button class="ghost small danger" onclick="removeEquipment(${e.id})">Delete</button>
-      </td>
-    </tr>`).join('')
-    || emptyRow(6, searchTerm('#eq-search')
-      ? `No machine matches "${searchTerm('#eq-search')}". Clear the search to see them all.`
-      : 'No machines yet. Add the first one and it will appear here.');
-
-  const options = rows.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
-  $('#w-equipment').innerHTML = options;
-  $('#pm-equipment').innerHTML = options;
-}
-
-async function addEquipment() {
-  const name = $('#e-name').value.trim();
-  if (!name) return formError('equipment-form', 'A machine needs a name.');
-  try {
-    await api('/equipment', { method: 'POST', body: JSON.stringify({
-      name, asset_tag: $('#e-tag').value, category: $('#e-cat').value, location: $('#e-loc').value,
-    })});
-    ['#e-name', '#e-tag', '#e-cat', '#e-loc'].forEach((s) => { $(s).value = ''; });
-    formDone('equipment-form');
-    loadEquipment();
-  } catch (e) { formError('equipment-form', e.message); }
-}
-
-async function toggleStatus(id, status) {
-  await api(`/equipment/${id}`, { method: 'PUT', body: JSON.stringify({
-    status: status === 'retired' ? 'active' : 'retired',
-  })});
-  loadEquipment();
-}
-
-async function removeEquipment(id) {
-  const row = (await api('/equipment')).find((e) => e.id === id);
-  const name = row ? row.name : 'this machine';
-  if (!confirm(`Delete "${name}"?\n\nIts work orders and maintenance history go with it. This cannot be undone.`)) return;
-  try { await api(`/equipment/${id}`, { method: 'DELETE' }); loadEquipment(); }
-  catch (e) { alert(e.message); }
-}
+// The Machines screen lives in its own module (see machines.js). These are the
+// names the markup and the screen loader already use, so nothing above changes.
+async function loadEquipment() { return (await machinesReady).loadEquipment(); }
+async function addEquipment() { return (await machinesReady).addEquipment(); }
+function editEquipment(idToEdit) { (machinesReady).then((m) => m.editEquipment(idToEdit)); }
+function saveEquipment() { (machinesReady).then((m) => m.saveEquipment()); }
+async function toggleStatus(id, status) { return (await machinesReady).toggleStatus(id, status); }
+async function removeEquipment(id) { return (await machinesReady).removeEquipment(id); }
 
 // ------------------------------------------------------------ work orders
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };

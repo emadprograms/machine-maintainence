@@ -74,7 +74,7 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
   `history.js` (143), `report.js` (79). Eight tables (users,
   equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
   `ensureColumn` migrations).
-- **Test suite:** **262 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **277 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up. Offline audit reports `OFFLINE-SAFE`.

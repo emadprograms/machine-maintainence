@@ -57,10 +57,10 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: styles, screens, forms | 565 |
-| `public/app.js` | Fetches data and draws the main screens | 585 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 262 behaviours | 1,464 |
+| `public/index.html` | The whole UI shell: styles, screens, forms | 599 |
+| `public/app.js` | Fetches data and draws the main screens | 543 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` | One module per screen group; `charts.js` draws the bars | 121 · 136 · 143 · 79 · 101 · 106 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 277 behaviours | 1,464 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -70,7 +70,7 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 43 |
-| `routes/equipment.js` | machines | 40 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete | 48 |
 | `routes/work-orders.js` | work orders, work-orders.csv | 95 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 68 |
@@ -122,6 +122,9 @@ and writes HTML into a table.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
+* **A machine can be corrected.** Edit on its row opens everything the record holds —
+  name, tag, category, location, manufacturer, status and notes — so a typo is fixable and
+  a machine can be marked *down* without retiring it.
 * **A machine has a history.** The History button on its row opens every job ever
   reported against it, open ones included.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
@@ -302,10 +305,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 262 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 277 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`262 passed, 0 failed`.
+`277 passed, 0 failed`.
 
 It runs on Windows and Linux and uses no shell commands — an earlier version relied on
 `grep`, which broke on Windows. That bug is why this now scans files in plain JavaScript.
