@@ -4,7 +4,7 @@ slug: spare-part-edit-dialog
 date: 2026-11-07
 status: complete
 kind: quick
-commit: pending
+commit: ba5a10f
 files_modified: [app/public/index.html, app/public/app.js, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
