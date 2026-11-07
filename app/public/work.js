@@ -13,7 +13,6 @@ const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
 const NEXT_STATUS = { open: 'in_progress', in_progress: 'done', done: 'open' };
 
 let workCache = [];
-let editingWork = null;
 let assignable = [];          // { id, name } — fetched once per session
 let partChoices = [];         // every part, for the picker in the close dialog
 
@@ -42,26 +41,7 @@ export async function loadWork() {
   if (!assignable.length) {
     try { assignable = await api('/users/assignable'); } catch { assignable = []; }
   }
-  $('#work-rows').innerHTML = workCache.map((w) => (w.id === editingWork
-    ? `<tr>
-        <td>${esc(w.equipment_name)}</td>
-        <td><input id="we-title-${w.id}" value="${esc(w.title)}" /></td>
-        <td>${ownerSelect(w.id, w.assigned_to)}</td>
-        <td>${prioritySelect(w.id, w.priority)}</td>
-        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}
-          <select id="we-stops-${w.id}" aria-label="Does this stop the machine">
-            <option value="0"${w.stops_machine ? '' : ' selected'}>still running</option>
-            <option value="1"${w.stops_machine ? ' selected' : ''}>stops the machine</option>
-          </select></td>
-        <td><input id="we-hours-${w.id}" type="number" min="0" step="0.25"
-                   value="${w.labour_hours ?? ''}" placeholder="hours" /></td>
-        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
-        <td class="actions">
-          <button class="small" onclick="saveWork(${w.id})">Save</button>
-          <button class="small" onclick="cancelWork()">Cancel</button>
-        </td>
-      </tr>`
-    : `<tr>
+  $('#work-rows').innerHTML = workCache.map((w) => `<tr>
         ${strong(w.equipment_name)}<td class="cell-strong">${esc(w.title)}${w.photo
           ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
                  rel="noopener">photo</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
@@ -77,47 +57,78 @@ export async function loadWork() {
           </button>
           <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
         </td>
-      </tr>`)).join('')
+      </tr>`).join('')
     || emptyRow(8, searchTerm('#wo-search')
       ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
       : 'No work orders match. Create one with "New work order", or clear the filter.');
 }
 
-function ownerSelect(workId, current) {
-  return `<select id="we-owner-${workId}">
-    <option value="">— unassigned —</option>
-    ${assignable.map((u) => `<option value="${u.id}"${u.id === current ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
-  </select>`;
-}
-
-function prioritySelect(workId, current) {
-  return `<select id="we-priority-${workId}">
-    ${['low', 'medium', 'high'].map((p) => `<option value="${p}"${p === current ? ' selected' : ''}>${p}</option>`).join('')}
-  </select>`;
-}
+// ---- editing a job -------------------------------------------------------
+// It was a row of inputs inside the table, which could change four things and
+// nothing else: not the notes, not who reported it, not the photograph, and the
+// answer to "does this stop the machine" was a dropdown squeezed into a cell. The
+// dialog asks for everything the record holds, in the same order the report form
+// does, and one Save writes it all.
+let editingJob = null;
+// A technician cannot list people, so the owner control is not offered to them at
+// all — and the save does not send it, because sending nothing must never mean
+// "unassign".
+let canAssign = false;
 
 export function editWork(idToEdit) {
-  editingWork = idToEdit;
-  loadWork();
+  const job = workCache.find((w) => w.id === idToEdit);
+  if (!job) return;
+  editingJob = idToEdit;
+  canAssign = assignable.length > 0;
+  $('#we-id').value = idToEdit;
+  $('#work-edit-what').textContent =
+    `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
+  $('#we-title').value = job.title || '';
+  $('#we-owner').innerHTML = `<option value="">— unassigned —</option>${assignable.map((u) =>
+    `<option value="${u.id}"${u.id === job.assigned_to ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}`;
+  $('#we-owner-name').value = job.assignee_name || 'Nobody yet';
+  $('#we-owner').closest('label').hidden = !canAssign;
+  $('#we-owner-locked').hidden = canAssign;
+  $('#we-priority').value = job.priority || 'medium';
+  $('#we-stops').value = job.stops_machine ? '1' : '0';
+  $('#we-hours').value = job.labour_hours ?? '';
+  $('#we-reporter').value = job.reported_by || '';
+  $('#we-notes').value = job.notes || '';
+  $('#we-photo').value = '';
+  $('#we-photo-clear').checked = false;
+  $('#we-photo-now').innerHTML = job.photo
+    ? `There is one — <a href="/api/work-orders/${job.id}/photo" target="_blank" rel="noopener">open it</a>.`
+    : 'None yet.';
+  formError('work-edit', '');
+  openForm('work-edit');
 }
 
-export function cancelWork() {
-  editingWork = null;
-  loadWork();
-}
-
-export async function saveWork(idToSave) {
+export async function saveWork() {
+  const idToSave = Number($('#we-id').value) || editingJob;
+  const title = $('#we-title').value.trim();
+  if (!title) return formError('work-edit', 'A job needs a problem — even a few words is enough.');
+  const body = {
+    title,
+    priority: $('#we-priority').value,
+    labour_hours: $('#we-hours').value,
+    reported_by: $('#we-reporter').value.trim() || null,
+    notes: $('#we-notes').value.trim() || null,
+    stops_machine: $('#we-stops').value === '1',
+  };
+  if (canAssign) body.assigned_to = $('#we-owner').value || null;
   try {
-    await api(`/work-orders/${idToSave}`, { method: 'PATCH', body: JSON.stringify({
-      title: $(`#we-title-${idToSave}`).value,
-      assigned_to: $(`#we-owner-${idToSave}`).value || null,
-      priority: $(`#we-priority-${idToSave}`).value,
-      labour_hours: $(`#we-hours-${idToSave}`).value,
-      stops_machine: $(`#we-stops-${idToSave}`).value === '1',
-    })});
-    editingWork = null;
+    await api(`/work-orders/${idToSave}`, { method: 'PATCH', body: JSON.stringify(body) });
+    // The photograph last, the same shape as the report form: the record exists, so
+    // a failed upload cannot lose the edit that was just saved.
+    const file = $('#we-photo').files?.[0];
+    if (file) await postPhoto(`/api/work-orders/${idToSave}/photo`, file);
+    else if ($('#we-photo-clear').checked) {
+      await api(`/work-orders/${idToSave}/photo`, { method: 'DELETE' });
+    }
+    editingJob = null;
+    formDone('work-edit');
     loadWork();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('work-edit', e.message); }
 }
 
 export async function addWorkOrder() {

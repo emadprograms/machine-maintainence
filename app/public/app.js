@@ -207,8 +207,7 @@ async function loadWork() { return (await workReady).loadWork(); }
 async function addWorkOrder() { return (await workReady).addWorkOrder(); }
 function advance(id, status) { (workReady).then((m) => m.advance(id, status)); }
 function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
-function cancelWork() { (workReady).then((m) => m.cancelWork()); }
-function saveWork(idToSave) { (workReady).then((m) => m.saveWork(idToSave)); }
+function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
 function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }

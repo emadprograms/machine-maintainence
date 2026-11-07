@@ -255,6 +255,55 @@
         </form>
       </dialog>
 
+      <dialog id="work-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-edit-title">Edit work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-edit-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Problem</span>
+              <input id="we-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Owner</span><select id="we-owner"></select></label>
+            <label class="field" id="we-owner-locked" hidden><span>Owner</span>
+              <input id="we-owner-name" readonly />
+              <span class="hint">Only an administrator can see the list of people; the owner is unchanged.</span></label>
+            <label class="field"><span>Priority</span>
+              <select id="we-priority">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field"><span>Does this stop the machine?</span>
+              <select id="we-stops">
+                <option value="0">No — it is still running</option>
+                <option value="1">Yes — take it out of service</option>
+              </select>
+            </label>
+            <label class="field"><span>Hours (optional)</span>
+              <input id="we-hours" type="number" min="0" step="0.25" placeholder="e.g. 1.5" /></label>
+            <label class="field"><span>Reported by (optional)</span>
+              <input id="we-reporter" placeholder="Who saw it" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span>
+              <textarea id="we-notes" rows="2" placeholder="Only fails above 20 m/min"></textarea></label>
+            <div class="field field-wide"><span>Photograph of the fault</span>
+              <p id="we-photo-now" class="photo-now"></p>
+              <label class="field"><span>Replace it — JPEG, PNG or WebP, under 2 MB</span>
+                <input id="we-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+              <label class="check"><input id="we-photo-clear" type="checkbox" /> Remove the photograph</label>
+            </div>
+          </div>
+          <input type="hidden" id="we-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveWork()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog id="work-close" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">

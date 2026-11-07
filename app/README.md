@@ -60,11 +60,11 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 494 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 260 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 476 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 226 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 476 behaviours | 2,617 |
+| `public/index.html` | The whole UI shell: every screen and form | 543 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 264 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 475 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 237 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 486 behaviours | 2,689 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -179,6 +179,14 @@ photograph pushed that page past 600 lines.
   out of service without anybody choosing to. The stored column still says only *active* or
   *retired*; `status.js` derives the rest and the list names the job — by its number — that
   is holding the machine down.
+* **Editing a work order opens a dialog with the whole record on it.** Problem, owner,
+  priority, hours, who reported it, what was seen, whether it stops the machine, and the
+  photograph — replace it or remove it. It used to be a row of inputs inside the table that
+  could change four things and nothing else, with the answer to *does this stop the machine*
+  squeezed into a cell. The dialog is filled from the row that was clicked rather than from a
+  second request, and one Save writes everything; the owner is left out of that save when the
+  person editing cannot read the list of people, because sending nothing must never mean
+  *unassign*.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -402,10 +410,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 476 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 486 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`476 passed, 0 failed`.
+`486 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

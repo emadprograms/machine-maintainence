@@ -137,7 +137,11 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field-wide { grid-column: 1 / -1; }
   /* ---- machine photographs ---- */
-  /* Adding a part while closing a job: the select takes the space, the quantity
+  /* What the editor says about the photograph already on the job. */
+.photo-now { margin: 0 0 6px; font-size: 13px; color: var(--ink-soft); }
+.hint { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-soft); }
+
+/* Adding a part while closing a job: the select takes the space, the quantity
    stays small enough to type with a thumb. */
 .parts-pick { display: flex; gap: 6px; align-items: center; }
 .parts-pick select { flex: 1; }

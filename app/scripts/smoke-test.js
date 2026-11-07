@@ -2396,14 +2396,86 @@ ok('the row shows the number under the problem',
 ok('and says so when a job is holding the machine down',
   /badge\('stops the machine', 'red'\)/.test(workSrc)
   && /w\.stops_machine \?/.test(workSrc));
-ok('the row can be corrected without reopening the job',
-  /id="we-stops-\$\{w\.id\}"/.test(workSrc)
-  && /stops_machine: \$\(`#we-stops-\$\{idToSave\}`\)\.value === '1'/.test(workSrc),
-  'the editor has no toggle, or the toggle is not saved');
+ok('the answer can be changed from the edit dialog without closing the job',
+  indexEq.includes('id="we-stops"')
+  && /stops_machine: \$\('#we-stops'\)\.value === '1'/.test(workSrc),
+  'the editor has no control for it, or the control is not saved');
 ok('the close dialog names the ticket by its number',
   /\$\{job\.code \? `\$\{job\.code\} · `/.test(workSrc));
 ok('the history shows the number beside the job',
   /w\.code/.test(histSrc));
+
+// ---- editing a work order is a dialog, not a row of inputs ----------------
+// The inline editor could change four things and nothing else: not the notes, not
+// who reported it, not the photograph, and the answer to "does this stop the
+// machine" was a dropdown squeezed into a cell beside a badge.
+const editDialog = (indexEq.match(/<dialog id="work-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('editing a work order opens a dialog that carries the whole record',
+  editDialog.includes('<h3 id="work-edit-title">')
+  && ['we-id', 'we-title', 'we-owner', 'we-priority', 'we-stops', 'we-hours',
+    'we-reporter', 'we-notes', 'we-photo', 'we-photo-clear', 'we-photo-now']
+    .every((wanted) => editDialog.includes(`id="${wanted}"`)),
+  editDialog ? 'a field is missing' : 'work-edit is gone');
+ok('the list itself has no editor left in it',
+  !/we-title-\$\{/.test(workSrc) && !/id="we-owner-\$\{/.test(workSrc)
+  && /onclick="editWork\(\$\{w\.id\}\)"/.test(workSrc),
+  'a row still draws inputs, or Edit does not open anything');
+// The function itself: the close dialog also reads workCache, so a file-wide search
+// for it passed while editWork had been changed to fetch the job again.
+const editWorkFn = (workSrc.match(/export function editWork\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the dialog is filled from the row that was clicked, not from a second request',
+  /workCache\.find/.test(editWorkFn) && !/await api\(/.test(editWorkFn)
+  && /\$\('#we-title'\)\.value = job\.title/.test(editWorkFn)
+  && /\$\('#we-notes'\)\.value = job\.notes/.test(editWorkFn)
+  && /\$\('#we-stops'\)\.value = job\.stops_machine/.test(editWorkFn),
+  editWorkFn ? 'the prefill is missing, or it fetches the job again' : 'editWork() is not a plain function');
+const saveWorkFn = (workSrc.match(/export async function saveWork\(\) \{[\s\S]*?\n\}/) || [''])[0];
+// The body it builds, key by key. `title` is written shorthand (`title,`) and the
+// rest as `field: value`, so the pattern allows either rather than demanding one style.
+const saveBody = (saveWorkFn.match(/const body = \{[\s\S]*?\n  \};/) || [''])[0];
+ok('one Save sends everything the dialog asked for',
+  ['title', 'priority', 'labour_hours', 'reported_by', 'notes', 'stops_machine']
+    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(saveBody)),
+  saveBody ? `sent: ${saveBody.replace(/\s+/g, ' ').slice(0, 200)}` : 'no request body found');
+ok('and refuses an empty problem before it reaches the server',
+  /formError\('work-edit'/.test(saveWorkFn));
+// A technician cannot read the list of people, so the owner control is replaced by
+// a read-only name and the save does not mention ownership at all. Sending null
+// because a select was empty would quietly unassign the job.
+ok('a technician editing a job cannot silently unassign it',
+  /if \(canAssign\) body\.assigned_to/.test(saveWorkFn)
+  && /canAssign = assignable\.length > 0/.test(workSrc),
+  'the owner is sent whether or not the list was readable');
+ok('the photograph can be replaced or removed from the same dialog',
+  /postPhoto\(`\/api\/work-orders\/\$\{idToSave\}\/photo`/.test(saveWorkFn)
+  && /else if \(\$\('#we-photo-clear'\)\.checked\)/.test(saveWorkFn)
+  && /api\(`\/work-orders\/\$\{idToSave\}\/photo`, \{ method: 'DELETE' \}\)/.test(saveWorkFn),
+  'the editor cannot touch the photograph, or the checkbox decides nothing');
+
+// The behaviour those controls promise, through the API. An edit that mentions one
+// field must not quietly drop the others, and the owner must survive an edit that
+// never heard of it.
+const editMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Shaper (editing)' } })).data;
+const editJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: editMachine.id, title: 'Gearbox rattle', priority: 'medium',
+  reported_by: 'Ada', notes: 'Only at low speed' } })).data;
+const ownerId = (await late('/api/users/assignable')).data[0]?.id;
+await late(`/api/work-orders/${editJob.id}`, { method: 'PATCH', body: { assigned_to: ownerId } });
+const edited = await late(`/api/work-orders/${editJob.id}`, { method: 'PATCH', body: {
+  title: 'Gearbox rattle, louder', priority: 'high', labour_hours: 1.25,
+  reported_by: 'Bea', notes: 'Now at every speed', stops_machine: true } });
+ok('one edit writes every field the dialog offers',
+  edited.data.title === 'Gearbox rattle, louder' && edited.data.priority === 'high'
+  && Number(edited.data.labour_hours) === 1.25 && edited.data.reported_by === 'Bea'
+  && edited.data.notes === 'Now at every speed' && edited.data.stops_machine === 1,
+  JSON.stringify(edited.data));
+ok('and it keeps the owner, the number and the report it never mentioned',
+  edited.data.assigned_to === ownerId && edited.data.code === editJob.code
+  && edited.data.status === editJob.status, JSON.stringify({
+    owner: edited.data.assigned_to, code: edited.data.code, status: edited.data.status }));
+ok('the machine follows the answer given in the editor',
+  (await late('/api/equipment?service=all')).data.find((m) => m.id === editMachine.id)?.status === 'down');
 
 console.log('\nCoverage — the questions nothing was asking');
 
