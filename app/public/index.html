@@ -265,10 +265,10 @@
           <div class="form-grid form-grid-wide">
             <label class="field field-wide"><span>Problem</span>
               <input id="we-title" placeholder="What is wrong?" /></label>
-            <label class="field"><span>Owner</span><select id="we-owner"></select></label>
-            <label class="field" id="we-owner-locked" hidden><span>Owner</span>
-              <input id="we-owner-name" readonly />
-              <span class="hint">Only an administrator can see the list of people; the owner is unchanged.</span></label>
+            <label class="field"><span>Owner</span>
+              <select id="we-owner"></select>
+              <span class="hint" id="we-owner-hint" hidden>Only an administrator can change the
+                owner. It stays as it is.</span></label>
             <label class="field"><span>Priority</span>
               <select id="we-priority">
                 <option value="low">Low</option>

@@ -2451,11 +2451,19 @@ ok('the hidden attribute hides, whatever display the element has',
   /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(uiCss)
   && /\.field\s*\{[^}]*display:\s*flex/.test(uiCss),
   'a rule that sets display beats the hidden attribute, so hidden elements show');
-ok('and the editor shows one owner control at a time',
-  /we-owner-locked/.test(editDialog)
-  && /closest\('label'\)\.hidden = !canAssign/.test(workSrc)
-  && /\$\('#we-owner-locked'\)\.hidden = canAssign/.test(workSrc),
-  'both owner controls are drawn, or nothing switches between them');
+// One Owner field, not two with one hidden. The first version of this dialog had a
+// select for administrators and a separate read-only label for everyone else, and
+// swapped them with the hidden attribute — which is how the screen ended up showing
+// two Owner fields, one of them empty. A control that only exists once cannot do that.
+ok('the editor has exactly one Owner field',
+  (editDialog.match(/<span>Owner<\/span>/g) || []).length === 1,
+  `${(editDialog.match(/<span>Owner<\/span>/g) || []).length} Owner labels in the dialog`);
+ok('and that one field tells the truth to whoever is reading it',
+  /canAssign\s*\n?\s*\?/.test(workSrc)
+  && /<option value="">\$\{esc\(job\.assignee_name \|\| 'Nobody yet'\)\}<\/option>/.test(workSrc)
+  && /\$\('#we-owner'\)\.disabled = !canAssign/.test(workSrc)
+  && /\$\('#we-owner-hint'\)\.hidden = canAssign/.test(workSrc),
+  'a technician sees an empty list, a blank field, no explanation, or an editable one');
 ok('a technician editing a job cannot silently unassign it',
   /if \(canAssign\) body\.assigned_to/.test(saveWorkFn)
   && /canAssign = assignable\.length > 0/.test(workSrc),

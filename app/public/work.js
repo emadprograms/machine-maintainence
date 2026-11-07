@@ -84,11 +84,15 @@ export function editWork(idToEdit) {
   $('#work-edit-what').textContent =
     `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#we-title').value = job.title || '';
-  $('#we-owner').innerHTML = `<option value="">— unassigned —</option>${assignable.map((u) =>
-    `<option value="${u.id}"${u.id === job.assigned_to ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}`;
-  $('#we-owner-name').value = job.assignee_name || 'Nobody yet';
-  $('#we-owner').closest('label').hidden = !canAssign;
-  $('#we-owner-locked').hidden = canAssign;
+  // One owner field, always. With the list of people it is a choice; without it the
+  // same control shows the one true answer and cannot be changed — rather than a
+  // second, read-only control appearing beside the first.
+  $('#we-owner').innerHTML = canAssign
+    ? `<option value="">— unassigned —</option>${assignable.map((u) =>
+        `<option value="${u.id}"${u.id === job.assigned_to ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}`
+    : `<option value="">${esc(job.assignee_name || 'Nobody yet')}</option>`;
+  $('#we-owner').disabled = !canAssign;
+  $('#we-owner-hint').hidden = canAssign;
   $('#we-priority').value = job.priority || 'medium';
   $('#we-stops').value = job.stops_machine ? '1' : '0';
   $('#we-hours').value = job.labour_hours ?? '';
