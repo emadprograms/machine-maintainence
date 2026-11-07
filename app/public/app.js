@@ -213,8 +213,9 @@ function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
 
 // ------------------------------------------------------------------ parts
+// The list as last loaded. Editing reads the whole record from here rather than
+// asking for it again — the row that drew the button already has it.
 let partsCache = [];
-let editingPart = null;              // id of the row currently in edit mode
 
 /** A price, always with two decimals so a column lines up. */
 function money(v) {
@@ -234,19 +235,7 @@ function stockCell(p) {
 async function loadParts() {
   const low = $('#low-stock-filter')?.checked;
   partsCache = await api(`/parts${low ? '?low=1' : ''}`);
-  $('#parts-rows').innerHTML = partsCache.map((p) => (p.id === editingPart
-    ? `<tr>
-        <td><input id="edit-name-${p.id}" value="${esc(p.name)}" /></td>
-        <td><input id="edit-ref-${p.id}" value="${esc(p.reference || '')}" /></td>
-        <td><input id="edit-qty-${p.id}" type="number" min="0" value="${p.qty}" /></td>
-        <td><input id="edit-price-${p.id}" type="number" step="0.01" value="${p.unit_price ?? ''}" /></td>
-        <td><input id="edit-reorder-${p.id}" type="number" min="0" value="${p.reorder_level}" /></td>
-        <td>
-          <button class="ghost small" onclick="savePart(${p.id})">Save</button>
-          <button class="ghost small" onclick="cancelPart()">Cancel</button>
-        </td>
-      </tr>`
-    : `<tr>
+  $('#parts-rows').innerHTML = partsCache.map((p) => `<tr>
         ${strong(p.name)}${soft(p.reference)}
         ${stockCell(p)}
         <td class="cell-num cell-muted">${p.unit_price == null ? 'Not set' : esc(money(p.unit_price))}</td>
@@ -255,34 +244,52 @@ async function loadParts() {
           <button class="ghost small" onclick="editPart(${p.id})">Edit</button>
           <button class="ghost small danger" onclick="removePart(${p.id})">Delete</button>
         </td>
-      </tr>`)).join('')
+      </tr>`).join('')
     || emptyRow(6, low
       ? 'Every part is above its reorder level. Nothing to order.'
       : 'No spare parts yet. Add the ones you keep on the shelf.');
 }
 
+/** Open the editor filled with what the row already says. Nothing is fetched: the
+ *  part is in the list that drew the button, the same way a machine is. */
 function editPart(idToEdit) {
-  editingPart = idToEdit;
-  loadParts();
+  const part = partsCache.find((p) => p.id === idToEdit);
+  if (!part) return;
+  $('#pe-id').value = String(part.id);
+  $('#pe-name').value = part.name || '';
+  $('#pe-ref').value = part.reference || '';
+  $('#pe-supplier').value = part.supplier || '';
+  $('#pe-qty').value = String(part.qty ?? 0);
+  $('#pe-price').value = part.unit_price == null ? '' : String(part.unit_price);
+  $('#pe-reorder').value = String(part.reorder_level ?? 0);
+  // What the row was showing, said in words: a quantity and a price on their own
+  // do not tell anyone whether this part is the one flagged as low.
+  const low = Number(part.qty) <= Number(part.reorder_level);
+  $('#part-edit-title').textContent = `Edit ${part.name}`;
+  $('#part-edit-what').textContent = `${part.qty} in stock`
+    + `${part.supplier ? ` from ${part.supplier}` : ''}`
+    + `${low ? ' — at or below the reorder level, so it is flagged on the list.' : '.'}`;
+  openForm('part-edit');
 }
 
-function cancelPart() {
-  editingPart = null;
-  loadParts();
-}
-
-async function savePart(idToSave) {
+/** Save the whole record. Every field is sent, so clearing the supplier or the
+ *  price really clears it — the route keeps whatever it is not told. */
+async function savePart() {
+  const partId = Number($('#pe-id').value);
+  const name = $('#pe-name').value.trim();
+  if (!name) return formError('part-edit', 'A part needs a name.');
   try {
-    await api(`/parts/${idToSave}`, { method: 'PUT', body: JSON.stringify({
-      name: $(`#edit-name-${idToSave}`).value,
-      reference: $(`#edit-ref-${idToSave}`).value,
-      qty: $(`#edit-qty-${idToSave}`).value,
-      unit_price: $(`#edit-price-${idToSave}`).value,
-      reorder_level: $(`#edit-reorder-${idToSave}`).value,
+    await api(`/parts/${partId}`, { method: 'PUT', body: JSON.stringify({
+      name,
+      reference: $('#pe-ref').value.trim() || null,
+      supplier: $('#pe-supplier').value.trim() || null,
+      qty: $('#pe-qty').value,
+      unit_price: $('#pe-price').value,
+      reorder_level: $('#pe-reorder').value,
     })});
-    editingPart = null;
+    formDone('part-edit');
     loadParts();
-  } catch (e) { alert(e.message); }
+  } catch (e) { formError('part-edit', e.message); }
 }
 
 async function removePart(idToRemove) {

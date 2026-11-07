@@ -2610,6 +2610,61 @@ ok('and the API still calls the field what it always did',
   'assigned_to' in assigneeRow && 'assignee_name' in assigneeRow,
   `fields: ${Object.keys(assigneeRow).join(', ')}`);
 
+// ---- editing a spare part is a dialog too ---------------------------------
+// It used to turn the row it belonged to into five inputs — which meant the parts
+// table could be edited one cell at a time but the supplier could not be edited at
+// all. The create form has always asked for it; the row editor never did.
+const partDialog = (indexEq.match(/<dialog id="part-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('editing a spare part opens a dialog that carries the whole record',
+  partDialog.includes('<h3 id="part-edit-title">')
+  && ['pe-id', 'pe-name', 'pe-ref', 'pe-supplier', 'pe-qty', 'pe-price', 'pe-reorder']
+    .every((wanted) => partDialog.includes(`id="${wanted}"`)),
+  partDialog ? 'a field is missing' : 'part-edit is gone');
+ok('and the supplier is one of them, which the row editor never offered',
+  partDialog.includes('id="pe-supplier"')
+  && /supplier: \$\('#pe-supplier'\)\.value\.trim\(\) \|\| null/.test(appSrc13),
+  'a part can still be created with a supplier it can never correct');
+ok('the parts table is a table again, with one Edit button per row',
+  !/id="edit-name-\$\{/.test(appSrc13) && !/editingPart/.test(appSrc13)
+  && /onclick="editPart\(\$\{p\.id\}\)"/.test(appSrc13),
+  'a row still draws inputs, or Edit does not open anything');
+const editPartFn = (appSrc13.match(/function editPart\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the dialog is filled from the row that was clicked, not from a second request',
+  /partsCache\.find/.test(editPartFn) && !/await api\(/.test(editPartFn)
+  && /\$\('#pe-name'\)\.value = part\.name/.test(editPartFn)
+  && /\$\('#pe-supplier'\)\.value = part\.supplier/.test(editPartFn)
+  && /\$\('#pe-price'\)\.value/.test(editPartFn),
+  editPartFn ? 'the prefill is missing, or it fetches the part again' : 'editPart() is not a plain function');
+// Filled, then shown — the same order the machine editor is held to, because a form
+// opened first and filled second flashes the previous part's numbers.
+ok('the dialog is filled before it is shown',
+  editPartFn.indexOf("openForm('part-edit')") > editPartFn.indexOf('#pe-name')
+  && editPartFn.indexOf("openForm('part-edit')") > 0,
+  'opened before it was filled, or never opened');
+const savePartFn = (appSrc13.match(/async function savePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('one Save sends every field, so clearing one really clears it',
+  ['name', 'reference', 'supplier', 'qty', 'unit_price', 'reorder_level']
+    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(savePartFn))
+  && /reference: [^,]+\|\| null/.test(savePartFn) && /supplier: [^,]+\|\| null/.test(savePartFn),
+  savePartFn ? `sent: ${savePartFn.replace(/\s+/g, ' ').slice(0, 220)}` : 'savePart() is not a plain function');
+ok('and refuses an empty name before it reaches the server',
+  /formError\('part-edit'/.test(savePartFn) && /!name\) return/.test(savePartFn));
+// Where that save lands: the route takes a corrected supplier and keeps what it was
+// not told, which is what lets the dialog send the whole record without zeroing stock.
+const freshPart = await late('/api/parts', { method: 'POST', body: {
+  name: 'Bearing 6204', supplier: 'SKF', qty: 4, unit_price: 12.5, reorder_level: 2 } });
+const supplierFix = await late(`/api/parts/${freshPart.data.id}`, { method: 'PUT', body: {
+  name: 'Bearing 6204', supplier: 'NSK', reference: '6204-2RS' } });
+ok('the server accepts a corrected supplier and keeps the stock and the price',
+  supplierFix.status === 200 && supplierFix.data.supplier === 'NSK'
+  && supplierFix.data.qty === 4 && supplierFix.data.unit_price === 12.5,
+  JSON.stringify(supplierFix.data));
+const supplierGone = await late(`/api/parts/${freshPart.data.id}`, { method: 'PUT', body: {
+  name: 'Bearing 6204', supplier: null } });
+ok('and clearing the supplier clears it, rather than keeping the old one',
+  supplierGone.status === 200 && supplierGone.data.supplier === null,
+  JSON.stringify(supplierGone.data));
+
 console.log('\nCoverage — the questions nothing was asking');
 
 

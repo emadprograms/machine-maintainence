@@ -415,6 +415,33 @@
           </div>
         </form>
       </dialog>
+
+      <!-- Editing a part is a dialog, like editing a machine or a work order. It used
+           to turn the table row into five inputs, which could not show the supplier at
+           all: the one field the create form has and the row editor did not. -->
+      <dialog id="part-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="part-edit-title">Edit spare part</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('part-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="part-edit-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Name</span><input id="pe-name" placeholder="e.g. Bearing 6204" /></label>
+            <label class="field"><span>Reference</span><input id="pe-ref" placeholder="Supplier part number" /></label>
+            <label class="field"><span>Supplier</span><input id="pe-supplier" placeholder="Where it is ordered from" /></label>
+            <label class="field"><span>In stock</span><input id="pe-qty" type="number" min="0" /></label>
+            <label class="field"><span>Unit price</span><input id="pe-price" type="number" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>Reorder at</span><input id="pe-reorder" type="number" min="0" /></label>
+          </div>
+          <input type="hidden" id="pe-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('part-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="savePart()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- Preventive maintenance -->

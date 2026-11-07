@@ -60,12 +60,12 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 543 |
+| `public/index.html` | The whole UI shell: every screen and form | 576 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 288 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 475 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 358 · 241 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 504 behaviours | 2,822 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 513 behaviours | 2,877 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -175,6 +175,12 @@ photograph pushed that page past 600 lines.
   machine is created, because the route needs an id; if it fails the machine is saved and
   the message says so. The suite compares the two dialogs by the labels they show, so a
   field added to one and not the other is a failure rather than a surprise.
+* **A spare part is corrected in a dialog, like everything else.** Edit on its row opens
+  the whole record — name, reference, supplier, stock, unit price and reorder level — and one
+  Save writes all of it, so emptying the supplier or the price really empties it. It used to
+  turn the row into five inputs, which left the *supplier* with no editor at all: the create
+  form had asked for it since parts existed, and the one field you cannot correct is the one
+  you notice. The row is a row again, with Edit and Delete on it.
 * **A machine can be corrected — by an administrator.** Edit on its row opens what the
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
@@ -421,10 +427,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 504 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 513 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`504 passed, 0 failed`.
+`513 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
