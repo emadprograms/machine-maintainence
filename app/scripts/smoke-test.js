@@ -2220,6 +2220,58 @@ ok('a part taken while closing is recorded on the job, and the shelf count follo
 ok('the history row shows what was done under the job',
   /row-sub/.test(histSrc) && /w\.resolution/.test(histSrc));
 
+// ---- creating a machine asks everything editing one asks -------------------
+// The creating dialog asked for four fields and the editor for seven, so a machine
+// could only be fully described by creating it and immediately editing it again.
+// POST has accepted manufacturer and notes all along.
+const eqForm = (indexEq.match(/<dialog id="equipment-form"[\s\S]*?<\/dialog>/) || [''])[0];
+const eqEditor = (indexEq.match(/<dialog id="equipment-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+const labelsIn = (dialog) => (dialog.match(/<span>[^<]*<\/span>/g) || [])
+  .map((one) => one.replace(/<\/?span>/g, '')).sort();
+ok('creating a machine asks for everything editing one asks for',
+  labelsIn(eqForm).length > 0
+  && JSON.stringify(labelsIn(eqForm)) === JSON.stringify(labelsIn(eqEditor)),
+  `create: ${labelsIn(eqForm).join(' | ')}\nedit:   ${labelsIn(eqEditor).join(' | ')}`);
+ok('and the form it fills has a field for each of them',
+  ['e-name', 'e-tag', 'e-maker', 'e-cat', 'e-loc', 'e-notes', 'e-photo']
+    .every((wanted) => eqForm.includes(`id="${wanted}"`)),
+  ['e-name', 'e-tag', 'e-maker', 'e-cat', 'e-loc', 'e-notes', 'e-photo']
+    .filter((wanted) => !eqForm.includes(`id="${wanted}"`)).join(', '));
+
+const described = await late('/api/equipment', { method: 'POST', body: {
+  name: 'Drill (described)', asset_tag: '101220054', manufacturer: 'Bosch',
+  category: 'Drilling', location: 'Bay 4', notes: 'Chuck key missing' } });
+ok('one request describes the whole machine',
+  described.status === 201 && described.data.manufacturer === 'Bosch'
+  && described.data.notes === 'Chuck key missing' && described.data.category === 'Drilling'
+  && described.data.location === 'Bay 4' && described.data.asset_tag === '101220054',
+  JSON.stringify(described.data));
+
+const createdShot = await late(`/api/equipment/${described.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph can be attached as the machine is created',
+  createdShot.status === 200
+  && (await late(`/api/equipment/${described.data.id}/photo`)).status === 200,
+  JSON.stringify(createdShot.data));
+
+const addEqFn = (appEq.match(/export async function addEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+// The body it posts, not the whole function: every one of these ids also appears in
+// the line that clears the form afterwards, so a file-wide search passed while the
+// manufacturer was asked for, cleared, and never sent.
+// Up to the closing brace of the object literal, which is a line of its own — the
+// call around it ends })})); and a lazier pattern swallowed the wrong two characters.
+const addEqBody = (addEqFn.match(/JSON\.stringify\(\{[\s\S]*?\n\s*\}\)/) || [''])[0];
+ok('the creating form sends what it now asks for',
+  /manufacturer: \$\('#e-maker'\)/.test(addEqBody) && /notes: \$\('#e-notes'\)/.test(addEqBody)
+  && /asset_tag: \$\('#e-tag'\)/.test(addEqBody),
+  addEqBody ? `posted: ${addEqBody.replace(/\s+/g, ' ').slice(0, 160)}` : 'no request body found');
+ok('and uploads the photograph only after the machine exists to hold it',
+  addEqFn.includes("api('/equipment'")
+  && addEqFn.indexOf("api('/equipment'") < addEqFn.indexOf('uploadPhoto('),
+  'the upload happens before there is an id to upload to');
+ok('a photograph that fails does not lose the machine that was just created',
+  /The machine itself was saved/.test(addEqFn));
+
 console.log('\nCoverage — the questions nothing was asking');
 
 

@@ -128,10 +128,29 @@ export async function addEquipment() {
   const name = $('#e-name').value.trim();
   if (!name) return formError('equipment-form', 'A machine needs a name.');
   try {
-    await api('/equipment', { method: 'POST', body: JSON.stringify({
-      name, asset_tag: $('#e-tag').value, category: $('#e-cat').value, location: $('#e-loc').value,
+    // The whole record, not the four fields this form used to have. POST has
+    // accepted manufacturer and notes since v2.0 while the form offered neither,
+    // so the only way to describe a new machine was to create it and edit it again.
+    const created = await api('/equipment', { method: 'POST', body: JSON.stringify({
+      name,
+      asset_tag: $('#e-tag').value.trim() || null,
+      manufacturer: $('#e-maker').value.trim() || null,
+      category: $('#e-cat').value.trim() || null,
+      location: $('#e-loc').value.trim() || null,
+      notes: $('#e-notes').value.trim() || null,
     })});
-    ['#e-name', '#e-tag', '#e-cat', '#e-loc'].forEach((s) => { $(s).value = ''; });
+    // Then the photograph: the route is /equipment/:id/photo, so the machine has to
+    // exist first. If the photo fails the machine is already created, and the
+    // message says so rather than pretending nothing happened.
+    const file = $('#e-photo').files?.[0];
+    if (file) {
+      try { await uploadPhoto(created.id, file); }
+      catch (e) { formError('equipment-form', `${e.message} The machine itself was saved.`); loadEquipment(); return; }
+    }
+    ['#e-name', '#e-tag', '#e-maker', '#e-cat', '#e-loc', '#e-notes'].forEach((s) => {
+      const el = $(s); if (el) el.value = '';
+    });
+    if ($('#e-photo')) $('#e-photo').value = '';
     formDone('equipment-form');
     loadEquipment();
   } catch (e) { formError('equipment-form', e.message); }
