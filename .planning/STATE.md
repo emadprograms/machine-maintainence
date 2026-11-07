@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-07 — quick task 261106-erh: the assignee is called Assigned to
+Last activity: 2026-11-07 — quick task 261106-eri: the machine table sorts by its headings
 
 ## Quick Tasks Completed
 
@@ -41,6 +41,7 @@ Last activity: 2026-11-07 — quick task 261106-erh: the assignee is called Assi
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
 | 2026-11-07 | 261106-erg | `.field { display: flex }` beat the `hidden` attribute, so the work-order editor drew two Owner controls; a `[hidden]` rule with `!important` fixes it | `dd2f96d` |
+| 2026-11-07 | 261106-eri | The machine table sorts: six headings are buttons (asc, then desc), an arrow in a fixed slot says which way, `aria-sort` says it out loud, and the redraw is from memory — no request. Ordering lives in `public/sort.js` so the suite runs it on rows: numeric barcodes, blanks last either way, ties kept, input untouched | pending |
 | 2026-11-07 | 261106-erh | "Owner" is "Assigned to" in three table headers, the editor and both export columns; the API keys (`assigned_to`, `assignee_name`, csv `owner`) are untouched. Debug found the export check compared the file to a second hard-coded string — it now reads the page | `4ff70f6` |
 | 2026-11-07 | 261106-erg·2 | Follow-up: the second Owner control is gone entirely — one field, a choice for an admin, a disabled truth with an explanation for a technician | `51d54c9` |
 | 2026-11-07 | 261106-erf | Editing a work order opens `#work-edit`: problem, owner, priority, hours, reported by, notes, stops-the-machine and the photograph, one Save; the inline row editor is gone, and a technician cannot unassign a job by saving an owner select they never saw | `fb68977` |

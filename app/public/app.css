@@ -167,6 +167,24 @@
 .row-quiet td { opacity: .6; }
 .row-quiet:hover td { opacity: 1; }
 
+/* ---- a column heading you can click ------------------------------------
+   The heading is a button inside its `<th>`, so it is reachable by Tab and works with
+   Enter and Space for free, and the cell still says "column header" to a screen
+   reader. `font` and `text-transform` are inherited rather than reset, or the button
+   would quietly undo the small-caps style of every other heading. The arrow sits in a
+   slot that is always there: a heading that widens by 9px the moment it becomes the
+   sorted one makes the table shift under the pointer still on its way to the next
+   click. */
+th .sort-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer; border-radius: 4px;
+}
+th .sort-btn:hover { color: var(--ink); }
+th .sort-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+th.sorted .sort-btn { color: var(--ink); }
+.sort-mark { display: inline-block; width: 9px; font-size: 8px; line-height: 1; color: var(--brand); }
 .cell-thumb { width: 56px; }
   .thumb { width: 44px; height: 44px; border-radius: 9px; object-fit: cover; display: block;
            background: var(--bg); border: 1px solid var(--line); }

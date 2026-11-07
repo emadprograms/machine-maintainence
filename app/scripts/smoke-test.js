@@ -854,6 +854,16 @@ ok('every list has a written empty state',
     const bodies = [...clientSrc.matchAll(
       new RegExp(`async function load${fn[0].toUpperCase()}${fn.slice(1)}[\\s\\S]*?\\n}`, 'g'))]
       .map((m) => m[0]);
+    // The machine table is drawn by drawEquipment now, so sorting can redraw without
+    // asking the server again; its sentence therefore lives one call away from
+    // loadEquipment rather than inside it. Both facts are required: the drawer says
+    // something when there is nothing, and the loader is what puts it on the screen.
+    if (fn === 'equipment') {
+      const drawers = [...clientSrc.matchAll(/function drawEquipment\(\) \{[\s\S]*?\n}/g)]
+        .map((m) => m[0]);
+      return drawers.some((d) => /emptyRow\(/.test(d))
+        && bodies.some((b) => /drawEquipment\(\)/.test(b));
+    }
     return bodies.some((b) => /emptyRow\(/.test(b));
   }));
 ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0,160}esc\(sentence\)/.test(appSrc13));
@@ -1667,12 +1677,80 @@ ok('the row explains why a machine is down', appEq.includes('status_reason'));
 // the name. The header is read once and every claim is made against it, including
 // the one that can silently break: the empty row's colspan.
 const eqHead = (indexEq.match(/<thead><tr><th class="cell-thumb">Photo<\/th>[\s\S]*?<\/tr><\/thead>/) || [''])[0];
+// Six of the headings carry a sort button, so the text is no longer the last thing
+// before `</th>`; the cell's own text is what matters, tags stripped.
+const eqHeadings = [...eqHead.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)]
+  .map((m) => m[1].replace(/<[^>]+>/g, '').trim());
 ok('the machine table names every column it shows',
-  ['Name', 'Barcode', 'Manufacturer', 'Category', 'Location', 'Status']
-    .every((name) => eqHead.includes(`>${name}</th>`)) && eqHead.includes('>Photo</th>'),
-  eqHead || 'the machines header is not where it was');
+  ['Photo', 'Name', 'Barcode', 'Manufacturer', 'Category', 'Location', 'Status']
+    .every((name) => eqHeadings.includes(name)),
+  eqHeadings.join(' | ') || 'the machines header is not where it was');
 // With real columns, a second line under the name would print the same fact twice.
 // A mutation that restored it passed every other check, so the name cell is named.
+// ---- sorting the machine table --------------------------------------------
+// The ordering rule is imported and run on rows, not searched for in the source: a
+// regex can find `sort(` and tell you nothing about whether "9" lands before "10".
+const { sortRows } = await import(pathToFileURL(join(root, 'public', 'sort.js')).href);
+const sortFn = (appEq.match(/export function sortEquipment[\s\S]*?\n}/) || [''])[0];
+const drawFn = (appEq.match(/function drawEquipment\(\) \{[\s\S]*?\n}/) || [''])[0];
+const sortable = [...eqHead.matchAll(/<button[^>]*class="sort-btn" data-sort="([a-z_]+)"/g)]
+  .map((m) => m[1]);
+ok('every column heading but the photograph and the menu can be clicked',
+  sortable.join() === 'name,asset_tag,manufacturer,category,location,status',
+  `sortable: ${sortable.join(', ') || 'none'}`);
+ok('and the headings are real buttons, so Tab and Enter work without extra code',
+  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 6
+  && !/<th[^>]*>\s*Photo<\/th>[\s\S]*?data-sort="photo"/.test(eqHead));
+ok('a new heading starts ascending, and the same heading again turns it round',
+  /let sortKey = null/.test(appEq) && /let sortDir = 1/.test(appEq)
+  && /sortDir = key === sortKey \? -sortDir : 1;/.test(sortFn)
+  && /sortKey = key;/.test(sortFn) && /if \(!SORTS\[key\]\) return;/.test(sortFn),
+  'a first click that sorts the wrong way, no way back, or an unknown column being sorted anyway');
+const byName = (dir) => sortRows(
+  [{ name: 'bravo' }, { name: 'Alpha' }, { name: 'Charlie' }], (m) => m.name, dir).map((m) => m.name);
+ok('ascending really is ascending, and descending is the reverse',
+  byName(1).join() === 'Alpha,bravo,Charlie' && byName(-1).join() === 'Charlie,bravo,Alpha',
+  `${byName(1).join()} / ${byName(-1).join()}`);
+// A barcode is a number that happens to be stored as text. Sorted as text, 101220054
+// comes before 9, which is exactly the list nobody wants when they click Barcode.
+const byTag = (dir) => sortRows(
+  [{ tag: '10' }, { tag: '101220054' }, { tag: '9' }], (m) => m.tag, dir).map((m) => m.tag);
+ok('a barcode sorts as a number, not as a row of digits',
+  byTag(1).join() === '9,10,101220054' && byTag(-1).join() === '101220054,10,9',
+  `${byTag(1).join()} / ${byTag(-1).join()}`);
+// Nobody sorting by Barcode descending wants a screenful of machines that have none.
+const blanks = (dir) => sortRows(
+  [{ tag: 'B' }, { tag: null }, { tag: 'A' }, { tag: '  ' }], (m) => m.tag, dir)
+  .map((m) => String(m.tag));
+ok('a machine with nothing in the column goes last, whichever way it is sorted',
+  blanks(1).slice(0, 2).join() === 'A,B' && blanks(-1).slice(0, 2).join() === 'B,A'
+  && blanks(1).slice(2).join() === 'null,  ' && blanks(-1).slice(2).join() === 'null,  ',
+  `${blanks(1).join(' | ')} / ${blanks(-1).join(' | ')}`);
+const ties = (dir) => sortRows(
+  [{ name: 'Same', id: 1 }, { name: 'Other', id: 2 }, { name: 'same', id: 3 }],
+  (m) => m.name, dir).map((m) => m.id);
+ok('machines with the same value keep the order they arrived in',
+  ties(1).join() === '2,1,3' && ties(-1).join() === '1,3,2',
+  `${ties(1).join()} / ${ties(-1).join()}`);
+const sourceRows = [{ name: 'b' }, { name: 'a' }];
+sortRows(sourceRows, (m) => m.name, 1);
+ok('sorting leaves the list the server sent alone',
+  sourceRows[0].name === 'b' && sourceRows[1].name === 'a', 'the sort reordered its input');
+ok('the arrow says which way, and the heading says so out loud',
+  /aria-sort/.test(appEq) && /\\u25B2/.test(appEq) && /\\u25BC/.test(appEq)
+  && /heading\.setAttribute\('aria-sort'/.test(appEq) && /markSort\(\)/.test(drawFn)
+  && (indexEq.match(/aria-sort="none"/g) || []).length === 6,
+  'no arrow, one that is never drawn, or a direction that only exists visually');
+ok('status sorts by the word the row shows, not by its internal value',
+  /status: \(machine\) => STATUS_WORD\[machine\.status\] \|\| machine\.status/.test(appEq),
+  'the badge says Down and the sort heard "down"');
+ok('the table turns over without asking the server again',
+  drawFn.length > 0 && !/\bapi\(/.test(drawFn) && !/\bfetch\(/.test(drawFn)
+  && /drawEquipment\(\)/.test(sortFn),
+  'a click that refetches, or a sort that never redraws');
+ok('and the order survives a filter change, a save or a retry',
+  /drawEquipment\(\)/.test(appEq.match(/export async function loadEquipment[\s\S]*?\n}/)?.[0] || ''),
+  'every reload quietly puts the list back in the server order');
 ok('everything about a machine sits behind three dots',
   appEq.includes('<details class="row-menu">') && appEq.includes('aria-label="Actions for')
   && appEq.includes('&#8943;'), 'the row still shows a row of buttons');

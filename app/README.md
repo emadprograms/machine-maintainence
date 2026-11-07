@@ -61,10 +61,11 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 543 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 270 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 288 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 475 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 241 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 492 behaviours | 2,744 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 358 · 241 |
+| `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 504 behaviours | 2,822 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -142,6 +143,15 @@ photograph pushed that page past 600 lines.
   manufacturer, category, location and state — one column each, in that order. The empty
   table spans exactly the columns its header names, and the suite checks that rather than
   trusting anyone to count.
+* **The machine table sorts by any heading that holds a value.** Name, Barcode,
+  Manufacturer, Category, Location and Status are buttons: one click orders that column
+  ascending, the same heading again turns it round, and a small arrow beside the heading
+  says which way it is. The Photograph column and the three-dots column are not sortable —
+  there is no sensible order for a picture. Nothing is sorted until someone asks, and the
+  order they ask for survives a search, a filter change and a save. Clicking redraws from
+  the list already in memory, so it costs no request; a barcode sorts as a number
+  (`9`, `10`, `101220054`), a machine with nothing in the column goes last whichever way
+  it is sorted, and two machines with the same value keep the order they arrived in.
 * **The machine list has four views, and opens on everything.** The filter in the Machines
   toolbar offers *All machines* (the default), *In service*, *Down right now* and *Retired*;
   the search box narrows whichever view is chosen. It opened on *In service* until
@@ -411,10 +421,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 492 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 504 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`492 passed, 0 failed`.
+`504 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

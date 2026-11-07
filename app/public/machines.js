@@ -6,6 +6,8 @@
 // api, $, searchTerm, openForm, closeForm, formError, formDone) rather than
 // repeating them: this is one page, not a bundle of independent widgets.
 
+import { sortRows } from './sort.js';
+
 // ---- what a row shows ------------------------------------------------------
 // Status is not a field any more: status.js derives it from the work orders and
 // sends `status` plus `status_reason`. The screen explains rather than decides,
@@ -94,19 +96,71 @@ const VIEWS = {
   all: { query: 'service=all', empty: 'No machines yet. Add the first one and it will appear here.' },
 };
 
-export async function loadEquipment() {
-  const q = searchTerm('#eq-search');
-  const view = VIEWS[$('#eq-filter')?.value] ?? VIEWS.all;
-  // Two requests, deliberately. The table is the view this screen is filtered to;
-  // the dropdowns are "every machine in service", because a new job or a new
-  // maintenance schedule must not be startable on a machine that has left. They
-  // used to share one array, so typing in the search box narrowed the dropdowns
-  // too — searching "pump" left only pumps to report a fault against.
-  const [rows, inService] = await Promise.all([
-    api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
-    api('/equipment?service=active'),
-  ]);
-  equipmentRows = rows;
+// ---- which column, which way ---------------------------------------------
+// Nothing is sorted until a heading is clicked. The list already arrives by name
+// from the server, and a table that shows an arrow before anybody asked for one is
+// claiming a decision nobody made.
+let sortKey = null;
+let sortDir = 1;
+
+// What "sorted by this column" means, per column. Status sorts by the word the row
+// shows — Down, Retired, Running — because that is what the heading says and what a
+// person reading the column sees. Anything not in here is not sortable.
+const SORTS = {
+  name: (machine) => machine.name,
+  asset_tag: (machine) => machine.asset_tag,
+  manufacturer: (machine) => machine.manufacturer,
+  category: (machine) => machine.category,
+  location: (machine) => machine.location,
+  status: (machine) => STATUS_WORD[machine.status] || machine.status,
+};
+
+/** A heading was clicked. The same heading again turns it round; a different one
+ *  starts ascending, because the first answer to "sort by this" is the one
+ *  everybody means. Redraws from the list already in memory — no request, so the
+ *  table turns over as fast as the click lands. */
+export function sortEquipment(key) {
+  if (!SORTS[key]) return;
+  sortDir = key === sortKey ? -sortDir : 1;
+  sortKey = key;
+  drawEquipment();
+}
+
+/** The arrow, and the fact said out loud for a screen reader. Every heading carries
+ *  `aria-sort`, so "not sorted" is stated rather than merely implied by a blank. */
+function markSort() {
+  document.querySelectorAll('button[data-sort]').forEach((button) => {
+    const heading = button.closest('th');
+    const on = button.dataset.sort === sortKey;
+    heading.setAttribute('aria-sort', on ? (sortDir === 1 ? 'ascending' : 'descending') : 'none');
+    button.querySelector('.sort-mark').textContent = on ? (sortDir === 1 ? '\u25B2' : '\u25BC') : '';
+    heading.classList.toggle('sorted', on);
+  });
+}
+
+/** One click handler for the six headings. The buttons are real `<button>`s inside
+ *  the `<th>`s, so Enter and Space work without a keydown listener and the column
+ *  keeps its header semantics for a screen reader. */
+document.addEventListener('click', (event) => {
+  const button = event.target.closest?.('button[data-sort]');
+  if (button) sortEquipment(button.dataset.sort);
+});
+
+/** The filter and the search box, read at the moment they are needed. The table is
+ *  drawn from these, and the request is built from the same function, so a redraw
+ *  can never disagree with the query that filled it. */
+function currentView() {
+  return {
+    q: searchTerm('#eq-search'),
+    view: VIEWS[$('#eq-filter')?.value] ?? VIEWS.all,
+  };
+}
+
+/** Draw the table from `equipmentRows`, in whatever order has been asked for.
+ *  Separate from loading so sorting costs nothing but a redraw. */
+function drawEquipment() {
+  const { q, view } = currentView();
+  const rows = sortKey ? sortRows(equipmentRows, SORTS[sortKey], sortDir) : equipmentRows;
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr${e.service_status === 'retired' ? ' class="row-quiet"' : ''}>
       <td class="cell-thumb">${thumbnail(e)}</td>
@@ -118,6 +172,24 @@ export async function loadEquipment() {
     || emptyRow(8, q
       ? `Nothing in this filter matches "${q}". Clear the search to see the rest.`
       : view.empty);
+  markSort();
+}
+
+export async function loadEquipment() {
+  const { q, view } = currentView();
+  // Two requests, deliberately. The table is the view this screen is filtered to;
+  // the dropdowns are "every machine in service", because a new job or a new
+  // maintenance schedule must not be startable on a machine that has left. They
+  // used to share one array, so typing in the search box narrowed the dropdowns
+  // too — searching "pump" left only pumps to report a fault against.
+  const [rows, inService] = await Promise.all([
+    api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+    api('/equipment?service=active'),
+  ]);
+  equipmentRows = rows;
+  // The chosen column survives a refresh, a filter change and a save: losing the
+  // order every time the list reloads would make the arrows decorative.
+  drawEquipment();
 
   const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#w-equipment').innerHTML = options;
