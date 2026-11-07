@@ -62,8 +62,8 @@ Check with `node --version`.
 | `public/index.html` | The whole UI shell: every screen and form | 482 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 260 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 476 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 267 · 217 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 448 behaviours | 2,432 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 217 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 455 behaviours | 2,484 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -156,6 +156,14 @@ photograph pushed that page past 600 lines.
   the Maintenance screen and the dashboard card, and come back when the machine does. The API
   asks for this explicitly with `?service=active` (on the machine list, `/api/pm` and
   `/api/pm/due`); with no parameter each list is everything, as it always was.
+* **New machine asks for everything Edit does.** Name, barcode, manufacturer, category,
+  location, notes and a photograph, in one dialog: it asked for four fields until
+  261106-erd while the editor asked for seven, so a machine could only be fully described
+  by creating it and immediately editing it again — and `POST /api/equipment` had accepted
+  the manufacturer and the notes all along. The photograph is uploaded straight after the
+  machine is created, because the route needs an id; if it fails the machine is saved and
+  the message says so. The suite compares the two dialogs by the labels they show, so a
+  field added to one and not the other is a failure rather than a surprise.
 * **A machine can be corrected — by an administrator.** Edit on its row opens what the
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
@@ -381,10 +389,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 448 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 455 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`448 passed, 0 failed`.
+`455 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
