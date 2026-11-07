@@ -4,7 +4,7 @@ slug: sortable-machine-columns
 date: 2026-11-07
 status: complete
 kind: quick
-commit: pending
+commit: 9bc7ab3
 files_modified: [app/public/index.html, app/public/machines.js, app/public/sort.js, app/public/app.css, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
