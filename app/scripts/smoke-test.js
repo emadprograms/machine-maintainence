@@ -2442,6 +2442,20 @@ ok('and refuses an empty problem before it reaches the server',
 // A technician cannot read the list of people, so the owner control is replaced by
 // a read-only name and the save does not mention ownership at all. Sending null
 // because a select was empty would quietly unassign the job.
+// The `hidden` attribute is a browser rule and any author rule that sets `display`
+// beats it: `.field { display: flex }` did, so the editor showed the owner select and
+// the read-only owner name at the same time, one of them empty. The stylesheet has to
+// say so, and say it with !important, because `.field` and `[hidden]` are equally
+// specific.
+ok('the hidden attribute hides, whatever display the element has',
+  /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(uiCss)
+  && /\.field\s*\{[^}]*display:\s*flex/.test(uiCss),
+  'a rule that sets display beats the hidden attribute, so hidden elements show');
+ok('and the editor shows one owner control at a time',
+  /we-owner-locked/.test(editDialog)
+  && /closest\('label'\)\.hidden = !canAssign/.test(workSrc)
+  && /\$\('#we-owner-locked'\)\.hidden = canAssign/.test(workSrc),
+  'both owner controls are drawn, or nothing switches between them');
 ok('a technician editing a job cannot silently unassign it',
   /if \(canAssign\) body\.assigned_to/.test(saveWorkFn)
   && /canAssign = assignable\.length > 0/.test(workSrc),

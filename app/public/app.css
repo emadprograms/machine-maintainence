@@ -262,3 +262,9 @@
   #login { max-width: 340px; margin: 12vh auto; }
   .error { color: var(--red); font-size: 13px; min-height: 18px; }
   .hidden { display: none !important; }
+
+/* The `hidden` attribute is a browser rule, and any author rule that sets `display`
+   beats it — `.field { display: flex }` did, which is how the work-order editor
+   ended up with two Owner fields, one of them empty. This makes the attribute mean
+   what it says, wherever it is used. */
+  [hidden] { display: none !important; }

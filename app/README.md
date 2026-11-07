@@ -61,10 +61,10 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 543 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 264 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 270 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 475 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 237 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 486 behaviours | 2,689 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 488 behaviours | 2,703 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -410,10 +410,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 486 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 488 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`486 passed, 0 failed`.
+`488 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
