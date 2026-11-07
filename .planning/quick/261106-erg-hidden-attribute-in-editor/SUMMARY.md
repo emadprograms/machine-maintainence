@@ -60,6 +60,25 @@ Three mutations, **three caught.**
 | the rule loses `!important` | *the hidden attribute hides…* |
 | the read-only owner is never switched off | *one owner control at a time* |
 
+## Follow-up (asked again: "but why are there two owners?")
+
+The `[hidden]` fix stopped the second field *showing*; it did not explain why there were two
+in the markup. There should not be.
+
+The editor had a `<select>` for administrators and a separate read-only `<label>` for everyone
+else, swapped with an attribute. That is a design that can only fail in the direction it did.
+It is now **one Owner field**: with the list of people it is a choice; without it the same
+control holds the one true answer, is disabled, and carries a line saying only an administrator
+can change it. A control that exists once cannot appear twice.
+
+Checks: the dialog is asserted to contain **exactly one** `<span>Owner</span>`, and that one
+field has to be honest for both readers — name in it, disabled when the list is unreadable,
+explanation shown. Four mutations (a second field added back, left editable, no explanation,
+nothing in it at all) — all caught, the last one after the assertion was widened to require the
+fallback name rather than just the presence of a ternary.
+
+Stats after this change: **489 checks**, still 0 failures, `OFFLINE-SAFE`.
+
 ## What this says about the rest of the page
 
 Any other element relying on the `hidden` attribute had the same non-behaviour; the section
