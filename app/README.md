@@ -64,7 +64,7 @@ Check with `node --version`.
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 270 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 475 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 241 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 489 behaviours | 2,711 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 492 behaviours | 2,744 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -184,7 +184,7 @@ photograph pushed that page past 600 lines.
   photograph — replace it or remove it. It used to be a row of inputs inside the table that
   could change four things and nothing else, with the answer to *does this stop the machine*
   squeezed into a cell. The dialog is filled from the row that was clicked rather than from a
-  second request, and one Save writes everything. There is **one** Owner field: with the list
+  second request, and one Save writes everything. There is **one** *Assigned to* field: with the list
   of people it is a choice, without it the same control shows the one true answer, is disabled
   and says why — and the save leaves ownership out entirely, because sending nothing must
   never mean *unassign*.
@@ -411,10 +411,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 489 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 492 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`489 passed, 0 failed`.
+`492 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

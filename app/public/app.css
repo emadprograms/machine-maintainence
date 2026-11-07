@@ -265,6 +265,6 @@
 
 /* The `hidden` attribute is a browser rule, and any author rule that sets `display`
    beats it — `.field { display: flex }` did, which is how the work-order editor
-   ended up with two Owner fields, one of them empty. This makes the attribute mean
+   ended up with two Assigned-to fields, one of them empty. This makes the attribute mean
    what it says, wherever it is used. */
   [hidden] { display: none !important; }

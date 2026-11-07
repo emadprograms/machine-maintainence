@@ -165,7 +165,7 @@ export default {
       { key: 'id', label: 'ID' },
       { key: 'equipment', label: 'Machine' },
       { key: 'title', label: 'Problem' },
-      { key: 'owner', label: 'Owner' },
+      { key: 'owner', label: 'Assigned to' },
       { key: 'priority', label: 'Priority' },
       { key: 'stops_machine', label: 'Stops the machine' },
       { key: 'status', label: 'Status' },

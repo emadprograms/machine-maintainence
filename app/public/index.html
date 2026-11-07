@@ -178,7 +178,7 @@
           </div>
           <p class="sheet-sub">Every job ever reported against this machine, newest first.</p>
           <div class="table-wrap">
-            <table class="table"><thead><tr><th>Job</th><th>Status</th><th>Owner</th><th>Opened</th><th>Closed</th></tr></thead>
+            <table class="table"><thead><tr><th>Job</th><th>Status</th><th>Assigned to</th><th>Opened</th><th>Closed</th></tr></thead>
               <tbody id="machine-history-rows"></tbody></table>
           </div>
           <div class="sheet-foot">
@@ -210,7 +210,7 @@
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Status</th><th class="cell-num">Hours</th><th class="cell-num">Cost</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Assigned to</th><th>Priority</th><th>Status</th><th class="cell-num">Hours</th><th class="cell-num">Cost</th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
@@ -265,7 +265,7 @@
           <div class="form-grid form-grid-wide">
             <label class="field field-wide"><span>Problem</span>
               <input id="we-title" placeholder="What is wrong?" /></label>
-            <label class="field"><span>Owner</span>
+            <label class="field"><span>Assigned to</span>
               <select id="we-owner"></select>
               <span class="hint" id="we-owner-hint" hidden>Only an administrator can change the
                 owner. It stays as it is.</span></label>
@@ -361,7 +361,7 @@
         </div>
         <p id="history-summary" class="summary-line"></p>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Job</th><th>Closed</th><th>Owner</th><th>Priority</th></tr></thead>
+          <table class="table"><thead><tr><th>Machine</th><th>Job</th><th>Closed</th><th>Assigned to</th><th>Priority</th></tr></thead>
             <tbody id="history-rows"></tbody></table>
         </div>
       </div>

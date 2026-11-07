@@ -36,7 +36,7 @@ export default {
       { key: 'title', label: 'Job' },
       { key: 'resolution', label: 'What was done' },
       { key: 'status', label: 'Status' },
-      { key: 'owner', label: 'Owner' },
+      { key: 'owner', label: 'Assigned to' },
       { key: 'priority', label: 'Priority' },
       { key: 'created_at', label: 'Opened' },
       { key: 'closed_at', label: 'Closed' },

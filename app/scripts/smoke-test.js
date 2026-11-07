@@ -524,10 +524,20 @@ ok('lines end with CRLF, not bare LF', !/[^\r]\n/.test(csv.text.slice(1)),
   JSON.stringify(csv.text.slice(0, 80)));
 ok('a field containing a comma and a quote is quoted and its quotes doubled',
   csv.text.includes('"Belt ""A"" snapped, 3rd time"'), csv.text.split('\r\n')[1]);
-ok('the header names the same columns as the screen',
-  csv.text.slice(1).split('\r\n')[0]
-    === 'Number,ID,Machine,Problem,Owner,Priority,Stops the machine,Status,Created,Closed',
-  csv.text.slice(1).split('\r\n')[0]);
+// It used to compare the file against a second hard-coded string, which is not what
+// the name of the check says and not what would catch a screen and a file drifting
+// apart. The columns that exist on both are read from the page now.
+const csvHead = csv.text.slice(1).split('\r\n')[0].split(',');
+// Read here rather than reused from the block further down: this check runs first,
+// and reaching forward for `indexEq` would be a temporal dead zone, not a test.
+const pageNow = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const workHead = (pageNow.match(/<thead><tr><th>Machine<\/th><th>Problem<\/th>[\s\S]*?<\/tr><\/thead>/) || [''])[0];
+const screenLabels = [...workHead.matchAll(/<th[^>]*>([^<]*)<\/th>/g)]
+  .map((m) => m[1].trim()).filter(Boolean);
+ok('the header names the columns the way the screen names them',
+  ['Machine', 'Problem', 'Assigned to', 'Priority', 'Status']
+    .every((label) => screenLabels.includes(label) && csvHead.includes(label)),
+  `screen: ${screenLabels.join(' | ')}\nfile:   ${csvHead.join(' | ')}`);
 const rowCount = csv.text.slice(1).trim().split('\r\n').length - 1;
 ok('every work order is in the file', rowCount === (await c('/api/work-orders')).data.length,
   `${rowCount} rows`);
@@ -2455,9 +2465,9 @@ ok('the hidden attribute hides, whatever display the element has',
 // select for administrators and a separate read-only label for everyone else, and
 // swapped them with the hidden attribute — which is how the screen ended up showing
 // two Owner fields, one of them empty. A control that only exists once cannot do that.
-ok('the editor has exactly one Owner field',
-  (editDialog.match(/<span>Owner<\/span>/g) || []).length === 1,
-  `${(editDialog.match(/<span>Owner<\/span>/g) || []).length} Owner labels in the dialog`);
+ok('the editor has exactly one Assigned-to field',
+  (editDialog.match(/<span>Assigned to<\/span>/g) || []).length === 1,
+  `${(editDialog.match(/<span>Assigned to<\/span>/g) || []).length} Assigned-to labels in the dialog`);
 ok('and that one field tells the truth to whoever is reading it',
   /canAssign\s*\n?\s*\?/.test(workSrc)
   && /<option value="">\$\{esc\(job\.assignee_name \|\| 'Nobody yet'\)\}<\/option>/.test(workSrc)
@@ -2498,6 +2508,29 @@ ok('and it keeps the owner, the number and the report it never mentioned',
     owner: edited.data.assigned_to, code: edited.data.code, status: edited.data.status }));
 ok('the machine follows the answer given in the editor',
   (await late('/api/equipment?service=all')).data.find((m) => m.id === editMachine.id)?.status === 'down');
+
+// ---- the assignee is called "Assigned to" wherever a person reads it ------
+// It was "Owner" in three table headers, in the edit dialog and in two export
+// headers. The export check compared the file to a second hard-coded string, so half
+// a rename could not fail; the checks below read the page and the label, and the
+// last one holds the API still — a rename of what a word looks like must not rename
+// the fields other code depends on.
+const routeSources = ['work-orders.js', 'record.js']
+  .map((f) => readFileSync(join(root, 'routes', f), 'utf8'));
+const staleOwner = [indexEq, ...routeSources]
+  .flatMap((src) => src.match(/<th>Owner<\/th>|<span>Owner<\/span>|label: 'Owner'/g) || []);
+ok('nothing a person reads calls the assignee an owner', staleOwner.length === 0,
+  staleOwner.join(', '));
+ok('every screen and both files call it Assigned to',
+  (indexEq.match(/<th>Assigned to<\/th>/g) || []).length === 3
+  && indexEq.includes('<span>Assigned to</span>')
+  && routeSources.every((src) => src.includes("label: 'Assigned to'")),
+  `headers: ${(indexEq.match(/<th>Assigned to<\/th>/g) || []).length}, labels: ${
+    routeSources.filter((src) => src.includes("label: 'Assigned to'")).length}/2`);
+const assigneeRow = (await late('/api/work-orders').catch(() => ({ data: [] }))).data[0] || {};
+ok('and the API still calls the field what it always did',
+  'assigned_to' in assigneeRow && 'assignee_name' in assigneeRow,
+  `fields: ${Object.keys(assigneeRow).join(', ')}`);
 
 console.log('\nCoverage — the questions nothing was asking');
 
@@ -2571,7 +2604,7 @@ ok('with a file name and a spreadsheet type',
   String(historyCsv.headers.get('content-disposition')));
 const historyLines = historyCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
 ok('its first line is the column names',
-  /^Number,Machine,Job,What was done,Status,Owner,Priority,Opened,Closed$/.test(historyLines[0] || ''),
+  /^Number,Machine,Job,What was done,Status,Assigned to,Priority,Opened,Closed$/.test(historyLines[0] || ''),
   historyLines[0]);
 ok('and it carries the closed job it was asked for',
   historyCsv.text.includes('Closed for the file'), 'the file does not contain the job');
