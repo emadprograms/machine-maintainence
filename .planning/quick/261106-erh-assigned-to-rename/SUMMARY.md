@@ -4,7 +4,7 @@ slug: assigned-to-rename
 date: 2026-11-07
 status: complete
 kind: debug
-commit: pending
+commit: 4ff70f6
 files_modified: [app/public/index.html, app/routes/work-orders.js, app/routes/record.js, app/public/app.css, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
