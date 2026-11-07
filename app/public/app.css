@@ -1,0 +1,270 @@
+/* The one stylesheet. It used to live in a <style> block inside index.html,
+   which reached 619 lines once the machine photograph arrived — past the point
+   where a page can be read in one sitting. Markup and appearance now sit in
+   separate files; nothing else changed, so every rule below is the same one.
+   No framework, no CDN: this file is the whole visual language. */
+
+  /* Palette borrowed from the reviewed repo's tailwind config (Apple-style blues). */
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --ink: #1d1d1f; --soft: #6e6e73;
+    --line: #e8e8ed; --brand: #0071e3; --brand-soft: #eef6ff;
+    --red: #d92d20; --amber: #b54708; --green: #067647;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+    background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0;
+  }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  /* ---- layout: a fixed sidebar beside fluid content ---- */
+  .layout { display: flex; min-height: calc(100vh - 57px); }
+  main { flex: 1; padding: 28px 32px; max-width: 1240px; min-width: 0; }
+
+  /* ---- sidebar ---- */
+  #sidebar {
+    width: 232px; flex: 0 0 232px; background: var(--card);
+    border-right: 1px solid var(--line); padding: 16px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: sticky; top: 57px; height: calc(100vh - 57px);
+    transition: width .16s ease, flex-basis .16s ease;
+  }
+  #sidebar.collapsed { width: 68px; flex-basis: 68px; }
+  #sidebar.collapsed .side-label { display: none; }
+  #sidebar.collapsed .side-link { justify-content: center; padding: 10px 0; }
+  #sidebar.collapsed .side-game { display: none; }
+  .side-brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 8px 16px; font-weight: 600; font-size: 14px;
+  }
+  .side-mark {
+    display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px;
+    border-radius: 9px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700;
+  }
+  .side-nav { display: flex; flex-direction: column; gap: 2px; }
+  .side-link, .side-toggle {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 0; background: none; color: var(--soft); cursor: pointer;
+    padding: 9px 10px; border-radius: 9px; font: inherit; font-size: 14px;
+    text-align: left;
+  }
+  .side-link svg, .side-toggle svg { width: 18px; height: 18px; flex: 0 0 18px; }
+  .side-link:hover, .side-toggle:hover { background: #f2f4f7; color: var(--ink); }
+  .side-link.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+  .side-toggle { margin-top: auto; }
+  #sidebar.collapsed .side-toggle svg { transform: rotate(180deg); }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ---- dashboard ---- */
+  .dash-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .dash-card { display: flex; flex-direction: column; margin-bottom: 0; }
+  .dash-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .dash-label { font-size: 13px; color: var(--soft); font-weight: 500; }
+  .dash-count { font-size: 30px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .dash-card.has-items .dash-count { color: var(--brand); }
+  .dash-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .dash-list li { display: flex; flex-direction: column; gap: 1px; }
+  .dash-item-main { font-size: 14px; }
+  .dash-item-meta { font-size: 12px; color: var(--soft); }
+  .dash-empty { color: var(--soft); font-size: 13px; margin: 0 0 12px; }
+  .dash-more { color: var(--soft); font-size: 12px; margin: 0 0 12px; }
+  .dash-link {
+    margin-top: auto; align-self: flex-start; border: 0; background: none;
+    color: var(--brand); font: inherit; font-size: 13px; font-weight: 500;
+    padding: 6px 0; cursor: pointer; text-align: left;
+  }
+  .dash-link:hover { text-decoration: underline; }
+  .dash-error { border-color: #f5c2c0; }
+
+  /* ---- dashboard charts: hand-drawn SVG, no library, nothing fetched ---- */
+  .charts-grid { display: grid; gap: 16px; margin-top: 16px;
+                 grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .chart-card { margin-bottom: 0; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .chart-title { font-size: 14px; font-weight: 600; }
+  .chart-note { font-size: 12px; color: var(--soft); }
+  .chart-svg { width: 100%; height: auto; display: block; margin-top: 6px; }
+  .chart-grid { stroke: var(--line); stroke-width: 1; }
+  .chart-axis { font-size: 10px; fill: var(--soft); font-variant-numeric: tabular-nums; }
+  .chart-bar.t-brand { fill: var(--brand); }
+  .chart-bar.t-soft { fill: #a8c9f0; }
+  .chart-bar { transition: opacity .12s ease; }
+  .chart-svg:hover .chart-bar { opacity: .85; }
+  .chart-legend { list-style: none; display: flex; gap: 16px; margin: 10px 0 0; padding: 0;
+                  font-size: 12px; color: var(--soft); }
+  .chart-legend li { display: flex; align-items: center; gap: 6px; }
+  .chart-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .chart-dot.t-brand { background: var(--brand); }
+  .chart-dot.t-soft { background: #a8c9f0; }
+  /* ---- surfaces ---- */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 16px; margin-bottom: 16px; }
+  .card-pad { padding: 22px; }
+  .card-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .card-toolbar select { width: auto; min-width: 150px; }
+
+  /* ---- page header: every screen starts here ---- */
+  .page-head { display: flex; align-items: flex-start; gap: 20px;
+               justify-content: space-between; margin: 0 0 18px; flex-wrap: wrap; }
+  .page-head h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 3px; }
+  .page-sub { margin: 0; color: var(--soft); font-size: 13.5px; }
+  .head-actions { display: flex; gap: 8px; align-items: center; }
+  .head-actions select { width: auto; }
+
+  /* ---- tables: rows read as records ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--soft); font-weight: 500; font-size: 11.5px; text-transform: uppercase;
+       letter-spacing: .05em; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #fafbfc; }
+  .cell-strong { font-weight: 550; color: var(--ink); }
+  .cell-muted { color: var(--soft); }
+  .cell-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cell-say { color: var(--soft); font-size: 13px; padding: 26px 10px; text-align: center; }
+  .cell-error { color: var(--red); }
+  .table-wrap { overflow-x: auto; }
+
+  /* ---- forms ---- */
+  input, select, textarea {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; width: 100%; color: var(--ink);
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--brand); }
+  .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .form-grid-wide { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field-wide { grid-column: 1 / -1; }
+  /* ---- machine photographs ---- */
+  /* What the editor says about the photograph already on the job. */
+.photo-now { margin: 0 0 6px; font-size: 13px; color: var(--ink-soft); }
+.hint { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-soft); }
+
+/* Adding a part while closing a job: the select takes the space, the quantity
+   stays small enough to type with a thumb. */
+.parts-pick { display: flex; gap: 6px; align-items: center; }
+.parts-pick select { flex: 1; }
+.parts-pick input { width: 72px; }
+.part-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-soft); }
+.part-list:empty { display: none; }
+
+/* A fault photograph is evidence, so it is a link on the problem rather than a
+   column: the table is about the job, and the picture is what you open next. */
+.link-photo {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link-photo:hover { color: var(--ink); border-color: var(--ink-soft); }
+
+/* A retired machine is in the list, not out of sight: visible enough to find and
+   reopen, quiet enough not to compete with the machines that are running. */
+.row-quiet td { opacity: .6; }
+.row-quiet:hover td { opacity: 1; }
+
+.cell-thumb { width: 56px; }
+  .thumb { width: 44px; height: 44px; border-radius: 9px; object-fit: cover; display: block;
+           background: var(--bg); border: 1px solid var(--line); }
+  .thumb-empty { display: flex; align-items: center; justify-content: center; font-size: 15px;
+                 font-weight: 600; color: var(--soft); text-transform: uppercase; }
+  .photo-row { display: flex; gap: 18px; align-items: flex-start; margin-top: 16px; flex-wrap: wrap; }
+  .photo-pick { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 8px; }
+  .photo-preview { width: 132px; height: 132px; border-radius: 12px; overflow: hidden; flex: none;
+                   border: 1px solid var(--line); background: var(--bg); display: flex;
+                   align-items: center; justify-content: center; }
+  .photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-preview span { font-size: 12px; color: var(--soft); text-align: center; padding: 8px; }
+  .status-why { display: block; font-size: 11.5px; color: var(--soft); margin-top: 4px; max-width: 220px; }
+  .row-sub { display: block; font-size: 11.5px; color: var(--soft); margin-top: 3px; }
+  /* ---- the row menu: everything about one machine, behind three dots ---- */
+  .cell-actions { width: 48px; text-align: right; }
+  .row-menu { position: relative; display: inline-block; }
+  .row-menu summary { list-style: none; cursor: pointer; width: 30px; height: 30px;
+                      border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                      color: var(--soft); font-size: 18px; line-height: 1; user-select: none; }
+  .row-menu summary::-webkit-details-marker { display: none; }
+  .row-menu summary:hover, .row-menu[open] summary { background: #f2f4f7; color: var(--ink); }
+  /* Positioned against the viewport, not the cell: `.table-wrap` scrolls sideways,
+     and an absolutely-positioned menu on the last row is clipped by it. The
+     coordinates are set in machines.js when the menu opens. */
+  .row-menu .menu { position: fixed; z-index: 60; min-width: 190px;
+                    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+                    box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12); padding: 6px; text-align: left; }
+  .row-menu .menu button { display: block; width: 100%; text-align: left; border: 0; background: none;
+                           font: inherit; font-size: 13.5px; color: var(--ink); padding: 8px 10px;
+                           border-radius: 8px; cursor: pointer; }
+  .row-menu .menu button:hover { background: var(--bg); }
+  .row-menu .menu button.danger { color: var(--red); }
+  .row-menu .menu button.danger:hover { background: #fef3f2; }
+  .danger-box { border: 1px solid #fecdca; background: #fef3f2; border-radius: 12px;
+                padding: 14px 16px; margin: 4px 0 16px; }
+  .danger-box p { margin: 0; font-size: 13.5px; color: #912018; }
+  .danger-box .danger-lead { font-weight: 650; margin-bottom: 6px; }
+  .danger-box code, .field code { background: #fff; border: 1px solid #fecdca; border-radius: 6px;
+                                  padding: 1px 6px; font-size: 12.5px; color: #912018; }
+  .danger-btn { background: var(--red); color: #fff; border: 1px solid var(--red); border-radius: 10px;
+                padding: 10px 16px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .danger-btn:hover:not(:disabled) { background: #b42318; }
+  .danger-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .field > span { font-size: 12.5px; color: var(--soft); font-weight: 500; }
+  .form-error { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--soft); }
+  .check input { width: auto; }
+
+  /* ---- buttons ---- */
+  button { font: inherit; cursor: pointer; }
+  button.primary { background: var(--brand); color: #fff; border: 1px solid var(--brand);
+                   padding: 9px 16px; border-radius: 9px; font-weight: 600; font-size: 14px; }
+  button.primary:hover { background: #0062c4; border-color: #0062c4; }
+  button.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line);
+                 padding: 8px 14px; border-radius: 9px; font-size: 14px; }
+  button.ghost:hover { background: #f7f8fa; }
+  button.small { padding: 5px 11px; font-size: 12.5px; border-radius: 7px; }
+  button.danger { color: var(--red); border-color: #f5c2c0; background: #fff; }
+  button.danger:hover { background: #fef3f2; }
+  .icon-btn { border: 0; background: none; font-size: 22px; line-height: 1;
+              color: var(--soft); padding: 2px 6px; border-radius: 7px; }
+  .icon-btn:hover { background: #f2f4f7; color: var(--ink); }
+  td button { margin-left: 4px; }
+
+  /* ---- the create dialog ---- */
+  dialog.sheet {
+    border: 0; padding: 0; border-radius: 16px; width: min(620px, calc(100vw - 32px));
+    box-shadow: 0 24px 60px rgba(16, 24, 40, .18), 0 2px 8px rgba(16, 24, 40, .06);
+    color: var(--ink);
+  }
+  dialog.sheet::backdrop { background: rgba(16, 24, 40, .38); }
+  .sheet-inner { padding: 24px 24px 20px; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .sheet-head h3 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  .sheet-sub { color: var(--soft); font-size: 13px; margin: 0 0 18px; }
+  .sheet-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ---- small things ---- */
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px;
+           font-size: 11.5px; font-weight: 500; }
+  .b-red { background: #fef3f2; color: var(--red); }
+  .b-amber { background: #fffaeb; color: var(--amber); }
+  .b-green { background: #ecfdf3; color: var(--green); }
+  .b-grey { background: #f2f4f7; color: var(--soft); }
+  .muted { color: var(--soft); font-size: 13px; }
+  /* The History screen's date range sits in the same toolbar as the other
+     filters, so the labels are inline there rather than stacked. */
+  .summary-line { color: var(--soft); font-size: 13px; margin: 0 0 10px; }
+  .card-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--soft); }
+  .card-toolbar input[type="date"],
+  .card-toolbar input[type="search"] { width: auto; min-width: 240px; }
+  #login { max-width: 340px; margin: 12vh auto; }
+  .error { color: var(--red); font-size: 13px; min-height: 18px; }
+  .hidden { display: none !important; }
+
+/* The `hidden` attribute is a browser rule, and any author rule that sets `display`
+   beats it — `.field { display: flex }` did, which is how the work-order editor
+   ended up with two Assigned-to fields, one of them empty. This makes the attribute mean
+   what it says, wherever it is used. */
+  [hidden] { display: none !important; }

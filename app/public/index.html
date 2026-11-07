@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Machine Maintenance</title>
+  <link rel="stylesheet" href="/app.css" />
+
+</head>
+<body>
+
+<!-- Login -->
+<section id="login" class="card">
+  <h2>Sign in</h2>
+  <div class="form-grid" style="grid-template-columns:1fr">
+    <input id="email" type="email" placeholder="email" autocomplete="username" />
+    <input id="password" type="password" placeholder="password" autocomplete="current-password" />
+    <button class="primary" onclick="login()">Sign in</button>
+  </div>
+  <p id="login-error" class="error"></p>
+</section>
+
+<!-- App -->
+<div id="app" class="hidden">
+  <header>
+    <h1>Machine Maintenance</h1>
+    <span id="who" class="muted"></span>
+    <button class="small" onclick="logout()">Sign out</button>
+  </header>
+
+  <div class="layout">
+    <aside id="sidebar"></aside>
+    <main>
+    <!-- Due soon -->
+    <section data-page="dashboard" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p class="page-sub">What needs attention today, across the whole workshop.</p>
+        </div>
+      </div>
+      <div id="dashboard-body"></div>
+    </section>
+    <section data-page="due" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Due soon</h2>
+          <p class="page-sub">Maintenance that has come due, or soon will.</p>
+        </div>
+        <div class="head-actions">
+          <label class="muted" for="due-days">Within</label>
+          <select id="due-days" onchange="loadDue()">
+            <option>7</option><option>14</option><option>30</option><option>90</option>
+          </select>
+          <span class="muted">days</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th class="cell-num">Due</th><th></th></tr></thead>
+            <tbody id="due-rows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Machines -->
+    <section data-page="equipment" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Machines</h2>
+          <p class="page-sub">Everything you maintain, and the state it is in right now.</p>
+        </div>
+        <button class="primary" onclick="openForm('equipment-form')">New machine</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <input id="eq-search" type="search" placeholder="Search name, tag, location or category"
+                 oninput="searchEquipment()" />
+          <select id="eq-filter" onchange="loadEquipment()" aria-label="Which machines to show">
+            <option value="all" selected>All machines</option>
+            <option value="in">In service</option>
+            <option value="down">Down right now</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th class="cell-thumb">Photo</th><th>Name</th><th>Barcode</th>
+            <th>Manufacturer</th><th>Category</th><th>Location</th><th>Status</th><th></th></tr></thead>
+            <tbody id="equipment-rows"></tbody></table>
+        </div>
+      </div>
+
+      <dialog id="equipment-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">Only the name is required; the rest can be filled in later — here or
+            through Edit on its row. It asks for everything the editor does, so a machine never has to
+            be created twice to be described.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="e-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Barcode</span><input id="e-tag" placeholder="e.g. 101220054" /></label>
+            <label class="field"><span>Manufacturer</span><input id="e-maker" placeholder="e.g. Mazak" /></label>
+            <label class="field"><span>Category</span><input id="e-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="e-loc" placeholder="e.g. Bay 2" /></label>
+            <label class="field field-wide"><span>Notes</span><textarea id="e-notes" rows="2" placeholder="Anything the next person should know"></textarea></label>
+            <label class="field field-wide"><span>Photograph — JPEG, PNG or WebP, under 2 MB</span>
+              <input id="e-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addEquipment()">Add machine</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="equipment-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-edit-title">Edit machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub">What this machine <em>is</em>. Its state comes from its work orders: open a job, or close one, and the list follows.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="ee-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Barcode</span><input id="ee-tag" placeholder="e.g. 101220054" /></label>
+            <label class="field"><span>Manufacturer</span><input id="ee-maker" placeholder="e.g. Mazak" /></label>
+            <label class="field"><span>Category</span><input id="ee-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="ee-loc" placeholder="e.g. Bay 2" /></label>
+            <label class="field field-wide"><span>Notes</span><textarea id="ee-notes" rows="2" placeholder="Anything the next person should know"></textarea></label>
+          </div>
+          <div class="photo-row">
+            <div id="ee-photo-preview" class="photo-preview"></div>
+            <div class="photo-pick">
+              <label class="field"><span>Photograph — JPEG, PNG or WebP, under 2 MB</span><input id="ee-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+              <label class="check"><input id="ee-photo-clear" type="checkbox" /> Remove the photograph</label>
+            </div>
+          </div>
+          <input type="hidden" id="ee-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveEquipment()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="equipment-delete" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-delete-title">Delete machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-delete')">&times;</button>
+          </div>
+          <div class="danger-box">
+            <p class="danger-lead">This cannot be undone.</p>
+            <p id="equipment-delete-consequences"></p>
+          </div>
+          <label class="field"><span>Type <code id="equipment-delete-phrase"></code> to confirm</span>
+            <input id="equipment-delete-confirm" autocomplete="off" spellcheck="false"
+                   placeholder="delete machine …" oninput="checkDeletePhrase()" /></label>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-delete')">Cancel</button>
+            <button class="danger-btn" type="button" id="equipment-delete-go" disabled
+                    onclick="confirmEquipmentDelete()">Delete permanently</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="machine-history" class="sheet">
+        <div class="sheet-inner">
+          <div class="sheet-head">
+            <h3 id="machine-history-title">Machine history</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeMachineHistory()">&times;</button>
+          </div>
+          <p class="sheet-sub">Every job ever reported against this machine, newest first.</p>
+          <div class="table-wrap">
+            <table class="table"><thead><tr><th>Job</th><th>Status</th><th>Assigned to</th><th>Opened</th><th>Closed</th></tr></thead>
+              <tbody id="machine-history-rows"></tbody></table>
+          </div>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeMachineHistory()">Close</button>
+          </div>
+        </div>
+      </dialog>
+    </section>
+
+    <!-- Work orders -->
+    <section data-page="work" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Work orders</h2>
+          <p class="page-sub">What needs fixing, who owns it, and what is already done.</p>
+        </div>
+        <button class="primary" onclick="openForm('work-form')">New work order</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <input id="wo-search" type="search" placeholder="Search problem, notes or machine"
+                 oninput="searchWork()" />
+          <select id="wo-status-filter" onchange="loadWork()">
+            <option value="">Any status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="done">Done</option>
+          </select>
+          <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Assigned to</th><th>Priority</th><th>Status</th><th class="cell-num">Hours</th><th class="cell-num">Cost</th><th></th></tr></thead>
+            <tbody id="work-rows"></tbody></table>
+        </div>
+      </div>
+
+      <dialog id="work-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Machine</span><select id="w-equipment"></select></label>
+            <label class="field"><span>Problem</span><input id="w-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Priority</span>
+              <select id="w-priority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field"><span>Does this stop the machine?</span>
+              <select id="w-stops">
+                <option value="0" selected>No — it is still running</option>
+                <option value="1">Yes — take it out of service</option>
+              </select>
+            </label>
+            <label class="field"><span>Reported by (optional)</span>
+              <input id="w-reporter" placeholder="Who saw it — e.g. Ada on line 2" /></label>
+            <label class="field"><span>Hours (optional)</span>
+              <input id="w-hours" type="number" min="0" step="0.25" placeholder="e.g. 1.5" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span>
+              <textarea id="w-notes" rows="2" placeholder="Only fails above 20 m/min; started after the belt was replaced"></textarea></label>
+            <label class="field field-wide"><span>Photograph of the fault (optional) — JPEG, PNG or WebP, under 2 MB</span>
+              <input id="w-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addWorkOrder()">Create work order</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="work-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-edit-title">Edit work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-edit-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Problem</span>
+              <input id="we-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Assigned to</span>
+              <select id="we-owner"></select>
+              <span class="hint" id="we-owner-hint" hidden>Only an administrator can change the
+                owner. It stays as it is.</span></label>
+            <label class="field"><span>Priority</span>
+              <select id="we-priority">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field"><span>Does this stop the machine?</span>
+              <select id="we-stops">
+                <option value="0">No — it is still running</option>
+                <option value="1">Yes — take it out of service</option>
+              </select>
+            </label>
+            <label class="field"><span>Hours (optional)</span>
+              <input id="we-hours" type="number" min="0" step="0.25" placeholder="e.g. 1.5" /></label>
+            <label class="field"><span>Reported by (optional)</span>
+              <input id="we-reporter" placeholder="Who saw it" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span>
+              <textarea id="we-notes" rows="2" placeholder="Only fails above 20 m/min"></textarea></label>
+            <div class="field field-wide"><span>Photograph of the fault</span>
+              <p id="we-photo-now" class="photo-now"></p>
+              <label class="field"><span>Replace it — JPEG, PNG or WebP, under 2 MB</span>
+                <input id="we-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+              <label class="check"><input id="we-photo-clear" type="checkbox" /> Remove the photograph</label>
+            </div>
+          </div>
+          <input type="hidden" id="we-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveWork()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="work-close" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-close-title">Close the job</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-close')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-close-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>What was done</span>
+              <textarea id="wc-resolution" rows="3"
+                        placeholder="Replaced the bearing and re-greased; noise gone at full speed"></textarea></label>
+            <label class="field"><span>Hours (optional)</span>
+              <input id="wc-hours" type="number" min="0" step="0.25" placeholder="e.g. 1.5" /></label>
+            <label class="field"><span>Checked by (optional)</span>
+              <input id="wc-verified" placeholder="Who signed it off" /></label>
+            <div class="field field-wide"><span>Parts used</span>
+              <div class="parts-pick">
+                <select id="wc-part"></select>
+                <input id="wc-qty" type="number" min="1" step="1" value="1" aria-label="How many" />
+                <button class="ghost small" type="button" onclick="usePart()">Add part</button>
+              </div>
+            </div>
+          </div>
+          <ul id="wc-parts" class="part-list"></ul>
+          <input type="hidden" id="wc-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
+            <button class="primary" type="button" onclick="confirmCloseWork()">Close the job</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Parts -->
+    <!-- History -->
+    <section data-page="history" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>History</h2>
+          <p class="page-sub">Everything that has been finished, and when it happened.</p>
+        </div>
+        <button class="ghost" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Closed from</span>
+            <input type="date" id="history-from" onchange="loadHistory()" /></label>
+          <label><span>Closed to</span>
+            <input type="date" id="history-to" onchange="loadHistory()" /></label>
+          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
+                 oninput="searchHistory()" />
+          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
+          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
+        </div>
+        <p id="history-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Job</th><th>Closed</th><th>Assigned to</th><th>Priority</th></tr></thead>
+            <tbody id="history-rows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section data-page="parts" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Spare parts</h2>
+          <p class="page-sub">What is on the shelf, what it costs, and what needs reordering.</p>
+        </div>
+        <button class="primary" onclick="openForm('parts-form')">New part</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label class="check"><input type="checkbox" id="low-stock-filter" onchange="loadParts()" />
+            Only parts at or below the reorder level</label>
+          <button class="ghost small" onclick="downloadParts()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Name</th><th>Reference</th><th class="cell-num">In stock</th><th class="cell-num">Unit price</th><th class="cell-num">Reorder at</th><th></th></tr></thead>
+            <tbody id="parts-rows"></tbody></table>
+        </div>
+      </div>
+
+      <dialog id="parts-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New spare part</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('parts-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">The reorder level is the quantity that triggers a warning.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="p-name" placeholder="e.g. Bearing 6204" /></label>
+            <label class="field"><span>Reference</span><input id="p-ref" placeholder="Supplier part number" /></label>
+            <label class="field"><span>In stock</span><input id="p-qty" type="number" min="0" value="0" /></label>
+            <label class="field"><span>Unit price</span><input id="p-price" type="number" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>Reorder at</span><input id="p-reorder" type="number" min="0" value="5" /></label>
+            <label class="field"><span>Supplier</span><input id="p-supplier" placeholder="Where it is ordered from" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('parts-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addPart()">Add part</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Preventive maintenance -->
+    <section data-page="pm" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Maintenance</h2>
+          <p class="page-sub">The repeating jobs that keep each machine running.</p>
+        </div>
+        <button class="primary" onclick="openForm('pm-form')">New schedule</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th class="cell-num">Every</th><th class="cell-num">Last done</th><th class="cell-num">Next due</th><th>Mark done on</th></tr></thead>
+            <tbody id="pm-rows"></tbody></table>
+        </div>
+      </div>
+
+      <dialog id="pm-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New maintenance schedule</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('pm-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">A repeating job. Set the first due date, or it starts today.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Machine</span><select id="pm-equipment"></select></label>
+            <label class="field"><span>Task</span><input id="pm-task" placeholder="e.g. Change hydraulic oil" /></label>
+            <label class="field"><span>Repeat every (days)</span><input id="pm-interval" type="number" value="30" /></label>
+            <label class="field"><span>First due</span><input id="pm-first" type="date" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('pm-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addPm()">Add schedule</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Users (admin only) -->
+    <section data-page="users" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Users</h2>
+          <p class="page-sub">Who can sign in, and what they are allowed to do.</p>
+        </div>
+        <button class="primary" onclick="openForm('users-form')">New user</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody id="users-rows"></tbody></table>
+        </div>
+      </div>
+
+      <dialog id="users-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New user</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('users-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">There is no public sign-up; only an admin can create an account.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Full name</span><input id="u-name" placeholder="e.g. Sam Rivera" /></label>
+            <label class="field"><span>Email</span><input id="u-email" placeholder="name@workshop" type="email" /></label>
+            <label class="field"><span>Password</span><input id="u-pass" placeholder="8 characters or more" type="password" /></label>
+            <label class="field"><span>Role</span>
+              <select id="u-role">
+                <option value="tech" selected>Technician</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('users-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addUser()">Create user</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Backup -->
+    <!-- Report -->
+    <section data-page="report" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Report</h2>
+          <p class="page-sub">One month of finished work: how much, how long, and what it cost.</p>
+        </div>
+        <button class="ghost" onclick="downloadReport()">Download CSV</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Month</span>
+            <input type="month" id="report-month" onchange="loadReport()" /></label>
+          <label><span>Hourly rate</span>
+            <input type="number" id="report-rate" min="0" step="1" onchange="saveRate()" /></label>
+        </div>
+        <p id="report-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr>
+            <th>Machine</th><th class="cell-num">Jobs</th><th class="cell-num">Hours</th>
+            <th class="cell-num">Parts</th><th class="cell-num">Labour</th><th class="cell-num">Total</th>
+          </tr></thead><tbody id="report-rows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section data-page="backup" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Backup</h2>
+          <p class="page-sub">Keep a copy of everything, in case this computer stops.</p>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <p class="muted">Writes a full copy into the <code>data</code> folder next to the
+          database. Do this before upgrades, and ideally from Windows Task Scheduler
+          every night.</p>
+        <button class="primary" onclick="doBackup()">Back up now</button>
+        <p id="backup-result" class="muted"></p>
+      </div>
+    </section>
+    </main>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

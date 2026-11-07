@@ -1,0 +1,10 @@
+# App data (the live database, backups and the signing key) — never commit.
+app/data/
+
+# GSD Core tooling. Re-install with:
+#   npx @opengsd/gsd-core@latest --claude --local --profile=standard
+# The durable record is .planning/, which IS committed.
+.claude/
+
+node_modules/
+*.log
