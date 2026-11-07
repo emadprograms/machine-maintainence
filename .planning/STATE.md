@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-07 — quick task 261106-ere: the ticket decides whether the machine stops, and every ticket has a number
+Last activity: 2026-11-07 — quick task 261106-erf: editing a work order is a dialog with the whole record
 
 ## Quick Tasks Completed
 
@@ -40,6 +40,7 @@ Last activity: 2026-11-07 — quick task 261106-ere: the ticket decides whether 
 | 2026-11-06 | v3.0 ph14 | The record: machine history and a closed-work log with a date range | `c05a782` |
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
+| 2026-11-07 | 261106-erf | Editing a work order opens `#work-edit`: problem, owner, priority, hours, reported by, notes, stops-the-machine and the photograph, one Save; the inline row editor is gone, and a technician cannot unassign a job by saving an owner select they never saw | `fb68977` |
 | 2026-11-07 | 261106-ere | The ticket says whether it stops the machine (`stops_machine`, asked on the report form); down no longer follows priority or in-progress. Every work order gets a serialized `WO-YYYY-NNNN` number, unique, never renumbered, backfilled on upgrade, in both exports | `fd0ad4c` |
 | 2026-11-06 | 261106-erd | New machine dialog asks for manufacturer, notes and a photograph too — it asks for exactly what Edit asks for, compared by rendered label | `8b31ed9` |
 | 2026-11-06 | 261106-erc | Work order carries notes, who reported it and a photo of the fault (`1ee67af`); closing asks what was done, hours, who checked it and which parts, and the server refuses a close without an account (`8473f68`); work screen split into `public/work.js` | `8473f68` |
