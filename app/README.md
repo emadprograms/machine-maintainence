@@ -46,24 +46,25 @@ Check with `node --version`.
 | `server.js` | Starts up, decides which route a request is, serves the one page | 116 |
 | `routes/` | **One file per screen group** — see below | 40–135 each |
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
-| `values.js` | Turns what a browser sends into what the database may store | 80 |
+| `values.js` | Turns what a browser sends into what the database may store | 85 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 330 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 363 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
-| `status.js` | What state a machine is in, from its work orders; also what "in service" means to a query | 86 |
+| `status.js` | What state a machine is in, from the work orders that say they stop it; also what "in service" means to a query | 90 |
+| `codes.js` | Work order numbers: one series per year, `WO-2026-0001` | 24 |
 | `photos.js` | Photographs — of a machine or of a fault: type sniffed from the bytes, size capped | 71 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 482 |
+| `public/index.html` | The whole UI shell: every screen and form | 494 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 260 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 476 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 217 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 455 behaviours | 2,484 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 286 · 226 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 476 behaviours | 2,617 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -72,9 +73,9 @@ The route files, one per screen group:
 | File | Routes | Lines |
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
-| `routes/record.js` | history, history.csv | 44 |
+| `routes/record.js` | history, history.csv | 45 |
 | `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 124 |
-| `routes/work-orders.js` | work orders, the photo of the fault, the close rule, work-orders.csv | 165 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, the close rule, work-orders.csv | 176 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
@@ -168,10 +169,22 @@ photograph pushed that page past 600 lines.
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
   those requests too, so the hidden button is not the protection.
-* **A machine's state comes from its work orders.** Nobody types *down*. The stored field
-  says only *active* or *retired*; `status.js` derives the rest: retired wins, otherwise any
-  unfinished job that is high priority or in progress means the machine is down, and the
-  list says which job put it there. Close the job and the badge clears itself.
+* **The ticket says whether the machine stops.** Nobody types *down* on the machine, and
+  nobody has to guess from a priority either: the report form asks *Does this stop the
+  machine?* — *No, it is still running* by default, *Yes, take it out of service* — and that
+  answer, on an unfinished job, is the whole rule. A high-priority fault on a machine that is
+  still making parts leaves it running; a job somebody is working on does not take it out of
+  service by itself; the answer can be changed again without closing the job. Until
+  261106-ere priority and status decided, so reporting a fault could take a running machine
+  out of service without anybody choosing to. The stored column still says only *active* or
+  *retired*; `status.js` derives the rest and the list names the job — by its number — that
+  is holding the machine down.
+* **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
+  server when the ticket is created and never reused or renumbered: the id is for the
+  database, the number is for the whiteboard, the phone call with the vendor and the printed
+  sheet. It shows under the problem on the list, beside the job in History, at the top of the
+  close dialog, and as its own column in both exports. Jobs that predate the column are
+  numbered on upgrade, oldest first, per year.
 * **A machine can have a photograph.** JPEG, PNG or WebP up to 2 MB, stored as a file in
   `photos/` beside the database. The type is decided by the first bytes of the file, not by
   the name or the header the browser sent, and the filename is chosen by the server.
@@ -389,10 +402,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 455 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 476 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`455 passed, 0 failed`.
+`476 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

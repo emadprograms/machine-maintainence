@@ -214,6 +214,39 @@ ensureColumn('work_orders', 'resolution', 'TEXT');
 // Who checked the repair. Free text for the same reason as reported_by: the
 // person who signs it off on the floor may never sign in.
 ensureColumn('work_orders', 'verified_by', 'TEXT');
+// Does this job stop the machine? Until 261106-ere the answer was inferred from
+// priority and status, which meant reporting a fault could take a running machine
+// out of service on the strength of a dropdown nobody thought about. The ticket
+// says it now; nothing else does.
+ensureColumn('work_orders', 'stops_machine', 'INTEGER NOT NULL DEFAULT 0');
+// A number to hang a conversation on: WO-2026-0001. The id is for the database,
+// this is for the whiteboard, the phone call with the vendor and the printed sheet.
+ensureColumn('work_orders', 'code', 'TEXT');
+
+// Number the jobs that predate the column, oldest first, per year. Idempotent: a
+// row that already has a code is left alone, so this runs once and never renumbers
+// anything a person may have written down.
+{
+  const unnumbered = db.prepare('SELECT COUNT(*) AS n FROM work_orders WHERE code IS NULL').get();
+  if (Number(unnumbered.n) > 0) {
+    db.exec(`
+      WITH numbered AS (
+        SELECT id,
+               substr(created_at, 1, 4) AS yr,
+               ROW_NUMBER() OVER (PARTITION BY substr(created_at, 1, 4)
+                                  ORDER BY created_at, id) AS rn
+        FROM work_orders WHERE code IS NULL
+      )
+      UPDATE work_orders
+         SET code = (SELECT printf('WO-%s-%04d', n.yr, n.rn) FROM numbered n
+                      WHERE n.id = work_orders.id)
+       WHERE code IS NULL`);
+    console.log(`  migrated: numbered ${unnumbered.n} work order(s)`);
+  }
+}
+// Two jobs cannot share a number. The column is added by ALTER, which cannot carry
+// UNIQUE, so the promise is an index.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_work_orders_code ON work_orders(code)');
 // ensureColumn('work_orders', 'assigned_to', 'INTEGER');   <- example
 
 // ---------------------------------------------------------------- helpers

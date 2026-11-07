@@ -48,7 +48,11 @@ export async function loadWork() {
         <td><input id="we-title-${w.id}" value="${esc(w.title)}" /></td>
         <td>${ownerSelect(w.id, w.assigned_to)}</td>
         <td>${prioritySelect(w.id, w.priority)}</td>
-        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
+        <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}
+          <select id="we-stops-${w.id}" aria-label="Does this stop the machine">
+            <option value="0"${w.stops_machine ? '' : ' selected'}>still running</option>
+            <option value="1"${w.stops_machine ? ' selected' : ''}>stops the machine</option>
+          </select></td>
         <td><input id="we-hours-${w.id}" type="number" min="0" step="0.25"
                    value="${w.labour_hours ?? ''}" placeholder="hours" /></td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
@@ -58,11 +62,12 @@ export async function loadWork() {
         </td>
       </tr>`
     : `<tr>
-        ${strong(w.equipment_name)}<td>${esc(w.title)}${w.photo
+        ${strong(w.equipment_name)}<td class="cell-strong">${esc(w.title)}${w.photo
           ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
-                 rel="noopener">photo</a>` : ''}</td>
+                 rel="noopener">photo</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
         <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
-        <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}</td>
+        <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
+          w.stops_machine ? ` ${badge('stops the machine', 'red')}` : ''}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
         <td class="cell-num">${w.labour_hours == null ? '—' : Number(w.labour_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
@@ -108,6 +113,7 @@ export async function saveWork(idToSave) {
       assigned_to: $(`#we-owner-${idToSave}`).value || null,
       priority: $(`#we-priority-${idToSave}`).value,
       labour_hours: $(`#we-hours-${idToSave}`).value,
+      stops_machine: $(`#we-stops-${idToSave}`).value === '1',
     })});
     editingWork = null;
     loadWork();
@@ -126,6 +132,9 @@ export async function addWorkOrder() {
       labour_hours: $('#w-hours')?.value || null,
       notes: $('#w-notes')?.value.trim() || null,
       reported_by: $('#w-reporter')?.value.trim() || null,
+      // The ticket says whether the machine stops; the server does not guess from
+      // the priority, and neither does this form.
+      stops_machine: $('#w-stops')?.value === '1',
     })});
     const file = $('#w-photo')?.files?.[0];
     if (file) {
@@ -158,7 +167,7 @@ export async function openWorkClose(idToClose) {
   if (!job) return;
   closingWork = idToClose;
   $('#wc-id').value = idToClose;
-  $('#work-close-what').textContent = `${job.equipment_name} — ${job.title}`;
+  $('#work-close-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wc-resolution').value = job.resolution || '';
   $('#wc-hours').value = job.labour_hours ?? '';
   $('#wc-verified').value = job.verified_by || '';

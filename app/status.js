@@ -11,10 +11,13 @@
 //   retired  an admin withdrew the machine from service. Not a repair, so it stays
 //            a manual decision, and it outranks everything — a retired machine is
 //            not "down", it has left the workshop.
-//   down     otherwise, if any work order is unfinished and is high priority or
-//            already in progress. A high-priority open fault means it cannot be
-//            trusted to run; an in-progress job means somebody is working on it
-//            right now.
+//   down     otherwise, if the machine has an unfinished work order that says it
+//            stops the machine. The ticket decides — not its priority, and not the
+//            fact that it exists. Until 261106-ere a high-priority job or one
+//            somebody had started was enough, so reporting a fault could take a
+//            running machine out of service on the strength of a dropdown nobody
+//            thought about, and a fitter had no way to record "this can wait until
+//            Friday, it is still making parts".
 //   active   otherwise.
 //
 // The stored column now records only the first of those. `down` is never written.
@@ -32,13 +35,14 @@ export const SERVICE_STATES = ['active', 'retired'];
 export const IN_SERVICE_SQL = "e.status <> 'retired'";
 export const RETIRED_SQL = "e.status = 'retired'";
 
-/** Every unfinished job, worst first, so the reason shown is the most serious one. */
+/** Every unfinished job that stops the machine, oldest first, so the reason shown is
+ *  the one that has been holding it down longest. */
 function openJobsByMachine() {
   const jobs = all(`
-    SELECT w.id, w.equipment_id, w.title, w.priority, w.status
+    SELECT w.id, w.code, w.equipment_id, w.title, w.priority, w.status
     FROM work_orders w
-    WHERE w.status <> 'done'
-    ORDER BY CASE w.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, w.id`);
+    WHERE w.status <> 'done' AND w.stops_machine = 1
+    ORDER BY w.id`);
   const byMachine = new Map();
   for (const job of jobs) {
     const key = Number(job.equipment_id);
@@ -48,9 +52,9 @@ function openJobsByMachine() {
   return byMachine;
 }
 
-/** The job that decides the machine's state, or null if none does. */
-const decidingJob = (jobs) =>
-  jobs.find((j) => j.priority === 'high' || j.status === 'in_progress') ?? null;
+/** The job that decides the machine's state, or null if none does. The query above
+ *  has already filtered to the jobs that do; this is the first of them. */
+const decidingJob = (jobs) => jobs[0] ?? null;
 
 /**
  * Attach `status`, `status_reason`, `service_status` and `open_jobs` to each
@@ -72,7 +76,7 @@ export function withStatus(machines) {
       status: culprit ? 'down' : 'active',
       service_status: service,
       status_reason: culprit
-        ? `${culprit.title} (${culprit.priority}, ${String(culprit.status).replace('_', ' ')})`
+        ? `${culprit.code ? `${culprit.code} ` : ''}${culprit.title}`
         : null,
       open_jobs: mine.length,
     };

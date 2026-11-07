@@ -31,6 +31,7 @@ export default {
     // is the place to put everything that matches.
     const rows = all(historySql(filter, 1_000_000).rows, ...filter.params);
     sendCsv(res, 'history.csv', rows, [
+      { key: 'code', label: 'Number' },
       { key: 'equipment_name', label: 'Machine' },
       { key: 'title', label: 'Job' },
       { key: 'resolution', label: 'What was done' },

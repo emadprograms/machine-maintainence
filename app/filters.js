@@ -122,7 +122,7 @@ export function historyFilter(query = {}) {
 export function historySql(filter, limit = MAX_ROWS) {
   return {
     rows: `
-      SELECT w.id, w.title, w.status, w.priority, w.created_at, w.closed_at,
+      SELECT w.id, w.code, w.title, w.status, w.priority, w.created_at, w.closed_at,
              w.resolution, w.verified_by,
              e.id AS equipment_id, e.name AS equipment_name, u.name AS owner
       FROM work_orders w

@@ -525,7 +525,8 @@ ok('lines end with CRLF, not bare LF', !/[^\r]\n/.test(csv.text.slice(1)),
 ok('a field containing a comma and a quote is quoted and its quotes doubled',
   csv.text.includes('"Belt ""A"" snapped, 3rd time"'), csv.text.split('\r\n')[1]);
 ok('the header names the same columns as the screen',
-  csv.text.slice(1).split('\r\n')[0] === 'ID,Machine,Problem,Owner,Priority,Status,Created,Closed',
+  csv.text.slice(1).split('\r\n')[0]
+    === 'Number,ID,Machine,Problem,Owner,Priority,Stops the machine,Status,Created,Closed',
   csv.text.slice(1).split('\r\n')[0]);
 const rowCount = csv.text.slice(1).trim().split('\r\n').length - 1;
 ok('every work order is in the file', rowCount === (await c('/api/work-orders')).data.length,
@@ -1381,11 +1382,18 @@ const whyOf = async (machineId) => String((await machineById(machineId)).status_
 const job = async (body) => (await c('/api/work-orders', { method: 'POST', body })).data;
 const setJob = (jobId, body) => c(`/api/work-orders/${jobId}`, { method: 'PATCH', body });
 
+// The ticket says whether the machine stops. Until 261106-ere a high priority or a job
+// somebody had started was enough on its own, which is how reporting a fault took a
+// running machine out of service without anybody deciding to.
 const urgent = await job({ equipment_id: fixable.data.id, title: 'Mast cracked', priority: 'high' });
-ok('a high-priority job that is still open puts the machine down',
+ok('a high-priority job does not put the machine down by itself',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { stops_machine: true });
+ok('the ticket that says it stops the machine does',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
-ok('and the list says which job did it',
-  /Mast cracked/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+ok('and the list says which job did it, by its number',
+  /Mast cracked/.test(await whyOf(fixable.data.id))
+  && /WO-\d{4}-\d{4}/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
 ok('the dashboard counts the same machine as down',
   (await c('/api/dashboard')).data.machines.items.some((m) => m.id === fixable.data.id),
   'the card and the list disagree about a machine');
@@ -1395,23 +1403,29 @@ ok('closing that job brings the machine back to running',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 
 const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
-ok('a low-priority job that is only open does not stop production',
-  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 await setJob(routine.id, { status: 'in_progress' });
-ok('but a job somebody is working on right now does',
-  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
-ok('the reason names the work in progress',
-  /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+ok('a job somebody is working on does not stop the machine either, unless it says so',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(routine.id, { stops_machine: true });
+ok('and then it does, and the reason names the job',
+  (await statusOf(fixable.data.id)) === 'down'
+  && /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
 await setJob(routine.id, { status: 'done', resolution: 'Filters changed' });
-
-const elsewhere = await job({ equipment_id: fixable.data.id, title: 'Been replaced', priority: 'high' });
+ok('the flag can be taken off again without closing the job',
+  (await setJob(urgent.id, { stops_machine: true })).data.stops_machine === 1
+  && (await setJob(urgent.id, { stops_machine: false })).data.stops_machine === 0);
+const reopenedUrgent = await job({ equipment_id: fixable.data.id, title: 'Been replaced', priority: 'high',
+  stops_machine: true });
 ok('a retired machine reads retired, not down, even with a job on it',
   (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } }))
     .data.status === 'retired');
 await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
-ok('restoring it does not hide the job that is still open',
+ok('restoring it does not hide the job that is still holding it down',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
-await setJob(elsewhere.id, { status: 'done', resolution: 'Shaft aligned' });
+await setJob(reopenedUrgent.id, { status: 'done', resolution: 'Shaft aligned' });
+ok('closing the last one that stops it returns the machine to service',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
 
 // ---- a technician keeps the doors they need ------------------------------
 await c('/api/users', { method: 'POST', body: {
@@ -1431,11 +1445,18 @@ ok('a technician cannot retire a machine',
   (await shop(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } })).status === 403);
 const techAdded = await shop('/api/equipment', { method: 'POST', body: { name: 'Press 3' } });
 ok('but a technician can still add a machine', techAdded.status === 201, `status ${techAdded.status}`);
-ok('and can still report a job on it',
-  (await shop('/api/work-orders', { method: 'POST', body: {
-    equipment_id: techAdded.data.id, title: 'Guard loose', priority: 'high' } })).status === 201);
-ok('which is enough to take that machine out of service',
-  (await machineById(techAdded.data.id)).status === 'down');
+const techJob = await shop('/api/work-orders', { method: 'POST', body: {
+  equipment_id: techAdded.data.id, title: 'Guard loose', priority: 'high' } });
+ok('and can still report a job on it', techJob.status === 201, JSON.stringify(techJob.data));
+// A high priority used to be enough on its own. It is not any more: the person who
+// reports the fault says whether the machine stops, and a technician is that person.
+ok('a high priority alone no longer takes the machine out of service',
+  (await machineById(techAdded.data.id)).status === 'active',
+  `status=${(await machineById(techAdded.data.id)).status}`);
+await shop(`/api/work-orders/${techJob.data.id}`, { method: 'PATCH', body: { stops_machine: true } });
+ok('saying it stops the machine does',
+  (await machineById(techAdded.data.id)).status === 'down',
+  `status=${(await machineById(techAdded.data.id)).status}`);
 
 // ---- the photograph is a file, and the server decides what it is ----------
 const photosDir = join(root, 'data', 'photos');
@@ -1745,7 +1766,7 @@ ok('a view that finds nothing says which view found nothing',
 // down first and checks it is found — and that the answer is not everything.
 const blocked = (await c('/api/equipment', { method: 'POST', body: { name: 'Grinder (blocked)' } })).data;
 await c('/api/work-orders', { method: 'POST', body: {
-  equipment_id: blocked.id, title: 'Wheel guard missing', priority: 'high' } });
+  equipment_id: blocked.id, title: 'Wheel guard missing', priority: 'high', stops_machine: true } });
 const downList = (await c('/api/equipment?status=down')).data;
 ok('the API can be asked for the machines that are down',
   downList.some((e) => e.id === blocked.id) && downList.every((e) => e.status === 'down'),
@@ -2272,6 +2293,118 @@ ok('and uploads the photograph only after the machine exists to hold it',
 ok('a photograph that fails does not lose the machine that was just created',
   /The machine itself was saved/.test(addEqFn));
 
+// ---- every ticket has a number --------------------------------------------
+// The id is for the database. A number is for the whiteboard, the phone call with
+// the vendor and the printed sheet that goes out to the machine.
+const numberMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Press (numbered)' } })).data;
+const firstNumber = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'First in the series' } })).data;
+const secondNumber = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'Second in the series' } })).data;
+ok('a new ticket gets a number of its own',
+  /^WO-\d{4}-\d{4}$/.test(String(firstNumber.code)), String(firstNumber.code));
+ok('and the number carries the year it was raised in',
+  String(firstNumber.code).slice(3, 7) === new Date().toISOString().slice(0, 4),
+  String(firstNumber.code));
+ok('the next ticket follows it',
+  Number(String(secondNumber.code).slice(-4)) === Number(String(firstNumber.code).slice(-4)) + 1,
+  `${firstNumber.code} then ${secondNumber.code}`);
+const allCodes = (await late('/api/work-orders')).data.map((w) => w.code);
+ok('no two tickets share a number',
+  allCodes.every((c) => /^WO-\d{4}-\d{4}$/.test(String(c)))
+  && new Set(allCodes).size === allCodes.length,
+  allCodes.join(', '));
+const chosenNumber = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'Trying to choose', code: 'WO-1999-0001' } });
+ok('a client cannot choose its own number',
+  chosenNumber.status === 201 && chosenNumber.data.code !== 'WO-1999-0001',
+  String(chosenNumber.data.code));
+const retitledNumber = await late(`/api/work-orders/${firstNumber.id}`, { method: 'PATCH', body: {
+  title: 'First in the series, renamed' } });
+ok('editing a ticket does not renumber it', retitledNumber.data.code === firstNumber.code,
+  `${firstNumber.code} -> ${retitledNumber.data.code}`);
+
+// A database written before the column existed still ends up with numbers, per
+// year and in the order the jobs were raised — the only thing a person can check.
+{
+  const legacyCodeDb = join(root, 'data', 'legacy-code.db');
+  rmSync(legacyCodeDb, { force: true });
+  const seed = new DatabaseSync(legacyCodeDb);
+  seed.exec('CREATE TABLE equipment (id INTEGER PRIMARY KEY, name TEXT, status TEXT)');
+  seed.exec(`CREATE TABLE work_orders (id INTEGER PRIMARY KEY, equipment_id INTEGER NOT NULL,
+    title TEXT NOT NULL, notes TEXT, priority TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, closed_at TEXT,
+    assigned_to INTEGER)`);
+  seed.exec("INSERT INTO equipment (name, status) VALUES ('Old lathe', 'active')");
+  seed.exec(`INSERT INTO work_orders (equipment_id, title, created_at) VALUES
+    (1, 'Oldest', '2025-03-02 09:00:00'),
+    (1, 'Next', '2025-07-02 09:00:00'),
+    (1, 'This year', '2026-01-04 09:00:00')`);
+  seed.close();
+  spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"],
+    { cwd: root, env: { ...process.env, MM_DB: legacyCodeDb } });
+  const numbered = new DatabaseSync(legacyCodeDb, { readOnly: true });
+  const legacyCodes = numbered.prepare('SELECT code FROM work_orders ORDER BY id').all()
+    .map((r) => r.code);
+  numbered.close();
+  ok('jobs that predate the number are numbered on upgrade, per year and oldest first',
+    JSON.stringify(legacyCodes) === JSON.stringify(['WO-2025-0001', 'WO-2025-0002', 'WO-2026-0001']),
+    legacyCodes.join(', '));
+  rmSync(legacyCodeDb, { force: true });
+}
+
+// ---- the ticket says whether the machine stops ----------------------------
+const stopMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Mill (stopped)' } })).data;
+const quietJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: stopMachine.id, title: 'Oil leak', priority: 'high' } })).data;
+ok('a new ticket says the machine is still running unless somebody says otherwise',
+  quietJob.stops_machine === 0
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'active',
+  JSON.stringify(quietJob.stops_machine));
+const loudJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: stopMachine.id, title: 'Spindle gone', stops_machine: true } })).data;
+ok('and one answer in the ticket is what takes the machine out of service',
+  loudJob.stops_machine === 1
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'down',
+  JSON.stringify(loudJob.stops_machine));
+const stoppedMachine = (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id);
+ok('the reason gives the number and the complaint, not a priority',
+  String(stoppedMachine.status_reason).includes(loudJob.code)
+  && /Spindle gone/.test(stoppedMachine.status_reason), String(stoppedMachine.status_reason));
+const released = await late(`/api/work-orders/${loudJob.id}`, { method: 'PATCH', body: {
+  stops_machine: false } });
+ok('taking the answer off brings the machine back without closing the job',
+  released.data.stops_machine === 0 && released.data.status !== 'done'
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'active',
+  JSON.stringify({ flag: released.data.stops_machine, status: released.data.status }));
+
+// ---- the screen asks the question and shows the answer --------------------
+const workFormNow = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the report form asks whether the machine stops, and defaults to still running',
+  workFormNow.includes('id="w-stops"')
+  && /<option value="0" selected>No — it is still running<\/option>/.test(workFormNow)
+  && /<option value="1">Yes — take it out of service<\/option>/.test(workFormNow),
+  workFormNow ? 'the question is missing or presumes an answer' : 'work-form is gone');
+ok('and the answer it gives is the one that is sent',
+  /stops_machine: \$\('#w-stops'\)\?\.value === '1'/.test(workSrc));
+ok('the row shows the number under the problem',
+  /class="row-sub">\$\{esc\(w\.code/.test(workSrc));
+// The badge itself, not the words "stops the machine": the inline editor's option
+// says the same three words, so a search for them passed with the row badge deleted.
+ok('and says so when a job is holding the machine down',
+  /badge\('stops the machine', 'red'\)/.test(workSrc)
+  && /w\.stops_machine \?/.test(workSrc));
+ok('the row can be corrected without reopening the job',
+  /id="we-stops-\$\{w\.id\}"/.test(workSrc)
+  && /stops_machine: \$\(`#we-stops-\$\{idToSave\}`\)\.value === '1'/.test(workSrc),
+  'the editor has no toggle, or the toggle is not saved');
+ok('the close dialog names the ticket by its number',
+  /\$\{job\.code \? `\$\{job\.code\} · `/.test(workSrc));
+ok('the history shows the number beside the job',
+  /w\.code/.test(histSrc));
+
 console.log('\nCoverage — the questions nothing was asking');
 
 
@@ -2344,7 +2477,7 @@ ok('with a file name and a spreadsheet type',
   String(historyCsv.headers.get('content-disposition')));
 const historyLines = historyCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
 ok('its first line is the column names',
-  /^Machine,Job,What was done,Status,Owner,Priority,Opened,Closed$/.test(historyLines[0] || ''),
+  /^Number,Machine,Job,What was done,Status,Owner,Priority,Opened,Closed$/.test(historyLines[0] || ''),
   historyLines[0]);
 ok('and it carries the closed job it was asked for',
   historyCsv.text.includes('Closed for the file'), 'the file does not contain the job');

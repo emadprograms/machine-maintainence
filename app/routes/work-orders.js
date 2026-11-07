@@ -4,12 +4,14 @@
 // disagree with the screen; a second query is how that bug gets shipped.
 
 import { send, readBody, readBytes, route, id, sendCsv } from '../http.js';
-import { hoursValue, assigneeValue, reporterValue, resolutionValue, verifiedValue } from '../values.js';
+import { hoursValue, assigneeValue, reporterValue, resolutionValue, verifiedValue,
+  stopsValue } from '../values.js';
 import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
 import { all, get, run } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
 import { hourlyRate } from '../settings.js';
+import { nextWorkOrderCode } from '../codes.js';
 
 export default {
   // ---- work orders
@@ -46,11 +48,16 @@ export default {
     if (reporter.error) return send(res, 400, { error: reporter.error });
     const notes = b.notes === undefined || b.notes === null ? null
       : (String(b.notes).trim() || null);
+    // The number is the server's to give: a client that could choose one could
+    // also choose somebody else's, and two jobs would share a number on the phone.
+    const stamp = nowStamp();
     const r = run(`INSERT INTO work_orders
-                     (equipment_id, title, notes, priority, assigned_to, labour_hours, reported_by)
-                   VALUES (?,?,?,?,?,?,?)`,
+                     (equipment_id, title, notes, priority, assigned_to, labour_hours,
+                      reported_by, stops_machine, code)
+                   VALUES (?,?,?,?,?,?,?,?,?)`,
       id(b.equipment_id), b.title.trim(), notes, b.priority || 'medium', owner.value,
-      hours.missing ? null : hours.value, reporter.missing ? null : reporter.value);
+      hours.missing ? null : hours.value, reporter.missing ? null : reporter.value,
+      stopsValue(b.stops_machine), nextWorkOrderCode(stamp));
     send(res, 201, get('SELECT * FROM work_orders WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -91,13 +98,15 @@ export default {
       return send(res, 400, { error: 'Say what was done before closing the job' });
     }
     run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
-         labour_hours=?, reported_by=?, resolution=?, verified_by=? WHERE id=?`,
+         labour_hours=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
       status, b.priority ?? before.priority, notes,
       status === 'done' ? (before.closed_at ?? nowStamp()) : null,
       owner.value, hours.missing ? before.labour_hours : hours.value,
       reporter.missing ? before.reported_by : reporter.value,
-      done, verifier.missing ? before.verified_by : verifier.value, id(req.params.id));
+      done, verifier.missing ? before.verified_by : verifier.value,
+      b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine),
+      id(req.params.id));
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 
@@ -145,18 +154,20 @@ export default {
   'GET /api/export/work-orders.csv': route(async (req, res) => {
     const f = workOrderFilter(req.query);
     const rows = all(`
-      SELECT w.id, w.title, w.status, w.priority, w.created_at, w.closed_at,
-             e.name AS equipment, u.name AS owner
+      SELECT w.id, w.code, w.title, w.status, w.priority, w.stops_machine,
+             w.created_at, w.closed_at, e.name AS equipment, u.name AS owner
       FROM work_orders w
       JOIN equipment e ON e.id = w.equipment_id
       LEFT JOIN users u ON u.id = w.assigned_to
       ${f.sql} ORDER BY w.created_at DESC`, ...f.params);
     sendCsv(res, 'work-orders.csv', rows, [
+      { key: 'code', label: 'Number' },
       { key: 'id', label: 'ID' },
       { key: 'equipment', label: 'Machine' },
       { key: 'title', label: 'Problem' },
       { key: 'owner', label: 'Owner' },
       { key: 'priority', label: 'Priority' },
+      { key: 'stops_machine', label: 'Stops the machine' },
       { key: 'status', label: 'Status' },
       { key: 'created_at', label: 'Created' },
       { key: 'closed_at', label: 'Closed' },

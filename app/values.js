@@ -33,6 +33,11 @@ export function textValue(raw, label, max = 120) {
   return { value: text };
 }
 
+/** Whether a ticket takes the machine out of service. A checkbox, a 1/0 column and
+ *  a sentence in the ticket — anything else would be a third way to say the same
+ *  thing. Missing means "not mentioned", which on create defaults to 0. */
+export const stopsValue = (raw) => (raw === true || raw === 1 || raw === '1' || raw === 'true' ? 1 : 0);
+
 /** Who reported a fault. A name, not a user id: the person who hears the noise is
  *  often standing at the machine rather than signed in. */
 export const reporterValue = (raw) => textValue(raw, 'Reported by');
