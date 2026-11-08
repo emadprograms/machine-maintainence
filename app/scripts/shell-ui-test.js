@@ -28,7 +28,10 @@ const render = () => shell.renderShell({ pages, current: 'dashboard', onNavigate
 render();
 assert.ok(markup.indexOf('class="side-brand"') < markup.indexOf('class="side-toggle"'));
 assert.ok(markup.indexOf('class="side-toggle"') < markup.indexOf('class="side-nav"'));
-assert.match(markup, /M15 6l-6 6 6 6/); // left to collapse, CSS reverses it to expand
+assert.match(markup.match(/<div class="side-brand">[\s\S]*?<\/div>/)[0], /class="side-toggle"/);
+const buttonMarkup = markup.match(/<button class="side-toggle"[\s\S]*?<\/button>/)[0];
+assert.match(buttonMarkup, /<rect /); assert.match(buttonMarkup, /class="side-chevron"/);
+assert.equal(buttonMarkup.replace(/<[^>]*>/g, '').trim(), ''); // icon only; name remains accessible
 assert.equal(toggle.attrs['aria-expanded'], 'true'); assert.equal(toggle.attrs['aria-label'], 'Collapse sidebar');
 toggle.click(); assert.equal(classes.has('collapsed'), true); assert.equal(stored, '1');
 assert.equal(toggle.attrs['aria-expanded'], 'false'); assert.equal(toggle.attrs['aria-label'], 'Expand sidebar'); assert.equal(toggle.attrs.title, 'Expand sidebar');

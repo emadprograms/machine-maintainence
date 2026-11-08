@@ -74,18 +74,18 @@ export function renderShell({ pages, current, onNavigate }) {
     <div class="side-brand">
       <span class="side-mark">MM</span>
       <span class="side-label">Machine Maintenance</span>
+      <button class="side-toggle" type="button"
+              aria-expanded="${!collapsed}"
+              aria-controls="sidebar"
+              aria-label="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}"
+              title="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
+             stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>
+          <path class="side-chevron" d="M16 9l-3 3 3 3"/>
+        </svg>
+      </button>
     </div>
-    <button class="side-toggle" type="button"
-            aria-expanded="${!collapsed}"
-            aria-controls="sidebar"
-            aria-label="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}"
-            title="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
-           stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-        <path d="M15 6l-6 6 6 6"/>
-      </svg>
-      <span class="side-label">Collapse</span>
-    </button>
     <nav class="side-nav" aria-label="Sections">${entries}</nav>`;
 
   // Clicking outside the sidebar should not navigate; each entry stops here.
@@ -117,7 +117,7 @@ export function markCurrent(key) {
 }
 
 // Ctrl/Cmd+B toggles the rail, the same shortcut editors use for their own
-// sidebars. Discoverability comes from the visible button; this is for speed.
+// sidebars. The icon button has a tooltip and an accessible action name.
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
     const toggle = document.querySelector('#sidebar .side-toggle');

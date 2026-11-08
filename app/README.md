@@ -62,7 +62,7 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 594 |
-| `public/app.css` | The main stylesheet — was a `<style>` block until the page reached 600 lines | 403 |
+| `public/app.css` | The main stylesheet — was a `<style>` block until the page reached 600 lines | 406 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 126 · 136 · 188 · 103 · 101 · 304 · 357 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
@@ -74,9 +74,9 @@ Check with `node --version`.
 | `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 672 behaviours | 3,638 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 673 behaviours | 3,645 |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
-| `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 42 |
+| `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
 | `scripts/stage-migration-test.js` | Tests upgrading existing stage hours and part costs | 51 |
 | `scripts/machine-state-migration-test.js` | Tests the state-event migration and idempotence | 62 |
@@ -101,7 +101,7 @@ The route files, one per screen group:
 | `routes/admin.js` | users, assignable people, backup | 84 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 55 |
 
-Total application code: **about 6,361 lines**, and about 4,692 of tests. No application file is past the
+Total application code: **about 6,364 lines**, and about 4,702 of tests. No application file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -511,10 +511,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 672 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 673 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`672 passed, 0 failed`.
+`673 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

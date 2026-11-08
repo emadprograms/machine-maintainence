@@ -29,12 +29,13 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v5.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — sidebar collapse control moved to the top
+Last activity: 2026-11-05 — sidebar collapse control redesigned as a conventional icon
 
 ## Quick Tasks Completed
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | debug-sidebar-icon | Replaced the visible collapse row with an accessible icon-only panel control in the sidebar header | See git history |
 | 2026-11-05 | sidebar-toggle-top | Moved collapse/expand above navigation, preserved keyboard and preference, and kept short-screen navigation scrollable | See git history |
 | 2026-11-05 | machine-status-theme | Aligned the machine-status control with the time field and muted form palette while retaining the red/green switch | See git history |
 | 2026-11-05 | stage-parts-table | Clear chevrons and pencil/plus/minus icons; tabular stage parts merge matching part-and-price quantities with transactional stock and exact-cost tests | See git history |

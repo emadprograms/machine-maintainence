@@ -1134,6 +1134,13 @@ ok('the sidebar toggle is above navigation and does not get pushed to the bottom
   && shellSrc.indexOf('class="side-toggle"') < shellSrc.indexOf('class="side-nav"')
   && !/\.side-toggle \{[^}]*margin-top:\s*auto/.test(shellCss)
   && /\.side-nav \{[^}]*overflow-y:\s*auto/.test(shellCss));
+const sidebarButton = (shellSrc.match(/<button class="side-toggle"[\s\S]*?<\/button>/) || [''])[0];
+ok('the sidebar uses an icon-only panel control with accessible action names',
+  /<rect /.test(sidebarButton) && /class="side-chevron"/.test(sidebarButton)
+  && /<div class="side-brand">[\s\S]*?class="side-toggle"[\s\S]*?<\/div>/.test(shellSrc)
+  && sidebarButton.replace(/<[^>]*>/g, '').trim() === ''
+  && sidebarButton.includes('aria-label=') && sidebarButton.includes('title=')
+  && shellCss.includes('#sidebar.collapsed .side-chevron'));
 const shellUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'shell-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('the sidebar control works, persists and stays accessible', shellUiTest.status === 0,
   (shellUiTest.stderr || shellUiTest.stdout).slice(0, 500));

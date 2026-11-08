@@ -32,12 +32,14 @@
   }
   #sidebar.collapsed { width: 68px; flex-basis: 68px; }
   #sidebar.collapsed .side-label { display: none; }
-  #sidebar.collapsed .side-link, #sidebar.collapsed .side-toggle { justify-content: center; padding: 10px 0; }
+  #sidebar.collapsed .side-link { justify-content: center; padding: 10px 0; }
   #sidebar.collapsed .side-game { display: none; }
   .side-brand {
-    display: flex; align-items: center; gap: 10px;
-    padding: 4px 8px 8px; font-weight: 600; font-size: 14px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    padding: 4px 4px 12px 8px; font-weight: 600; font-size: 14px; flex-shrink: 0;
   }
+  .side-brand > .side-label { flex: 1; min-width: 0; line-height: 1.15; }
+  #sidebar.collapsed .side-brand { flex-direction: column; padding: 4px 0 12px; }
   .side-mark {
     display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px;
     border-radius: 9px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700;
@@ -52,8 +54,9 @@
   .side-link svg, .side-toggle svg { width: 18px; height: 18px; flex: 0 0 18px; }
   .side-link:hover, .side-toggle:hover { background: #f2f4f7; color: var(--ink); }
   .side-link.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
-  .side-toggle { flex-shrink: 0; margin-bottom: 4px; }
-  #sidebar.collapsed .side-toggle svg { transform: rotate(180deg); }
+  .side-toggle { flex: 0 0 40px; width: 40px; height: 40px; justify-content: center; padding: 10px; margin-left: auto; }
+  #sidebar.collapsed .side-toggle { margin: 0; }
+  #sidebar.collapsed .side-chevron { transform: rotate(180deg); transform-box: fill-box; transform-origin: center; }
   :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
   /* ---- dashboard ---- */
