@@ -29,12 +29,13 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v6.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — close action disabled with an accessible explanation when out of service
+Last activity: 2026-11-05 — machine history opens numbered job timelines; work orders sort by latest activity
 
 ## Quick Tasks Completed
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | machine-history-timeline | Added machine action icons, numbered clickable history and sortable work-order activity timestamps | See git history |
 | 2026-11-05 | debug-close-disabled | Disabled the close action while out of service; hover and keyboard focus explain why | See git history |
 | 2026-11-05 | close-status-switch | Replaced the close-state dropdown with the stage switch, initialized from current state; preserved running-only closure | See git history |
 | 2026-11-05 | debug-sidebar-icon | Replaced the visible collapse row with an accessible icon-only panel control in the sidebar header | See git history |

@@ -24,6 +24,8 @@ export default {
       SELECT w.*, e.name AS equipment_name, e.status AS machine_service_status, u.name AS assignee_name,
              (SELECT MAX(stage) FROM work_order_updates WHERE work_order_id = w.id) AS current_stage,
              ${effectiveHours()} AS effective_hours,
+             MAX(w.created_at, COALESCE(w.closed_at, w.created_at), COALESCE(
+               (SELECT MAX(COALESCE(u.edited_at, u.created_at)) FROM work_order_updates u WHERE u.work_order_id = w.id), w.created_at)) AS last_activity_at,
              CASE WHEN e.status = 'retired' THEN 0 ELSE ${machineRunningSql('e.id')} END AS machine_running,
              -- Parts use the cost recorded when used; hours include live stages.
              ROUND(COALESCE(${effectiveHours()}, 0) * ?

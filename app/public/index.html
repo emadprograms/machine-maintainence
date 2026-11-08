@@ -174,9 +174,9 @@
             <h3 id="machine-history-title">Machine history</h3>
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeMachineHistory()">&times;</button>
           </div>
-          <p class="sheet-sub">Every job ever reported against this machine, newest first.</p>
+          <p class="sheet-sub">Every job reported against this machine. Select a job to view its timeline.</p><p id="machine-history-error" class="form-error" role="alert" hidden></p>
           <div class="table-wrap">
-            <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="created_at">Opened<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
+            <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="code">Number<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="created_at">Opened<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
               <tbody id="machine-history-rows"></tbody></table>
           </div>
           <div class="sheet-foot">
@@ -208,7 +208,7 @@
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="last_activity_at" title="Latest report, stage update or closure (UTC)">Last activity (UTC)<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
@@ -317,6 +317,9 @@
           </div>
         </form>
       </dialog>
+    </section>
+
+    <!-- Shared work-order timeline and photo preview, available from Machines too. -->
       <dialog id="work-assign" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="stage-modal-head"><div class="sheet-head"><div><span class="stage-eyebrow">WORK ORDER</span><h3 id="work-assign-title" tabindex="-1">Work order updates</h3></div>
@@ -337,7 +340,6 @@
         </form>
       </dialog>
       <dialog id="stage-photo-viewer" aria-labelledby="stage-photo-title"><form method="dialog"><div class="photo-viewer-head"><h3 id="stage-photo-title">Photo preview</h3><button class="icon-btn" type="submit" aria-label="Close">&times;</button></div><img id="stage-photo-image" alt="" /><p id="stage-photo-caption" role="status"></p></form></dialog>
-    </section>
 
     <!-- Parts -->
     <!-- History -->

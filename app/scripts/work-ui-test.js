@@ -33,9 +33,10 @@ globalThis.emptyRow = () => '';
 globalThis.searchTerm = () => '';
 globalThis.debounce = (f) => f;
 const opened = [], closed = [], errors = [], requests = [], alerts = [];
-let stageWarning = false;
+let stageWarning = false, failHistoryJobs = false, waitHistoryJob = null;
 globalThis.openForm = (id) => opened.push(id);
 globalThis.formDone = (id) => closed.push(id);
+globalThis.closeForm = (id) => closed.push(id);
 globalThis.formError = (id, message) => errors.push([id, message]);
 globalThis.alert = (message) => { if (!stageWarning) throw new Error(`Unexpected alert: ${message}`); alerts.push(message); };
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
@@ -66,6 +67,9 @@ globalThis.api = async (path, options = {}) => {
     if (failPeople) throw new Error('Network unavailable');
     return noPeople ? [] : people;
   }
+  if (path === '/history?equipment_id=1') return { rows: jobs.map((j) => ({ ...j, owner: 'Admin' })) };
+  if (path === '/work-orders?equipment_id=1' && failHistoryJobs) throw new Error('Cannot load jobs');
+  if (path === '/work-orders?equipment_id=1' && waitHistoryJob) await waitHistoryJob;
   if (path.startsWith('/work-orders?') || (path === '/work-orders' && !options.method)) return jobs;
   if (path === '/work-orders' && options.method === 'POST') return { id: 99 };
   if (path === '/work-orders/42/updates' && !options.method) {
@@ -649,4 +653,23 @@ const closeRequest = requests.findLast((r) => r.options.method === 'PATCH');
 assert.deepEqual(JSON.parse(closeRequest.options.body), { status: 'done', machine_running: true, resolution: null });
 jobs[0].closed_at = '2026-01-02'; await work.loadWork(); await work.openWorkUpdates(42, true);
 assert.ok(el('#wa-history').innerHTML.indexOf('Job closed') > el('#wa-history').innerHTML.indexOf('Stage 1'));
+// Machine history works independently of the Work orders filter and opens the timeline.
+const history = await import('../public/history.js');
+const clicked = { closest: () => ({ querySelector: () => ({ textContent: 'Press' }) }) };
+await history.openMachineHistory(1, clicked);
+assert.match(el('#machine-history-rows').innerHTML, /WO-42/);
+assert.match(el('#machine-history-rows').innerHTML, /openMachineHistoryJob\(42\)/);
+assert.match(el('#machine-history-rows').innerHTML, /aria-label="View timeline for WO-42"/);
+failHistoryJobs = true; await history.openMachineHistoryJob(42);
+assert.match(el('#machine-history-error').textContent, /Could not open this timeline/);
+assert.equal(el('#machine-history-error').hidden, false);
+failHistoryJobs = false; await history.openMachineHistoryJob(42);
+assert.equal(opened.at(-1), 'work-assign');
+assert.match(el('#wa-history').innerHTML, /Problem reported/);
+assert.ok(requests.some((r) => r.path === '/work-orders?equipment_id=1'));
+let releaseHistory; waitHistoryJob = new Promise((resolve) => { releaseHistory = resolve; });
+const pendingTimeline = history.openMachineHistoryJob(42); const countOpened = opened.length;
+history.closeMachineHistory(); releaseHistory(); await pendingTimeline; waitHistoryJob = null;
+assert.equal(opened.length, countOpened); // a closed history cannot open a late timeline
+
 console.log('Work-order UI interaction tests passed');

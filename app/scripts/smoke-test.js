@@ -1391,6 +1391,29 @@ ok('the history row carries the machine name and the dates',
   && machineHistory.data.rows.some((r) => r.closed_at),
   JSON.stringify(machineHistory.data.rows?.[0]));
 
+// Work-order activity is a sortable timestamp from saved data, not a browser clock.
+const activityMachine = (await c2('/api/equipment', { method: 'POST', body: { name: 'Activity test machine' } })).data;
+const activityJob = (await c2('/api/work-orders', { method: 'POST', body: { equipment_id: activityMachine.id, title: 'Activity test', assigned_to: 1 } })).data;
+const activityDb = new DatabaseSync(DB);
+activityDb.prepare('UPDATE work_orders SET created_at=? WHERE id=?').run('2000-01-01 08:00:00', activityJob.id);
+const getActivity = async () => (await c2(`/api/work-orders?equipment_id=${activityMachine.id}`)).data.find((w) => w.id === activityJob.id);
+ok('last activity starts with the report date and time when no stage exists', (await getActivity()).last_activity_at === '2000-01-01 08:00:00');
+const activityStage = await c2(`/api/work-orders/${activityJob.id}/updates`, { method: 'POST', body: { message: 'Work', hours: 1, machine_running: true } });
+activityDb.prepare('UPDATE work_order_updates SET created_at=? WHERE id=?').run('2001-02-03 09:10:11', activityStage.data.id);
+ok('last activity advances to the stage timestamp', (await getActivity()).last_activity_at === '2001-02-03 09:10:11');
+await c2(`/api/work-orders/${activityJob.id}/updates/${activityStage.data.id}`, { method: 'PUT', body: { message: 'Corrected work' } });
+activityDb.prepare('UPDATE work_order_updates SET edited_at=? WHERE id=?').run('2002-03-04 11:12:13', activityStage.data.id);
+ok('a later stage correction advances last activity', (await getActivity()).last_activity_at === '2002-03-04 11:12:13');
+const activityClose = await c2(`/api/work-orders/${activityJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+ok('closure advances last activity without changing recorded stage time', activityClose.status === 200 && (await getActivity()).last_activity_at === activityClose.data.closed_at);
+activityDb.prepare('UPDATE work_order_updates SET edited_at=? WHERE id=?').run('2999-04-05 12:13:14', activityStage.data.id);
+ok('a stage correction after closure takes precedence over the closure timestamp', (await getActivity()).last_activity_at === '2999-04-05 12:13:14');
+await c2(`/api/work-orders/${activityJob.id}/updates/${activityStage.data.id}`, { method: 'DELETE' });
+ok('deleting a stage returns activity to the most recent surviving event', (await getActivity()).last_activity_at === activityClose.data.closed_at);
+activityDb.close();
+await c2(`/api/equipment/${activityMachine.id}`, { method: 'DELETE' });
+ok('machine history includes work-order numbers for open and closed jobs', machineHistory.data.rows.every((row) => /^WO-\d{4}-\d{4}$/.test(row.code)));
+
 // HIST-02 — the screen asks for closed work only, and gets it.
 const closedOnly = await c2(`/api/history?status=done&equipment_id=${histId}`);
 ok('the History screen shows closed jobs only',
@@ -1434,6 +1457,14 @@ ok('an empty machine, an empty range and a failed load read differently',
   && /Nothing was closed between those dates/.test(histSrc)
   && /Could not load the history/.test(histSrc),
   'one of the three empty states is missing');
+const quickIndex = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const quickWork = readFileSync(join(root, 'public', 'work.js'), 'utf8');
+ok('machine history shows a sortable work-order number and an accessible timeline action',
+  /data-sort="code">Number/.test(quickIndex)
+  && /openMachineHistoryJob/.test(histSrc) && /View timeline for/.test(histSrc));
+ok('the work-order activity column shows UTC date and time and is sortable',
+  /data-sort="last_activity_at"/.test(quickIndex) && /last_activity_at: \(w\) => w.last_activity_at/.test(quickWork)
+  && /esc\(w.last_activity_at\)/.test(quickWork));
 ok('the history screen is reachable and the machine row opens it',
   appUrl.includes("{ key: 'history', label: 'History' }")
   && /openMachineHistory\(\$\{machine\.id\}/.test(clientSrc),
@@ -1730,7 +1761,7 @@ const codeOnly = (text) => text
   .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 ok('every machine row offers Edit',
-  /menuItem\('Edit machine details', `editEquipment\(\$\{machine\.id\}\)`\)/.test(appEq),
+  /menuItem\('Edit machine details', `editEquipment\(\$\{machine\.id\}\)`, \{ icon: 'edit' \}\)/.test(appEq),
   'no control, no edit');
 ok('the edit form carries every field a machine has',
   ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
@@ -1862,13 +1893,16 @@ ok('everything about a machine sits behind three dots',
   tablesSrc.includes('<details class="row-menu">') && tablesSrc.includes('aria-label="Actions for')
   && tablesSrc.includes('&#8943;') && /rowMenu\(machine\.name/.test(appEq),
   'the row still shows a row of buttons');
+ok('machine row actions have distinct icons including retire, restore and delete',
+  ['edit', 'history', 'retire', 'restore', 'delete'].every((icon) => actionsFn.includes(`'${icon}'`))
+  && /menu-icon/.test(tablesSrc));
 ok('and the menu holds edit, history, retire and delete',
   ['editEquipment', 'openMachineHistory', 'toggleStatus', 'openEquipmentDelete']
     .every((fn) => actionsFn.includes(fn))
   && ['Edit machine details', 'History', 'Retire machine', 'Delete machine']
     .every((label) => appEq.includes(label)), 'an action went missing from the menu');
 ok('delete is the red item in it',
-  /menuItem\('Delete machine', `openEquipmentDelete\(\$\{machine\.id\}\)`, \{ danger: true \}\)/.test(appEq)
+  /menuItem\('Delete machine', `openEquipmentDelete\(\$\{machine\.id\}\)`, \{ danger: true, icon: 'delete' \}\)/.test(appEq)
   && /danger \? ' class="danger"'/.test(tablesSrc)
   && /\.row-menu \.menu button\.danger\s*\{[^}]*var\(--red\)/.test(uiCss),
   'a destructive item that looks like the others');
@@ -3179,7 +3213,7 @@ ok('and a menu names the row it belongs to, for anyone not reading the screen',
   'a menu whose button is just three dots with no name');
 ok('the items a menu holds are real buttons, and a destructive one is marked',
   /<button type="button"/.test(tablesSrc) && /danger \? ' class="danger"'/.test(tablesSrc)
-  && /menuItem\('Delete machine',[\s\S]{0,90}?\{ danger: true \}\)/.test(appEq)
+  && /menuItem\('Delete machine',[\s\S]{0,90}?\{ danger: true, icon: 'delete' \}\)/.test(appEq)
   && /menuItem\('Delete part',[\s\S]{0,90}?\{ danger: true \}\)/.test(partsSrc),
   'an item that is not a button, or a delete that looks like the rest');
 

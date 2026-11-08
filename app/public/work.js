@@ -56,6 +56,7 @@ function drawWork() {
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
           w.stops_machine ? ` ${badge('last noted out of service', 'red')}` : ''}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}${w.status === 'in_progress' && w.current_stage ? ` <span class="row-sub">Stage ${Number(w.current_stage)}</span>` : ''}</td>
+        <td class="cell-muted cell-date">${w.last_activity_at ? esc(w.last_activity_at) : '—'}</td>
         <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
@@ -67,7 +68,7 @@ function drawWork() {
           ...(w.status === 'done' ? [menuItem('Reopen', `advance(${w.id}, 'open')`, { icon: 'reopen' })] : []),
         ])}
       </tr>`).join('')
-    || emptyRow(8, searchTerm('#wo-search')
+    || emptyRow(9, searchTerm('#wo-search')
       ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
       : 'No work orders match. Create one with "New work order", or clear the filter.');
   markTable('work-rows');
@@ -85,6 +86,7 @@ register('work-rows', {
   assignee_name: (w) => w.assignee_name,
   priority: (w) => PRIORITY_RANK[w.priority] ?? 3,
   status: (w) => WORK_STATUS_RANK[w.status] ?? 3,
+  last_activity_at: (w) => w.last_activity_at,
   labour_hours: (w) => w.effective_hours,
   cost: (w) => w.cost,
 }, drawWork);

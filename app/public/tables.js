@@ -87,6 +87,10 @@ const menuIcons = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/>',
   close: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
   reopen: '<path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4"/>',
+  history: '<path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4M12 8v4l3 2"/>',
+  retire: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+  restore: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/>',
+  delete: '<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/>',
 };
 export function menuItem(label, onclick, { danger = false, icon = null } = {}) {
   const svg = menuIcons[icon] ? `<svg class="menu-icon" aria-hidden="true" viewBox="0 0 24 24">${menuIcons[icon]}</svg>` : '';
@@ -122,7 +126,7 @@ document.addEventListener('toggle', (event) => {
   const dot = details.querySelector('summary').getBoundingClientRect();
   const list = details.querySelector('.menu');
   list.style.top = `${dot.bottom + 6}px`;
-  list.style.left = `${Math.max(8, dot.right - 196)}px`;
+  list.style.left = `${Math.max(8, Math.min(window.innerWidth - list.offsetWidth - 8, dot.right - list.offsetWidth))}px`;
 }, true);
 
 // A fixed menu would stay behind while the page moves under it.

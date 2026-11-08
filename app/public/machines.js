@@ -39,11 +39,11 @@ function statusCell(machine) {
 function actions(machine) {
   const admin = window.me?.role === 'admin';
   return rowMenu(machine.name, [
-    admin ? menuItem('Edit machine details', `editEquipment(${machine.id})`) : '',
-    menuItem('History', `openMachineHistory(${machine.id}, this)`),
+    admin ? menuItem('Edit machine details', `editEquipment(${machine.id})`, { icon: 'edit' }) : '',
+    menuItem('History', `openMachineHistory(${machine.id}, this)`, { icon: 'history' }),
     admin ? menuItem(machine.service_status === 'retired' ? 'Return to service' : 'Retire machine',
-      `toggleStatus(${machine.id}, '${machine.service_status}')`) : '',
-    admin ? menuItem('Delete machine', `openEquipmentDelete(${machine.id})`, { danger: true }) : '',
+      `toggleStatus(${machine.id}, '${machine.service_status}')`, { icon: machine.service_status === 'retired' ? 'restore' : 'retire' }) : '',
+    admin ? menuItem('Delete machine', `openEquipmentDelete(${machine.id})`, { danger: true, icon: 'delete' }) : '',
   ]);
 }
 

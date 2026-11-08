@@ -424,3 +424,12 @@ th.sorted .sort-btn { color: var(--ink); }
 .close-action:has(button:disabled) { cursor: not-allowed; }
 .close-tooltip { position: absolute; z-index: 3; bottom: calc(100% + 9px); right: 0; width: min(240px, calc(100vw - 50px)); padding: 9px 11px; border-radius: 8px; background: #263342; color: #fff; font-size: 12px; line-height: 1.4; text-align: left; box-shadow: 0 4px 14px #10182833; visibility: hidden; opacity: 0; pointer-events: none; }
 .close-action:hover .close-tooltip:not([hidden]), .close-action:focus .close-tooltip:not([hidden]) { visibility: visible; opacity: 1; }
+
+/* Machine history rows open a job timeline, including via keyboard. */
+.machine-history-row { cursor: pointer; }
+.machine-history-row:hover td { background: #f3f7fc; }
+.history-job { border: 0; padding: 2px 0; background: none; color: var(--brand); font-weight: 600; text-align: left; white-space: nowrap; }
+.history-job:hover { text-decoration: underline; }
+.cell-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+#machine-history { width: min(820px, calc(100vw - 32px)); }
