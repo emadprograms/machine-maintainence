@@ -531,9 +531,10 @@ const csvHead = csv.text.slice(1).split('\r\n')[0].split(',');
 // Read here rather than reused from the block further down: this check runs first,
 // and reaching forward for `indexEq` would be a temporal dead zone, not a test.
 const pageNow = readFileSync(join(root, 'public', 'index.html'), 'utf8');
-const workHead = (pageNow.match(/<thead><tr><th>Machine<\/th><th>Problem<\/th>[\s\S]*?<\/tr><\/thead>/) || [''])[0];
-const screenLabels = [...workHead.matchAll(/<th[^>]*>([^<]*)<\/th>/g)]
-  .map((m) => m[1].trim()).filter(Boolean);
+const beforeWorkRows = pageNow.slice(0, pageNow.indexOf('<tbody id="work-rows">'));
+const workHead = ([...beforeWorkRows.matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+const screenLabels = [...workHead.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)]
+  .map((m) => m[1].replace(/<[^>]+>/g, '').trim()).filter(Boolean);
 ok('the header names the columns the way the screen names them',
   ['Machine', 'Problem', 'Assigned to', 'Priority', 'Status']
     .every((label) => screenLabels.includes(label) && csvHead.includes(label)),
@@ -851,20 +852,18 @@ ok('every list has a written empty state',
     // app.js keeps a one-line delegating wrapper for screens that live in their
     // own module, so every match is considered and any real body will do: a
     // wrapper has no empty state and the module's function has one.
+    const N = `${fn[0].toUpperCase()}${fn.slice(1)}`;
     const bodies = [...clientSrc.matchAll(
-      new RegExp(`async function load${fn[0].toUpperCase()}${fn.slice(1)}[\\s\\S]*?\\n}`, 'g'))]
+      new RegExp(`async function load${N}[\\s\\S]*?\\n}`, 'g'))].map((m) => m[0]);
+    // Every table is drawn by a drawX() now, so sorting can redraw without asking the
+    // server again; the sentence therefore lives one call away from loadX rather than
+    // inside it. Both facts are required: the drawer says something when there is
+    // nothing, and the loader is what puts it on the screen. A detached drawX() that
+    // nothing calls would not be enough.
+    const drawers = [...clientSrc.matchAll(new RegExp(`function draw${N}\\(\\)[\\s\\S]*?\\n}`, 'g'))]
       .map((m) => m[0]);
-    // The machine table is drawn by drawEquipment now, so sorting can redraw without
-    // asking the server again; its sentence therefore lives one call away from
-    // loadEquipment rather than inside it. Both facts are required: the drawer says
-    // something when there is nothing, and the loader is what puts it on the screen.
-    if (fn === 'equipment') {
-      const drawers = [...clientSrc.matchAll(/function drawEquipment\(\) \{[\s\S]*?\n}/g)]
-        .map((m) => m[0]);
-      return drawers.some((d) => /emptyRow\(/.test(d))
-        && bodies.some((b) => /drawEquipment\(\)/.test(b));
-    }
-    return bodies.some((b) => /emptyRow\(/.test(b));
+    return drawers.some((d) => /emptyRow\(/.test(d))
+      && bodies.some((b) => new RegExp(`draw${N}\\(\\)`).test(b));
   }));
 ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0,160}esc\(sentence\)/.test(appSrc13));
 // Two earlier versions of this assertion were wrong, and a mutation proved it
@@ -1619,6 +1618,9 @@ const indexEq = readFileSync(join(root, 'public', 'index.html'), 'utf8');
 const editFn = (appEq.match(/export function editEquipment\([\s\S]*?\n\}/) || [''])[0];
 const saveFn = (appEq.match(/export async function saveEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
 const actionsFn = (appEq.match(/function actions\(machine\) \{[\s\S]*?\n\}/) || [''])[0];
+// Sorting and the row menu moved into one shared module once every table wanted
+// them; these checks follow the code rather than staying where it used to live.
+const tablesSrc = readFileSync(join(root, 'public', 'tables.js'), 'utf8');
 
 // Prose is not behaviour: an assertion that reads raw source cannot tell a rule
 // from a comment describing it, and one of the checks below failed on exactly
@@ -1628,7 +1630,8 @@ const codeOnly = (text) => text
   .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 ok('every machine row offers Edit',
-  /onclick="editEquipment\(\$\{machine\.id\}\)"/.test(appEq), 'no control, no edit');
+  /menuItem\('Edit machine', `editEquipment\(\$\{machine\.id\}\)`\)/.test(appEq),
+  'no control, no edit');
 ok('the edit form carries every field a machine has',
   ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
     .every((f) => indexEq.includes(`id="${f}"`)),
@@ -1691,7 +1694,10 @@ ok('the machine table names every column it shows',
 // The ordering rule is imported and run on rows, not searched for in the source: a
 // regex can find `sort(` and tell you nothing about whether "9" lands before "10".
 const { sortRows } = await import(pathToFileURL(join(root, 'public', 'sort.js')).href);
-const sortFn = (appEq.match(/export function sortEquipment[\s\S]*?\n}/) || [''])[0];
+const sortByFn = (tablesSrc.match(/export function sortBy\(tbodyId, key\) \{[\s\S]*?\n}/) || [''])[0];
+// Counted from the page rather than written down: a table that gains a column must
+// not fail a check that was really about the arrows.
+const SORTABLE_HEADINGS = (indexEq.match(/aria-sort="none"/g) || []).length;
 const drawFn = (appEq.match(/function drawEquipment\(\) \{[\s\S]*?\n}/) || [''])[0];
 const sortable = [...eqHead.matchAll(/<button[^>]*class="sort-btn" data-sort="([a-z_]+)"/g)]
   .map((m) => m[1]);
@@ -1702,9 +1708,9 @@ ok('and the headings are real buttons, so Tab and Enter work without extra code'
   (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 6
   && !/<th[^>]*>\s*Photo<\/th>[\s\S]*?data-sort="photo"/.test(eqHead));
 ok('a new heading starts ascending, and the same heading again turns it round',
-  /let sortKey = null/.test(appEq) && /let sortDir = 1/.test(appEq)
-  && /sortDir = key === sortKey \? -sortDir : 1;/.test(sortFn)
-  && /sortKey = key;/.test(sortFn) && /if \(!SORTS\[key\]\) return;/.test(sortFn),
+  /const sorted = new Map\(\)/.test(tablesSrc)
+  && /dir: key === state\.key \? -state\.dir : 1/.test(sortByFn)
+  && /if \(!entry\?\.columns\[key\]\) return false;/.test(sortByFn),
   'a first click that sorts the wrong way, no way back, or an unknown column being sorted anyway');
 const byName = (dir) => sortRows(
   [{ name: 'bravo' }, { name: 'Alpha' }, { name: 'Charlie' }], (m) => m.name, dir).map((m) => m.name);
@@ -1737,30 +1743,33 @@ sortRows(sourceRows, (m) => m.name, 1);
 ok('sorting leaves the list the server sent alone',
   sourceRows[0].name === 'b' && sourceRows[1].name === 'a', 'the sort reordered its input');
 ok('the arrow says which way, and the heading says so out loud',
-  /aria-sort/.test(appEq) && /\\u25B2/.test(appEq) && /\\u25BC/.test(appEq)
-  && /heading\.setAttribute\('aria-sort'/.test(appEq) && /markSort\(\)/.test(drawFn)
-  && (indexEq.match(/aria-sort="none"/g) || []).length === 6,
-  'no arrow, one that is never drawn, or a direction that only exists visually');
+  /aria-sort/.test(tablesSrc) && /\\u25B2/.test(tablesSrc) && /\\u25BC/.test(tablesSrc)
+  && /heading\.setAttribute\('aria-sort'/.test(tablesSrc) && /markTable\('equipment-rows'\)/.test(drawFn)
+  && (indexEq.match(/aria-sort="none"/g) || []).length === SORTABLE_HEADINGS,
+  `no arrow, one that is never drawn, or ${(indexEq.match(/aria-sort="none"/g) || []).length
+    } heading slots instead of ${SORTABLE_HEADINGS}`);
 ok('status sorts by the word the row shows, not by its internal value',
   /status: \(machine\) => STATUS_WORD\[machine\.status\] \|\| machine\.status/.test(appEq),
   'the badge says Down and the sort heard "down"');
 ok('the table turns over without asking the server again',
   drawFn.length > 0 && !/\bapi\(/.test(drawFn) && !/\bfetch\(/.test(drawFn)
-  && /drawEquipment\(\)/.test(sortFn),
+  && /entry\.redraw\(\)/.test(sortByFn),
   'a click that refetches, or a sort that never redraws');
 ok('and the order survives a filter change, a save or a retry',
   /drawEquipment\(\)/.test(appEq.match(/export async function loadEquipment[\s\S]*?\n}/)?.[0] || ''),
   'every reload quietly puts the list back in the server order');
 ok('everything about a machine sits behind three dots',
-  appEq.includes('<details class="row-menu">') && appEq.includes('aria-label="Actions for')
-  && appEq.includes('&#8943;'), 'the row still shows a row of buttons');
+  tablesSrc.includes('<details class="row-menu">') && tablesSrc.includes('aria-label="Actions for')
+  && tablesSrc.includes('&#8943;') && /rowMenu\(machine\.name/.test(appEq),
+  'the row still shows a row of buttons');
 ok('and the menu holds edit, history, retire and delete',
   ['editEquipment', 'openMachineHistory', 'toggleStatus', 'openEquipmentDelete']
     .every((fn) => actionsFn.includes(fn))
   && ['Edit machine', 'History', 'Retire machine', 'Delete machine']
     .every((label) => appEq.includes(label)), 'an action went missing from the menu');
 ok('delete is the red item in it',
-  /class="danger" onclick="openEquipmentDelete/.test(appEq)
+  /menuItem\('Delete machine', `openEquipmentDelete\(\$\{machine\.id\}\)`, \{ danger: true \}\)/.test(appEq)
+  && /danger \? ' class="danger"'/.test(tablesSrc)
   && /\.row-menu \.menu button\.danger\s*\{[^}]*var\(--red\)/.test(uiCss),
   'a destructive item that looks like the others');
 // A menu in the last row sits inside `.table-wrap`, which scrolls sideways and
@@ -1768,18 +1777,18 @@ ok('delete is the red item in it',
 // and the code that places it.
 ok('the menu is not clipped by the table it lives in',
   /\.row-menu \.menu \{[^}]*position: fixed/.test(uiCss)
-  && /getBoundingClientRect\(\)/.test(appEq) && /style\.top =/.test(appEq),
+  && /getBoundingClientRect\(\)/.test(tablesSrc) && /style\.top =/.test(tablesSrc),
   'an absolutely positioned menu is clipped by the scrolling table');
 ok('and it closes when the page moves under it',
-  /addEventListener\('scroll', closeMenus, true\)/.test(appEq));
+  /addEventListener\('scroll', closeMenus, true\)/.test(tablesSrc));
 // The History dialog used to read the machine's name from the row\'s first cell.
 // Since the photograph has that cell, it titled itself "A" for a pictureless machine.
 ok('the history dialog reads the name column, not the first cell',
   /querySelector\('\.cell-strong'\)/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
   'the dialog is named after the photo cell');
 ok('a menu closes when it is used and when you click away',
-  /closest\('\.row-menu \.menu button'\)/.test(appEq)
-  && /closest\('\.row-menu'\)/.test(appEq));
+  /closest\('\.row-menu \.menu button'\)/.test(tablesSrc)
+  && /closest\('\.row-menu'\)/.test(tablesSrc));
 
 // ---- the sentence you have to type
 const confirmFn = (appEq.match(/export async function confirmEquipmentDelete[\s\S]*?\n\}/) || [''])[0];
@@ -2506,7 +2515,7 @@ ok('editing a work order opens a dialog that carries the whole record',
   editDialog ? 'a field is missing' : 'work-edit is gone');
 ok('the list itself has no editor left in it',
   !/we-title-\$\{/.test(workSrc) && !/id="we-owner-\$\{/.test(workSrc)
-  && /onclick="editWork\(\$\{w\.id\}\)"/.test(workSrc),
+  && /menuItem\('Edit', `editWork\(\$\{w\.id\}\)`\)/.test(workSrc),
   'a row still draws inputs, or Edit does not open anything');
 // The function itself: the close dialog also reads workCache, so a file-wide search
 // for it passed while editWork had been changed to fetch the job again.
@@ -2600,15 +2609,108 @@ const staleOwner = [indexEq, ...routeSources]
 ok('nothing a person reads calls the assignee an owner', staleOwner.length === 0,
   staleOwner.join(', '));
 ok('every screen and both files call it Assigned to',
-  (indexEq.match(/<th>Assigned to<\/th>/g) || []).length === 3
+  (indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length === 3
   && indexEq.includes('<span>Assigned to</span>')
   && routeSources.every((src) => src.includes("label: 'Assigned to'")),
-  `headers: ${(indexEq.match(/<th>Assigned to<\/th>/g) || []).length}, labels: ${
+  `headers: ${(indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length}, labels: ${
     routeSources.filter((src) => src.includes("label: 'Assigned to'")).length}/2`);
 const assigneeRow = (await late('/api/work-orders').catch(() => ({ data: [] }))).data[0] || {};
 ok('and the API still calls the field what it always did',
   'assigned_to' in assigneeRow && 'assignee_name' in assigneeRow,
   `fields: ${Object.keys(assigneeRow).join(', ')}`);
+
+// ---- every table, not one of them -----------------------------------------
+// The machines table sorted and had a menu; the other eight were still plain
+// headings and a row of buttons each. "All tables and all options should be like
+// that" is a claim about the whole page, so it is checked table by table rather than
+// by looking for a `sort(` and hoping.
+const TABLE_IDS = ['due-rows', 'equipment-rows', 'machine-history-rows', 'work-rows',
+  'history-rows', 'parts-rows', 'pm-rows', 'users-rows', 'report-rows'];
+const headingKeys = (tbodyId) => {
+  const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
+  if (at < 0) return null;
+  const head = ([...indexEq.slice(0, at).matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+  return [...head.matchAll(/data-sort="([a-z_]+)"/g)].map((m) => m[1]);
+};
+const headingBlock = (tbodyId) => {
+  const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
+  return at < 0 ? '' : ([...indexEq.slice(0, at).matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+};
+const registeredMap = (tbodyId) => {
+  const at = clientSrc.indexOf(`register('${tbodyId}'`);
+  // Bounded, because all the client files are one string here and a greedy search
+  // ran from one screen's registration into another's.
+  return at < 0 ? '' : (clientSrc.slice(at, at + 900)
+    .match(/^register\('[^']+',\s*\{[\s\S]*?\n\}, draw\w+\)/) || [''])[0];
+};
+const unsortable = TABLE_IDS.filter((tbodyId) => {
+  const keys = headingKeys(tbodyId) || [];
+  const block = registeredMap(tbodyId);
+  return !block || keys.length < 2 || !keys.every((key) => new RegExp(`\\n  ${key}: `).test(block));
+});
+ok('every table sorts by each of its headings, and only by headings it can sort',
+  unsortable.length === 0,
+  unsortable.map((id) => `${id}: ${(headingKeys(id) || []).join(',') || 'nothing'}`).join(' | ')
+    || `${TABLE_IDS.length} tables, ${TABLE_IDS.reduce((n, id) => n + (headingKeys(id) || []).length, 0)} headings`);
+ok('and every one of them keeps the order and says which way it is going',
+  TABLE_IDS.every((id) => clientSrc.includes(`markTable('${id}')`)),
+  TABLE_IDS.filter((id) => !clientSrc.includes(`markTable('${id}')`)).join(', '));
+// The other half of the same promise. A row's actions were a row of buttons; a
+// table of twenty looked like a toolbar. Six tables have actions and six call the
+// shared menu, and no `<td>` anywhere still opens with its own button.
+const bareRowButtons = clientSrc.match(/<td[^>]*>\s*<button class="ghost small"/g) || [];
+// `function rowMenu(` is the definition, not a seventh table.
+const menuCalls = (clientSrc.match(/(?<!function )rowMenu\(/g) || []).length;
+ok('a row never carries its own buttons, whatever the table is',
+  bareRowButtons.length === 0 && menuCalls === 6,
+  bareRowButtons.length ? bareRowButtons[0].slice(0, 80) : `${menuCalls} menus for 6 tables with actions`);
+ok('and a menu names the row it belongs to, for anyone not reading the screen',
+  (clientSrc.match(/(?<!function )rowMenu\(\s*(?:[A-Za-z_$][\w$.]*|`)/g) || []).length === 6
+  && /aria-label="Actions for \$\{esc\(what\)\}"/.test(tablesSrc),
+  'a menu whose button is just three dots with no name');
+ok('the items a menu holds are real buttons, and a destructive one is marked',
+  /<button type="button"/.test(tablesSrc) && /danger \? ' class="danger"'/.test(tablesSrc)
+  && /menuItem\('Delete machine',[\s\S]{0,90}?\{ danger: true \}\)/.test(appEq)
+  && /menuItem\('Delete part',[\s\S]{0,90}?\{ danger: true \}\)/.test(appSrc13),
+  'an item that is not a button, or a delete that looks like the rest');
+
+// Two columns where the alphabet is the wrong order. "high, low, medium" is not a
+// priority, and sorting status alphabetically puts finished work at the top of the
+// list a workshop reads to decide what to do next.
+ok('priority and status sort in the order the workshop means, not the alphabet',
+  /priority: \(w\) => PRIORITY_RANK\[w\.priority\]/.test(workSrc)
+  && /status: \(w\) => WORK_STATUS_RANK\[w\.status\]/.test(workSrc)
+  && /const PRIORITY_RANK = \{ high: 0, medium: 1, low: 2 \}/.test(workSrc),
+  'a priority column sorted alphabetically: high, low, medium');
+
+// A menu column is one more cell, and forgetting it in the header is the kind of
+// mismatch nothing throws on: the table simply draws a column with no name. Each
+// table's empty row states its own column count, so the two are compared.
+// The function that draws a table, found from the registration rather than guessed:
+// `drawMachineHistory(name = ...)` takes an argument, so the parentheses are not empty.
+const drawerBody = (tbodyId) => {
+  const drawer = (registeredMap(tbodyId).match(/, draw(\w+)\)/) || [])[1];
+  return drawer
+    ? (clientSrc.match(new RegExp(`function draw${drawer}\\([^)]*\\)[\\s\\S]*?\\n}`)) || [''])[0]
+    : '';
+};
+const mismatched = TABLE_IDS.map((tbodyId) => {
+  const span = (drawerBody(tbodyId).match(/emptyRow\((\d+)/) || [])[1];
+  return { tbodyId, columns: (headingBlock(tbodyId).match(/<th[\s>]/g) || []).length, span };
+}).filter((t) => String(t.columns) !== String(t.span));
+ok('every table has a heading for every column its row draws',
+  mismatched.length === 0,
+  mismatched.map((t) => `${t.tbodyId}: ${t.columns} headings, empty row spans ${t.span ?? 'nothing'}`).join(' | '));
+// Sorting must be a redraw, not a round trip. Checked for all nine, because only
+// the machines table was proved to do this when it was the only one that sorted.
+const refetching = TABLE_IDS
+  .map((tbodyId) => ({ tbodyId, body: drawerBody(tbodyId) }))
+  .filter((t) => !t.body || /\bapi\(|\bfetch\(/.test(t.body));
+ok('no table asks the server again when a heading is clicked',
+  refetching.length === 0, refetching.map((t) => t.tbodyId).join(', '));
+ok('and the click finds the table the heading belongs to, rather than the first one',
+  /button\.closest\('table'\)\?\.querySelector\('tbody'\)\?\.id/.test(tablesSrc),
+  'a heading that sorts some other table');
 
 // ---- editing a spare part is a dialog too ---------------------------------
 // It used to turn the row it belonged to into five inputs — which meant the parts
@@ -2624,9 +2726,9 @@ ok('and the supplier is one of them, which the row editor never offered',
   partDialog.includes('id="pe-supplier"')
   && /supplier: \$\('#pe-supplier'\)\.value\.trim\(\) \|\| null/.test(appSrc13),
   'a part can still be created with a supplier it can never correct');
-ok('the parts table is a table again, with one Edit button per row',
+ok('the parts table is a table again, with Edit in its menu',
   !/id="edit-name-\$\{/.test(appSrc13) && !/editingPart/.test(appSrc13)
-  && /onclick="editPart\(\$\{p\.id\}\)"/.test(appSrc13),
+  && /menuItem\('Edit part', `editPart\(\$\{p\.id\}\)`\)/.test(appSrc13),
   'a row still draws inputs, or Edit does not open anything');
 const editPartFn = (appSrc13.match(/function editPart\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
 ok('the dialog is filled from the row that was clicked, not from a second request',

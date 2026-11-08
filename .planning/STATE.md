@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v3.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-07 — quick task 261106-erj: editing a spare part is a dialog
+Last activity: 2026-11-07 — quick task 261106-erk: every table sorts, every action is behind three dots
 
 ## Quick Tasks Completed
 
@@ -41,6 +41,7 @@ Last activity: 2026-11-07 — quick task 261106-erj: editing a spare part is a d
 | 2026-11-06 | v3.0 ph15 | Find it: search composed with every filter, and exports built from the same filter | `aef8583` |
 | 2026-11-06 | 261106-srv | Sidebar icons for History and Report; `starter/` renamed `app/`; `server.js` 814 → 116 with routes/ | `abb82d9`, `641059d` |
 | 2026-11-07 | 261106-erg | `.field { display: flex }` beat the `hidden` attribute, so the work-order editor drew two Owner controls; a `[hidden]` rule with `!important` fixes it | `dd2f96d` |
+| 2026-11-07 | 261106-erk | Every table sorts and every row action is behind three dots: `public/tables.js` holds the heading click, the arrow, `aria-sort` and the menu markup/placement for all nine tables — 47 sortable headings, six menus. Priority and status sort by rank, not alphabet. Ordering state survives a redraw; no draw function fetches | pending |
 | 2026-11-07 | 261106-erj | Editing a spare part opens `#part-edit` with the whole record — including the **supplier**, which the row editor never had and the create form always asked for — and one Save writes all of it, clearing what was emptied. The row is a row again; `editingPart`/`cancelPart` are gone | `ba5a10f` |
 | 2026-11-07 | 261106-eri | The machine table sorts: six headings are buttons (asc, then desc), an arrow in a fixed slot says which way, `aria-sort` says it out loud, and the redraw is from memory — no request. Ordering lives in `public/sort.js` so the suite runs it on rows: numeric barcodes, blanks last either way, ties kept, input untouched | `9bc7ab3` |
 | 2026-11-07 | 261106-erh | "Owner" is "Assigned to" in three table headers, the editor and both export columns; the API keys (`assigned_to`, `assignee_name`, csv `owner`) are untouched. Debug found the export check compared the file to a second hard-coded string — it now reads the page | `4ff70f6` |

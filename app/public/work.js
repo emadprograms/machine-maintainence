@@ -8,6 +8,8 @@
 // formError, formDone) rather than repeating them: this is one page, not a bundle
 // of independent widgets.
 
+import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
+
 // ------------------------------------------------------------ work orders
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
 const NEXT_STATUS = { open: 'in_progress', in_progress: 'done', done: 'open' };
@@ -41,7 +43,14 @@ export async function loadWork() {
   if (!assignable.length) {
     try { assignable = await api('/users/assignable'); } catch { assignable = []; }
   }
-  $('#work-rows').innerHTML = workCache.map((w) => `<tr>
+  drawWork();
+}
+
+/** The table, drawn from `workCache`. Separate from the fetch so a heading can be
+ *  clicked without asking the server for the same rows again. */
+function drawWork() {
+  const rows = rowsFor('work-rows', workCache);
+  $('#work-rows').innerHTML = rows.map((w) => `<tr>
         ${strong(w.equipment_name)}<td class="cell-strong">${esc(w.title)}${w.photo
           ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
                  rel="noopener">photo</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
@@ -51,17 +60,35 @@ export async function loadWork() {
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}</td>
         <td class="cell-num">${w.labour_hours == null ? '—' : Number(w.labour_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
-        <td>
-          <button class="ghost small" onclick="advance(${w.id}, '${NEXT_STATUS[w.status]}')">
-            ${w.status === 'done' ? 'Reopen' : 'Move to ' + NEXT_STATUS[w.status].replace('_', ' ')}
-          </button>
-          <button class="ghost small" onclick="editWork(${w.id})">Edit</button>
-        </td>
+        ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
+          menuItem(w.status === 'done' ? 'Reopen'
+            : NEXT_STATUS[w.status] === 'done' ? 'Close job'
+              : `Move to ${NEXT_STATUS[w.status].replace('_', ' ')}`,
+          `advance(${w.id}, '${NEXT_STATUS[w.status]}')`),
+          menuItem('Edit', `editWork(${w.id})`),
+        ])}
       </tr>`).join('')
     || emptyRow(8, searchTerm('#wo-search')
       ? `Nothing matches "${searchTerm('#wo-search')}". Clear the search to see every work order.`
       : 'No work orders match. Create one with "New work order", or clear the filter.');
+  markTable('work-rows');
 }
+
+// Priority is not an alphabetical column: high, low, medium is not an order anybody
+// meant. Ascending is most urgent first. Status is the same: the pipeline runs open,
+// in progress, done — sorting it alphabetically would put finished work at the top.
+const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+const WORK_STATUS_RANK = { open: 0, in_progress: 1, done: 2 };
+
+register('work-rows', {
+  equipment_name: (w) => w.equipment_name,
+  title: (w) => w.title,
+  assignee_name: (w) => w.assignee_name,
+  priority: (w) => PRIORITY_RANK[w.priority] ?? 3,
+  status: (w) => WORK_STATUS_RANK[w.status] ?? 3,
+  labour_hours: (w) => w.labour_hours,
+  cost: (w) => w.cost,
+}, drawWork);
 
 // ---- editing a job -------------------------------------------------------
 // It was a row of inputs inside the table, which could change four things and

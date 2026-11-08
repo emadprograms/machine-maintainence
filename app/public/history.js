@@ -10,6 +10,8 @@
 // emptyRow, api, $) rather than repeating them: this is one page, not a bundle
 // of independent widgets.
 
+import { register, rowsFor, markTable } from './tables.js';
+
 const STATUS_LABEL = { open: 'Open', in_progress: 'In progress', done: 'Done' };
 const STATUS_COLOUR = { open: 'amber', in_progress: 'blue', done: 'green' };
 
@@ -43,6 +45,8 @@ function historyHasRange() {
   return Boolean($('#history-from').value || $('#history-to').value);
 }
 
+let historyRows = [];
+
 function historyRow(w) {
   return `<tr>
     ${strong(w.equipment_name)}
@@ -63,12 +67,20 @@ function renderHistoryError(message) {
 }
 
 export function renderHistory({ rows, total, shown }) {
-  const range = historyHasRange();
   const count = Number(total ?? 0);
   $('#history-summary').textContent = count === 0 ? ''
     : `${count} closed ${count === 1 ? 'job' : 'jobs'}`
       + (shown < count ? ` · showing the most recent ${shown}` : '');
+  historyRows = rows;
+  drawHistory();
+}
+
+/** Drawn from the rows the last load returned, so sorting a column costs no request
+ *  and cannot disagree with the summary line above it. */
+function drawHistory() {
+  const range = historyHasRange();
   const searched = ($('#history-search')?.value || '').trim();
+  const rows = rowsFor('history-rows', historyRows);
   $('#history-rows').innerHTML = rows.length
     ? rows.map(historyRow).join('')
     : emptyRow(5, searched
@@ -76,7 +88,16 @@ export function renderHistory({ rows, total, shown }) {
       : range
         ? 'Nothing was closed between those dates. Widen the range, or clear it.'
         : 'Nothing has been closed yet. A work order appears here once it is marked done.');
+  markTable('history-rows');
 }
+
+register('history-rows', {
+  equipment_name: (w) => w.equipment_name,
+  title: (w) => w.title,
+  closed_at: (w) => w.closed_at,
+  owner: (w) => w.owner,
+  priority: (w) => ({ high: 0, medium: 1, low: 2 }[w.priority] ?? 3),
+}, drawHistory);
 
 export async function loadHistory() {
   try {
@@ -101,6 +122,26 @@ export function downloadHistory() {
 export const searchHistory = debounce(() => loadHistory());
 
 // --------------------------------------------------- one machine's history
+let machineHistory = [];
+
+/** One machine's history, drawn from what was just fetched. Sorting it is the same
+ *  click as the main table's, because it is the same kit. */
+function drawMachineHistory(name = $('#machine-history-title').textContent) {
+  const rows = rowsFor('machine-history-rows', machineHistory);
+  $('#machine-history-rows').innerHTML = rows.length
+    ? rows.map(machineHistoryRow).join('')
+    : emptyRow(5, `Nothing has been reported against ${name} yet.`);
+  markTable('machine-history-rows');
+}
+
+register('machine-history-rows', {
+  title: (w) => w.title,
+  status: (w) => ({ open: 0, in_progress: 1, done: 2 }[w.status] ?? 3),
+  owner: (w) => w.owner,
+  created_at: (w) => w.created_at,
+  closed_at: (w) => w.closed_at,
+}, drawMachineHistory);
+
 function machineHistoryRow(w) {
   return `<tr>
     <td>${esc(w.title)}</td>
@@ -127,9 +168,8 @@ export async function openMachineHistory(id, el) {
   openForm('machine-history');
   try {
     const data = await api(`/history?equipment_id=${encodeURIComponent(id)}`);
-    $('#machine-history-rows').innerHTML = data.rows.length
-      ? data.rows.map(machineHistoryRow).join('')
-      : emptyRow(5, `Nothing has been reported against ${name} yet.`);
+    machineHistory = data.rows;
+      drawMachineHistory(name);
   } catch (e) {
     $('#machine-history-rows').innerHTML = `<tr><td colspan="5" class="cell-say cell-error">` +
       `Could not load this machine’s history. ${esc(e.message)}</td></tr>`;

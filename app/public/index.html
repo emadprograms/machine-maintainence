@@ -57,7 +57,7 @@
       </div>
       <div class="card">
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th>Every</th><th class="cell-num">Due</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Due<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="due-rows"></tbody></table>
         </div>
       </div>
@@ -184,7 +184,7 @@
           </div>
           <p class="sheet-sub">Every job ever reported against this machine, newest first.</p>
           <div class="table-wrap">
-            <table class="table"><thead><tr><th>Job</th><th>Status</th><th>Assigned to</th><th>Opened</th><th>Closed</th></tr></thead>
+            <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="created_at">Opened<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
               <tbody id="machine-history-rows"></tbody></table>
           </div>
           <div class="sheet-foot">
@@ -216,7 +216,7 @@
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Problem</th><th>Assigned to</th><th>Priority</th><th>Status</th><th class="cell-num">Hours</th><th class="cell-num">Cost</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
@@ -367,7 +367,7 @@
         </div>
         <p id="history-summary" class="summary-line"></p>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Job</th><th>Closed</th><th>Assigned to</th><th>Priority</th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
             <tbody id="history-rows"></tbody></table>
         </div>
       </div>
@@ -388,7 +388,7 @@
           <button class="ghost small" onclick="downloadParts()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Name</th><th>Reference</th><th class="cell-num">In stock</th><th class="cell-num">Unit price</th><th class="cell-num">Reorder at</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="reference">Reference<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="qty">In stock<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="unit_price">Unit price<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="reorder_level">Reorder at<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="parts-rows"></tbody></table>
         </div>
       </div>
@@ -455,7 +455,7 @@
       </div>
       <div class="card">
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Machine</th><th>Task</th><th class="cell-num">Every</th><th class="cell-num">Last done</th><th class="cell-num">Next due</th><th>Mark done on</th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="last_done">Last done<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Next due<span class="sort-mark" aria-hidden="true"></span></button></th><th>Mark done on</th><th></th></tr></thead>
             <tbody id="pm-rows"></tbody></table>
         </div>
       </div>
@@ -493,7 +493,7 @@
       </div>
       <div class="card">
         <div class="table-wrap">
-          <table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="email">Email<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="role">Role<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="active">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="users-rows"></tbody></table>
         </div>
       </div>
@@ -545,8 +545,7 @@
         <p id="report-summary" class="summary-line"></p>
         <div class="table-wrap">
           <table class="table"><thead><tr>
-            <th>Machine</th><th class="cell-num">Jobs</th><th class="cell-num">Hours</th>
-            <th class="cell-num">Parts</th><th class="cell-num">Labour</th><th class="cell-num">Total</th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="jobs">Jobs<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="parts_cost">Parts<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_cost">Labour<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total">Total<span class="sort-mark" aria-hidden="true"></span></button></th>
           </tr></thead><tbody id="report-rows"></tbody></table>
         </div>
       </div>

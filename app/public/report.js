@@ -6,6 +6,8 @@
 // same reason as the dashboard: a number the database can compute should not be
 // computed in the browser where nothing tests it.
 
+import { register, rowsFor, markTable } from './tables.js';
+
 const money = (n) => Number(n || 0).toFixed(2);
 
 /** "2026-11" — the shape an <input type="month"> and the server both use. */
@@ -24,13 +26,35 @@ function reportRow(m) {
   </tr>`;
 }
 
+let reportMachines = [];
+let reportMonth = '';
+
+function drawReport() {
+  const rows = rowsFor('report-rows', reportMachines);
+  $('#report-rows').innerHTML = rows.length
+    ? rows.map(reportRow).join('')
+    : emptyRow(6, `Nothing was closed in ${reportMonth}. Pick another month, or finish a job first.`);
+  markTable('report-rows');
+}
+
+// The six columns are already numbers; sorting Total is the one people want first,
+// and it costs nothing to offer the other five the same way.
+register('report-rows', {
+  name: (m) => m.name,
+  jobs: (m) => Number(m.jobs),
+  hours: (m) => Number(m.hours),
+  parts_cost: (m) => Number(m.parts_cost),
+  labour_cost: (m) => Number(m.labour_cost),
+  total: (m) => Number(m.total),
+}, drawReport);
+
 export function renderReport(r) {
   $('#report-summary').textContent = r.jobs === 0 ? ''
     : `${r.jobs} ${r.jobs === 1 ? 'job' : 'jobs'} · ${r.hours} h · parts ${money(r.parts_cost)}`
       + ` · labour ${money(r.labour_cost)} · total ${money(r.total)}`;
-  $('#report-rows').innerHTML = r.machines.length
-    ? r.machines.map(reportRow).join('')
-    : emptyRow(6, `Nothing was closed in ${r.month}. Pick another month, or finish a job first.`);
+  reportMachines = r.machines;
+  reportMonth = r.month;
+  drawReport();
 }
 
 export function renderReportError(message) {

@@ -9,6 +9,12 @@ const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return 
 const historyReady = import('/history.js').then((m) => { return m; });
 const reportReady = import('/report.js').then((m) => { return m; });
 const machinesReady = import('/machines.js').then((m) => { return m; });
+// The shared table kit — one sorting rule and one three-dot menu for every table in
+// the app. app.js is a classic script, so it reaches the module here; every loader
+// that draws a table waits for it, and the redraw a heading click causes can only
+// happen after that.
+let kit = null;
+const tablesReady = import('/tables.js').then((m) => { kit = m; return m; });
 const $$ = (s) => document.querySelectorAll(s);
 
 // ------------------------------------------------------- dialogs and empty states
@@ -233,22 +239,39 @@ function stockCell(p) {
 }
 
 async function loadParts() {
+  await tablesReady;
   const low = $('#low-stock-filter')?.checked;
   partsCache = await api(`/parts${low ? '?low=1' : ''}`);
-  $('#parts-rows').innerHTML = partsCache.map((p) => `<tr>
+  drawParts();
+}
+
+/** The table, drawn from `partsCache`, in whatever order a heading has asked for. */
+function drawParts() {
+  const low = $('#low-stock-filter')?.checked;
+  const rows = kit.rowsFor('parts-rows', partsCache);
+  $('#parts-rows').innerHTML = rows.map((p) => `<tr>
         ${strong(p.name)}${soft(p.reference)}
         ${stockCell(p)}
         <td class="cell-num cell-muted">${p.unit_price == null ? 'Not set' : esc(money(p.unit_price))}</td>
         <td class="cell-num cell-muted">${esc(p.reorder_level)}</td>
-        <td>
-          <button class="ghost small" onclick="editPart(${p.id})">Edit</button>
-          <button class="ghost small danger" onclick="removePart(${p.id})">Delete</button>
-        </td>
+        ${kit.rowMenu(p.name, [
+          kit.menuItem('Edit part', `editPart(${p.id})`),
+          kit.menuItem('Delete part', `removePart(${p.id})`, { danger: true }),
+        ])}
       </tr>`).join('')
     || emptyRow(6, low
       ? 'Every part is above its reorder level. Nothing to order.'
       : 'No spare parts yet. Add the ones you keep on the shelf.');
+  kit.markTable('parts-rows');
 }
+
+tablesReady.then((t) => t.register('parts-rows', {
+  name: (p) => p.name,
+  reference: (p) => p.reference,
+  qty: (p) => p.qty,
+  unit_price: (p) => p.unit_price,
+  reorder_level: (p) => p.reorder_level,
+}, drawParts));
 
 /** Open the editor filled with what the row already says. Nothing is fetched: the
  *  part is in the list that drew the button, the same way a machine is. */
@@ -353,37 +376,75 @@ async function loadDashboard() {
   }
 }
 
+let dueCache = [];
+
 async function loadDue() {
+  await tablesReady;
   const days = $('#due-days').value || 7;
   // `service=active`: a machine that has left the workshop has no maintenance to
   // do. The schedule is not deleted — park the machine and it waits; restore it
   // and the reminders come back.
-  const rows = await api(`/pm/due?days=${days}&service=active`);
+  dueCache = await api(`/pm/due?days=${days}&service=active`);
+  drawDue();
+}
+
+function drawDue() {
+  const rows = kit.rowsFor('due-rows', dueCache);
   $('#due-rows').innerHTML = rows.map((p) => `
     <tr>
       ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
       <td class="cell-num cell-muted">every ${p.interval_days} d</td>
       <td class="cell-num">${esc(p.next_due)} ${dueKind(p.days_left)}</td>
-      <td><button class="ghost small" onclick="pmDone(${p.id})">Mark done</button></td>
+      ${kit.rowMenu(`${p.task} on ${p.equipment_name}`, [
+        kit.menuItem('Mark done today', `pmDone(${p.id})`),
+      ])}
     </tr>`).join('')
     || emptyRow(5, 'Nothing is due in this window. Widen the range above to look further ahead.');
+  kit.markTable('due-rows');
 }
 
+tablesReady.then((t) => t.register('due-rows', {
+  equipment_name: (p) => p.equipment_name,
+  task: (p) => p.task,
+  interval_days: (p) => p.interval_days,
+  next_due: (p) => p.next_due,
+}, drawDue));
+
+let pmCache = [];
+
 async function loadPm() {
+  await tablesReady;
   // Same rule as Due soon, asked for the same way, so the two lists cannot disagree
   // about which machines still have maintenance.
-  const rows = await api('/pm?service=active');
+  pmCache = await api('/pm?service=active');
+  drawPm();
+}
+
+function drawPm() {
+  const rows = kit.rowsFor('pm-rows', pmCache);
   $('#pm-rows').innerHTML = rows.map((p) => `
     <tr>
       ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
       <td class="cell-num cell-muted">every ${p.interval_days} d</td>
       ${soft(p.last_done, 'Never')}
       <td class="cell-num">${esc(p.next_due)} ${dueKind(p.days_left)}</td>
-      <td><input type="date" id="pm-on-${p.id}" value="${esc(today())}" title="The day it was done" />
-        <button class="ghost small" onclick="pmDone(${p.id})">Mark done</button></td>
+      <td class="cell-date"><input type="date" id="pm-on-${p.id}" value="${esc(today())}" title="The day it was done"
+            aria-label="The day this was done" /></td>
+      ${kit.rowMenu(`${p.task} on ${p.equipment_name}`, [
+        kit.menuItem('Mark done on that day', `pmDone(${p.id})`),
+      ])}
     </tr>`).join('')
-    || emptyRow(6, 'No repeating maintenance yet. Add a schedule and it will show up here.');
+    || emptyRow(7, 'No repeating maintenance yet. Add a schedule and it will show up here.');
+  kit.markTable('pm-rows');
 }
+
+tablesReady.then((t) => t.register('pm-rows', {
+  equipment_name: (p) => p.equipment_name,
+  task: (p) => p.task,
+  interval_days: (p) => p.interval_days,
+  last_done: (p) => p.last_done,
+  next_due: (p) => p.next_due,
+}, drawPm));
 
 async function addPm() {
   try {
@@ -442,19 +503,36 @@ async function doBackup() {
 
 
 // ------------------------------------------------------------------ users
+let usersCache = [];
+
 async function loadUsers() {
-  const rows = await api('/users');
+  await tablesReady;
+  usersCache = await api('/users');
+  drawUsers();
+}
+
+function drawUsers() {
+  const rows = kit.rowsFor('users-rows', usersCache);
   $('#users-rows').innerHTML = rows.map((u) => `
     <tr>
       ${strong(u.name)}<td class="cell-muted">${esc(u.email)}</td>
       <td>${badge(u.role, u.role === 'admin' ? 'amber' : 'grey')}</td>
       <td>${u.active ? badge('active', 'green') : badge('disabled', 'red')}</td>
-      <td><button class="ghost small" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">
-        ${u.active ? 'Disable' : 'Enable'}
-      </button></td>
+      ${kit.rowMenu(u.name, [
+        kit.menuItem(u.active ? 'Disable this account' : 'Enable this account',
+          `toggleUser(${u.id}, ${u.active ? 0 : 1})`),
+      ])}
     </tr>`).join('')
     || emptyRow(5, 'Only your account exists. Create the rest with "New user".');
+  kit.markTable('users-rows');
 }
+
+tablesReady.then((t) => t.register('users-rows', {
+  name: (u) => u.name,
+  email: (u) => u.email,
+  role: (u) => u.role,
+  active: (u) => (u.active ? 'active' : 'disabled'),
+}, drawUsers));
 
 async function addUser() {
   try {

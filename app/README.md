@@ -60,12 +60,13 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 576 |
+| `public/index.html` | The whole UI shell: every screen and form | 575 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 288 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 148 · 79 · 101 · 358 · 241 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 560 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 188 · 103 · 101 · 304 · 268 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 513 behaviours | 2,877 |
+| `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 522 behaviours | 2,979 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -143,15 +144,23 @@ photograph pushed that page past 600 lines.
   manufacturer, category, location and state — one column each, in that order. The empty
   table spans exactly the columns its header names, and the suite checks that rather than
   trusting anyone to count.
-* **The machine table sorts by any heading that holds a value.** Name, Barcode,
-  Manufacturer, Category, Location and Status are buttons: one click orders that column
-  ascending, the same heading again turns it round, and a small arrow beside the heading
-  says which way it is. The Photograph column and the three-dots column are not sortable —
-  there is no sensible order for a picture. Nothing is sorted until someone asks, and the
-  order they ask for survives a search, a filter change and a save. Clicking redraws from
-  the list already in memory, so it costs no request; a barcode sorts as a number
-  (`9`, `10`, `101220054`), a machine with nothing in the column goes last whichever way
-  it is sorted, and two machines with the same value keep the order they arrived in.
+* **Every table sorts by any heading that holds a value.** Machines, work orders,
+  history, one machine's history, spare parts, maintenance, due soon, users and the
+  report all behave the same way: one click on a heading orders that column ascending,
+  the same heading again turns it round, and an arrow in a fixed slot beside it says
+  which way. Nothing is sorted until someone asks, the order survives a search, a filter
+  change and a save, and a click redraws from the list already in memory — no request.
+  Where the alphabet is the wrong order the column says so: priority runs high → low,
+  status runs open → done, and a barcode sorts as a number rather than as digits.
+* **Every row's actions are behind three dots.** Machines, work orders, spare parts,
+  maintenance, due soon and users: one menu per row, the destructive item red, and the
+  button names the row it belongs to for anyone using a screen reader. A table of twenty
+  rows used to look like a toolbar.
+* **The machine table's photograph column is not sortable, and that is the rule
+  everywhere.** A heading is offered only where the column holds a value — there is no
+  sensible order for a picture, and none for a three-dot menu. A blank cell goes last
+  whichever way the sort runs, so sorting Barcode descending does not hand back a
+  screenful of machines that have no barcode.
 * **The machine list has four views, and opens on everything.** The filter in the Machines
   toolbar offers *All machines* (the default), *In service*, *Down right now* and *Retired*;
   the search box narrows whichever view is chosen. It opened on *In service* until
@@ -427,10 +436,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 513 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 522 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`513 passed, 0 failed`.
+`522 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

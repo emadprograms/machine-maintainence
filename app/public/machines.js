@@ -6,7 +6,7 @@
 // api, $, searchTerm, openForm, closeForm, formError, formDone) rather than
 // repeating them: this is one page, not a bundle of independent widgets.
 
-import { sortRows } from './sort.js';
+import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
 
 // ---- what a row shows ------------------------------------------------------
 // Status is not a field any more: status.js derives it from the work orders and
@@ -34,50 +34,19 @@ function statusCell(machine) {
  * Everything you can do to one machine, behind three dots. It used to be four
  * buttons on every row, which made a table of twenty machines look like a toolbar;
  * and the ones a technician may not use were drawn for them anyway, in the hope
- * that the server would say no.
+ * that the server would say no. The markup itself lives in tables.js, shared with
+ * every other table's menu.
  */
 function actions(machine) {
   const admin = window.me?.role === 'admin';
-  const items = [
-    admin ? `<button type="button" onclick="editEquipment(${machine.id})">Edit machine</button>` : '',
-    `<button type="button" onclick="openMachineHistory(${machine.id}, this)">History</button>`,
-    admin ? `<button type="button" onclick="toggleStatus(${machine.id}, '${machine.service_status}')">${
-      machine.service_status === 'retired' ? 'Return to service' : 'Retire machine'}</button>` : '',
-    admin ? `<button type="button" class="danger" onclick="openEquipmentDelete(${machine.id})">Delete machine</button>` : '',
-  ].filter(Boolean).join('');
-  return `<td class="cell-actions"><details class="row-menu">
-      <summary aria-label="Actions for ${esc(machine.name)}">&#8943;</summary>
-      <div class="menu">${items}</div>
-    </details></td>`;
+  return rowMenu(machine.name, [
+    admin ? menuItem('Edit machine', `editEquipment(${machine.id})`) : '',
+    menuItem('History', `openMachineHistory(${machine.id}, this)`),
+    admin ? menuItem(machine.service_status === 'retired' ? 'Return to service' : 'Retire machine',
+      `toggleStatus(${machine.id}, '${machine.service_status}')`) : '',
+    admin ? menuItem('Delete machine', `openEquipmentDelete(${machine.id})`, { danger: true }) : '',
+  ]);
 }
-
-// One listener for the whole page: a menu closes when you pick something from it,
-// and when you click anywhere else. A `<details>` open in a table row is otherwise
-// the kind of thing that stays open behind the next dialog.
-const closeMenus = () => document.querySelectorAll('details.row-menu[open]')
-  .forEach((d) => d.removeAttribute('open'));
-
-document.addEventListener('click', (event) => {
-  const item = event.target.closest('.row-menu .menu button');
-  if (item) closeMenus();
-  else if (!event.target.closest('.row-menu')) closeMenus();
-});
-
-// The menu is `position: fixed`, so its place is worked out when it opens: below
-// the three dots, right-aligned to them, and lifted left on the last column so it
-// cannot run off the screen.
-document.addEventListener('toggle', (event) => {
-  const details = event.target;
-  if (!details.classList?.contains('row-menu') || !details.open) return;
-  const dot = details.querySelector('summary').getBoundingClientRect();
-  const list = details.querySelector('.menu');
-  list.style.top = `${dot.bottom + 6}px`;
-  list.style.left = `${Math.max(8, dot.right - 196)}px`;
-}, true);
-
-// A fixed menu would stay behind while the page moves under it.
-window.addEventListener('scroll', closeMenus, true);
-window.addEventListener('resize', closeMenus);
 
 // The list as last loaded.// The list as last loaded. Edit needs the whole record to fill its form, and
 // looking it up here beats inventing a GET /api/equipment/:id that nothing else
@@ -99,52 +68,12 @@ const VIEWS = {
 // ---- which column, which way ---------------------------------------------
 // Nothing is sorted until a heading is clicked. The list already arrives by name
 // from the server, and a table that shows an arrow before anybody asked for one is
-// claiming a decision nobody made.
-let sortKey = null;
-let sortDir = 1;
+// claiming a decision nobody made. The state and the arrow live in tables.js now
+// that every table sorts; only the meaning of each column is local.
 
 // What "sorted by this column" means, per column. Status sorts by the word the row
 // shows — Down, Retired, Running — because that is what the heading says and what a
 // person reading the column sees. Anything not in here is not sortable.
-const SORTS = {
-  name: (machine) => machine.name,
-  asset_tag: (machine) => machine.asset_tag,
-  manufacturer: (machine) => machine.manufacturer,
-  category: (machine) => machine.category,
-  location: (machine) => machine.location,
-  status: (machine) => STATUS_WORD[machine.status] || machine.status,
-};
-
-/** A heading was clicked. The same heading again turns it round; a different one
- *  starts ascending, because the first answer to "sort by this" is the one
- *  everybody means. Redraws from the list already in memory — no request, so the
- *  table turns over as fast as the click lands. */
-export function sortEquipment(key) {
-  if (!SORTS[key]) return;
-  sortDir = key === sortKey ? -sortDir : 1;
-  sortKey = key;
-  drawEquipment();
-}
-
-/** The arrow, and the fact said out loud for a screen reader. Every heading carries
- *  `aria-sort`, so "not sorted" is stated rather than merely implied by a blank. */
-function markSort() {
-  document.querySelectorAll('button[data-sort]').forEach((button) => {
-    const heading = button.closest('th');
-    const on = button.dataset.sort === sortKey;
-    heading.setAttribute('aria-sort', on ? (sortDir === 1 ? 'ascending' : 'descending') : 'none');
-    button.querySelector('.sort-mark').textContent = on ? (sortDir === 1 ? '\u25B2' : '\u25BC') : '';
-    heading.classList.toggle('sorted', on);
-  });
-}
-
-/** One click handler for the six headings. The buttons are real `<button>`s inside
- *  the `<th>`s, so Enter and Space work without a keydown listener and the column
- *  keeps its header semantics for a screen reader. */
-document.addEventListener('click', (event) => {
-  const button = event.target.closest?.('button[data-sort]');
-  if (button) sortEquipment(button.dataset.sort);
-});
 
 /** The filter and the search box, read at the moment they are needed. The table is
  *  drawn from these, and the request is built from the same function, so a redraw
@@ -160,7 +89,7 @@ function currentView() {
  *  Separate from loading so sorting costs nothing but a redraw. */
 function drawEquipment() {
   const { q, view } = currentView();
-  const rows = sortKey ? sortRows(equipmentRows, SORTS[sortKey], sortDir) : equipmentRows;
+  const rows = rowsFor('equipment-rows', equipmentRows);
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr${e.service_status === 'retired' ? ' class="row-quiet"' : ''}>
       <td class="cell-thumb">${thumbnail(e)}</td>
@@ -172,8 +101,25 @@ function drawEquipment() {
     || emptyRow(8, q
       ? `Nothing in this filter matches "${q}". Clear the search to see the rest.`
       : view.empty);
-  markSort();
+  markTable('equipment-rows');
 }
+
+// Registered once, so the six headings and the arrow work without a line per column
+// in the click handler. Redrawing from memory is the whole point: `drawEquipment`
+// never fetches.
+//
+// What "sorted by this column" means, per column. Status sorts by the word the row
+// shows — Down, Retired, Running — because that is what the heading says and what a
+// person reading the column sees. A column that is not in here cannot be sorted, and
+// the markup cannot offer one.
+register('equipment-rows', {
+  name: (machine) => machine.name,
+  asset_tag: (machine) => machine.asset_tag,
+  manufacturer: (machine) => machine.manufacturer,
+  category: (machine) => machine.category,
+  location: (machine) => machine.location,
+  status: (machine) => STATUS_WORD[machine.status] || machine.status,
+}, drawEquipment);
 
 export async function loadEquipment() {
   const { q, view } = currentView();
