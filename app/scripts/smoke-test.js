@@ -3534,6 +3534,10 @@ const printMarkup = readFileSync(join(root, 'public', 'print-job.html'), 'utf8')
 const printCss = readFileSync(join(root, 'public', 'print-job.css'), 'utf8');
 ok('machine status is alongside time in the stage details row',
   /stage-details-row[\s\S]*id="wa-hours"[\s\S]*class="stage-machine"[\s\S]*id="wa-running"[\s\S]*id="wa-owner-field"/.test(assignDialog));
+ok('machine status reads like a form field and uses the muted stage palette',
+  assignDialog.includes('id="wa-running-question">Machine status</strong>')
+  && /\.stage-machine-copy strong \{[^}]*color: var\(--soft\)/.test(stageLayout)
+  && /\.stage-machine \.machine-toggle \{[^}]*background: #f5f7fa/.test(stageLayout));
 ok('the stage timeline and photo preview have dedicated responsive styles',
   stageLayout.includes('.stage-view-only .update-history') && stageLayout.includes('.stage-thumbnail')
   && html.includes('id="stage-photo-viewer"') && html.includes('id="wa-new-photos"'));

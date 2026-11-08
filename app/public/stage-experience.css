@@ -1,11 +1,12 @@
 /* Stage details: keep the status with the time it describes, not in a detached card. */
 .stage-details-row { align-items: start; gap: 16px; }
 .stage-time { flex: 0 1 160px; width: 160px; }
-.stage-machine { flex: 1 1 250px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; min-width: 0; padding: 0; border: 0; background: none; }
+.stage-machine { flex: 1 1 230px; max-width: 280px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; min-width: 0; padding: 0; border: 0; background: none; }
 .stage-machine-copy { display: contents; }
-.stage-machine-copy strong { order: 0; font-size: 13px; }
-.stage-machine-copy .hint { order: 2; margin: 1px 0 0; font-size: 11px; }
-.stage-machine .machine-toggle { order: 1; min-height: 38px; }
+.stage-machine-copy strong { order: 0; color: var(--soft); font-size: 13px; font-weight: 600; line-height: normal; }
+.stage-machine-copy .hint { order: 2; margin: 5px 0 0; font-size: 11px; }
+.stage-machine .machine-toggle { order: 1; min-height: 38px; margin-top: 5px; padding: 4px 9px; border: 1px solid #dfe6ee; border-radius: 8px; background: #f5f7fa; }
+.stage-machine .machine-toggle:hover { border-color: #bdcbda; background: #edf2f7; }
 .stage-owner { flex: 1 1 180px; }
 
 /* A single, aligned table surface. Draft rows and the input row are distinct. */
@@ -46,7 +47,7 @@
 @media (max-width: 600px) {
   .stage-details-row { gap: 14px; }
   .stage-time { flex: 1 1 125px; }
-  .stage-machine { flex: 1 1 190px; gap: 0; }
+  .stage-machine { flex: 1 1 190px; max-width: none; gap: 0; }
   .stage-owner { flex-basis: 100%; }
   .stage-thumbnail { width: 76px; }
   .stage-thumbnail img { height: 58px; }
