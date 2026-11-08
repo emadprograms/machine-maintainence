@@ -2290,6 +2290,9 @@ ok('and the jobs themselves are gone', (await late(`/api/work-orders/${reportJob
 
 // ---- the form that asks for all of it -------------------------------------
 const workForm = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the required problem field has a small red asterisk',
+  /<label[^>]*><span>Problem\s*<span class="required-mark" aria-hidden="true">\*<\/span><\/span><input id="w-title" required\b/.test(workForm)
+  && /\.required-mark\s*\{[^}]*color:\s*var\(--red\);[^}]*font-size:\s*\.85em/.test(uiCss));
 ok('the report form asks what was seen, who saw it and for a photograph',
   workForm.includes('id="w-notes"') && workForm.includes('id="w-reporter"')
   && workForm.includes('id="w-photo"'), workForm ? 'a field is missing' : 'work-form is gone');
