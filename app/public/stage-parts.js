@@ -2,6 +2,11 @@
 // the whole update is saved successfully on the server.
 let choices = [], draft = [], generation = 0;
 
+function updateSummary() {
+  const count = draft.length + ($('#wa-part').value ? 1 : 0);
+  $('#wa-parts-summary').textContent = count ? `${count} ${count === 1 ? 'part' : 'parts'} selected` : 'Optional · Add parts used in this stage';
+}
+
 export function resetStageParts() {
   ++generation;
   choices = []; draft = [];
@@ -11,7 +16,7 @@ export function resetStageParts() {
   $('#wa-part-price').value = '';
   $('#wa-part-list').innerHTML = '';
   $('#wa-part-status').textContent = '';
-  $('#wa-part-retry').hidden = true;
+  $('#wa-part-retry').hidden = true; updateSummary();
 }
 
 export async function loadStageParts() {
@@ -37,7 +42,7 @@ export async function loadStageParts() {
 
 export function selectStagePart() {
   const part = choices.find((p) => String(p.id) === $('#wa-part').value);
-  $('#wa-part-price').value = part?.unit_price == null ? '' : String(part.unit_price);
+  $('#wa-part-price').value = part?.unit_price == null ? '' : String(part.unit_price); updateSummary();
 }
 
 function selectedLine() {
@@ -55,6 +60,7 @@ function selectedLine() {
 }
 
 function drawDraft() {
+  updateSummary();
   $('#wa-part-list').innerHTML = draft.map((p, i) => `<li>${esc(p.name)} × ${p.qty} · ${Number(p.unit_price).toFixed(2)} each
     <button type="button" class="ghost small" onclick="removeStagePart(${i})">Remove</button></li>`).join('');
 }
@@ -81,6 +87,8 @@ export function setStageParts(lines) {
 }
 
 export function removeStagePart(index) { draft.splice(index, 1); drawDraft(); }
+
+export function hasStagePartsDraft() { return draft.length > 0 || Boolean($('#wa-part').value); }
 
 export function stagePartsForSave() {
   const part = selectedLine();

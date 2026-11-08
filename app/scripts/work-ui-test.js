@@ -441,7 +441,49 @@ assert.equal(el('#wa-running').checked, false);
 updates = [{ id: 51, stage: 1, message: 'First', hours: 1, author: 'Admin', created_at: '2026-01-01', photos: [], parts: [] },
   { id: 52, stage: 2, message: 'Latest', hours: 2, author: 'Admin', created_at: '2026-01-01', photos: [3], machine_running: 0,
     parts: [{ part_id: 5, part_name: '<Motor>', qty: 2, unit_price: 75 }] }];
+// History is compact during entry but opens for the read-only timeline. A
+// selected spare part is still a draft worth protecting before editing history.
+await work.openWorkUpdates(42);
+assert.equal(el('#wa-history-panel').open, false);
+assert.equal(el('#wa-parts-panel').open, false);
+assert.equal(el('#wa-photos-panel').open, false);
+assert.equal(el('#wa-history-count').textContent, '2 updates');
+el('#wa-part').value = '5'; stageParts.selectStagePart();
+assert.equal(el('#wa-parts-summary').textContent, '1 part selected');
+let draftConfirmations = 0;
+window.confirm = () => { draftConfirmations++; return false; };
+updateUI.editLatestStage(52);
+assert.equal(el('#wa-delete').hidden, true);
+assert.equal(el('#wa-part').value, '5');
+el('#wa-part').value = ''; el('#wa-part-price').value = '';
+el('#wa-photos').files = [{ name: 'draft.png', size: 1 }];
+updateUI.editLatestStage(52);
+assert.equal(draftConfirmations, 2); // a photo alone is also an unsaved draft
+el('#wa-photos').files = [];
+el('#wa-owner-field').hidden = false; el('#wa-owner').value = '987';
+updateUI.editLatestStage(52);
+assert.equal(draftConfirmations, 3); // an assignee change is a draft
+el('#wa-owner-field').hidden = true;
+el('#wa-running').checked = true; updateUI.stageToggleChanged();
+updateUI.editLatestStage(52);
+assert.equal(draftConfirmations, 4); // a changed machine state is protected too
+window.confirm = () => true;
+await work.openWorkUpdates(42);
+el('#wa-part').value = '6'; stageParts.selectStagePart();
+updateUI.editLatestStage(52); // discarded new-stage part must never enter the correction
+assert.equal(el('#wa-part').value, '');
+assert.equal(el('#wa-part-price').value, '');
+assert.match(el('#wa-part-list').innerHTML, /&lt;Motor>/);
+await work.openWorkUpdates(42);
+el('#wa-message').value = 'Draft'; el('#wa-hours').value = '1'; el('#wa-owner').value = '1';
+el('#wa-part').value = '5'; el('#wa-part-price').value = '';
+el('#wa-parts-panel').open = false;
+await updateUI.startAssigned();
+assert.equal(el('#wa-parts-panel').open, true);
+assert.match(errors.at(-1)[1], /unit cost/i);
 await work.openWorkUpdates(42, true);
+assert.equal(el('#wa-cancel').textContent, 'Close');
+assert.equal(el('#wa-history-panel').open, true);
 assert.match(el('#wa-history').innerHTML, /editLatestStage\(52\)/);
 assert.doesNotMatch(el('#wa-history').innerHTML, /editLatestStage\(51\)/);
 updateUI.editLatestStage(51);
@@ -454,7 +496,18 @@ assert.match(el('#wa-part-list').innerHTML, /&lt;Motor>/);
 assert.match(el('#wa-existing-photos').innerHTML, /photo 1/i);
 assert.equal(el('#wa-running').checked, false);
 assert.equal(el('#wa-delete').hidden, false);
+assert.equal(el('#wa-history-panel').open, false);
+assert.equal(el('#wa-parts-panel').open, true);
+assert.equal(el('#wa-photos-panel').open, true);
 keptPhotos = ['3'];
+updateUI.stagePhotoSelectionChanged();
+assert.equal(el('#wa-photos-summary').textContent, '1 photo selected');
+el('#wa-photos').files = Array.from({ length: 5 }, (_, i) => ({ name: `photo${i}.png`, size: 1 }));
+el('#wa-photos-panel').open = false;
+await updateUI.startAssigned();
+assert.equal(el('#wa-photos-panel').open, true);
+assert.match(errors.at(-1)[1], /five photos/i);
+el('#wa-photos').files = [];
 el('#wa-hours').value = '3';
 stageWarning = true;
 await updateUI.startAssigned();

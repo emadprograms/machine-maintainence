@@ -29,12 +29,13 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v4.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — v4.0 stage correction and machine state completed
+Last activity: 2026-11-05 — work-update dialog redesigned for user review
 
 ## Quick Tasks Completed
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | update-form-design | Simplified the update dialog with a compact history, clear machine state, optional part/photo disclosures and a non-overlapping action bar; 637 smoke checks and desktop/mobile Chromium flows passed | See git history |
 | 2026-11-05 | debug-stage-costs | Update live machine and work-order hours, record optional staged parts at actual cost, and report running state | See git history |
 | 2026-11-05 | debug-empty-updates | Show the known empty history on a new ticket and distinguish a stale server from a truly empty list | See git history |
 | 2026-11-05 | debug-assignee-picker | Show and preselect assignees when starting, and independently load/retry people and history | See git history |

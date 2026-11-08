@@ -1,6 +1,6 @@
 // Timeline, new stage and admin correction share one spacious dialog. The server
 // remains authoritative about the latest stage, stock, photos and machine state.
-import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts } from './stage-parts.js';
+import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts, hasStagePartsDraft } from './stage-parts.js';
 let refreshAfterUpdate = () => {}, rememberPeople = () => {};
 let updatingWork = null, updateJob = null, editingStage = null, latestStage = null;
 let updateRun = 0, updateLoad = 0, updateEditing = false, stateReady = false;
@@ -23,8 +23,11 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wa-entry').hidden = !editing;
   $('#wa-go').hidden = !editing;
-  $('#wa-go').textContent = 'Save update';
+  $('#wa-go').textContent = 'Save update'; $('#wa-cancel').textContent = editing ? 'Cancel' : 'Close';
   $('#wa-delete').hidden = true;
+  $('#wa-history-panel').open = viewOnly; $('#wa-parts-panel').open = false; $('#wa-photos-panel').open = false;
+  $('#wa-history-count').textContent = 'Loading…'; $('#wa-photos-summary').textContent = 'Optional · Attach up to 5 photos';
+  $('#wa-photo-selection').textContent = ''; $('#wa-scroll').scrollTop = 0;
   $('#wa-message').value = ''; $('#wa-hours').value = ''; $('#wa-photos').value = '';
   $('#wa-existing-photos').innerHTML = '';
   $('#wa-running-help').textContent = 'The state you record becomes the machine’s latest status.';
@@ -35,6 +38,8 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
   $('#wa-owner').disabled = true;
   openForm('work-assign');
+  $('#work-assign-title').focus?.({ preventScroll: true });
+  $('#wa-scroll').scrollTop = 0;
   return retryWorkUpdateLoading();
 }
 
@@ -79,12 +84,13 @@ export async function retryWorkUpdateLoading() {
     if (!current()) return;
     if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
     latestStage = updates.at(-1) || null;
+    $('#wa-history-count').textContent = updates.length ? `${updates.length} ${updates.length === 1 ? 'update' : 'updates'}` : 'No updates yet';
     $('#wa-history').innerHTML = timeline(updates, workId);
     if (!editingStage) $('#wa-stage-title').textContent = `Stage ${latestStage ? Number(latestStage.stage) + 1 : 1}`;
     historyReady = true; refresh();
   }).catch((e) => {
     if (!current()) return;
-    $('#wa-history').textContent = '';
+    $('#wa-history').textContent = ''; $('#wa-history-count').textContent = 'Unavailable';
     failures.push(e.status === 404 && e.nonJson
       ? 'Updates are unavailable on this server. Restart the app after updating, then retry.'
       : `Could not load updates: ${e.message}.`);
@@ -124,23 +130,37 @@ export function editLatestStage(stageId) {
   if (window.me?.role !== 'admin' || !latestStage || Number(stageId) !== Number(latestStage.id)) return;
   if (editingStage) return; // don't replace an in-progress correction with the old values
   if (!stateReady || !$('#wa-retry').hidden) return formError('work-assign', 'Reload the latest history and machine state before editing.');
-  if (!editingStage && ($('#wa-message').value.trim() || $('#wa-hours').value)
+  const ownerChanged = !$('#wa-owner-field').hidden && $('#wa-owner').value !== String(updateJob?.assigned_to || '');
+  if (($('#wa-message').value.trim() || $('#wa-hours').value || $('#wa-photos').files?.length
+      || hasStagePartsDraft() || stateTouched || ownerChanged)
       && !window.confirm('Discard the new update draft and edit the latest stage instead?')) return;
   editingStage = latestStage;
+  $('#wa-history-panel').open = false; $('#wa-scroll').scrollTop = 0;
+  $('#wa-parts-panel').open = Boolean(editingStage.parts?.length);
+  $('#wa-photos-panel').open = Boolean(editingStage.photos?.length);
   stateTouched = true;
   $('#work-assign-title').textContent = 'Edit latest stage';
   $('#wa-stage-title').textContent = `Stage ${Number(editingStage.stage)}`;
   $('#wa-entry').hidden = false; $('#wa-go').hidden = false; $('#wa-go').disabled = false;
-  $('#wa-go').textContent = 'Save changes'; $('#wa-delete').hidden = false;
+  $('#wa-go').textContent = 'Save changes'; $('#wa-cancel').textContent = 'Cancel'; $('#wa-delete').hidden = false;
   $('#wa-owner-field').hidden = true;
   $('#wa-message').value = editingStage.message; $('#wa-hours').value = String(editingStage.hours);
   $('#wa-photos').value = '';
   showToggle(editingStage.machine_running == null ? currentRunning : Boolean(editingStage.machine_running));
   $('#wa-running-help').textContent = 'This is the state recorded during this stage. A newer report may determine the current state.';
   $('#wa-existing-photos').innerHTML = (editingStage.photos || []).map((photo, i) =>
-    `<div class="stage-photo-row"><label><input type="checkbox" value="${Number(photo)}" checked /> Keep photo ${i + 1}</label><a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${updatingWork}/updates/${editingStage.id}/photos/${photo}">View</a></div>`).join('');
-  setStageParts(editingStage.parts); loadStageParts();
+    `<div class="stage-photo-row"><label><input type="checkbox" value="${Number(photo)}" checked onchange="stagePhotoSelectionChanged()" /> Keep photo ${i + 1}</label><a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${updatingWork}/updates/${editingStage.id}/photos/${photo}">View</a></div>`).join('');
+  resetStageParts(); setStageParts(editingStage.parts); loadStageParts(); stagePhotoSelectionChanged();
+  $('#wa-message').focus?.({ preventScroll: true }); $('#wa-scroll').scrollTop = 0;
   formError('work-assign', '');
+}
+
+export function stagePhotoSelectionChanged() {
+  const files = Array.from($('#wa-photos').files || []);
+  const kept = document.querySelectorAll('#wa-existing-photos input[type="checkbox"]:checked').length;
+  const count = files.length + kept;
+  $('#wa-photos-summary').textContent = count ? `${count} ${count === 1 ? 'photo' : 'photos'} selected` : 'Optional · Attach up to 5 photos';
+  $('#wa-photo-selection').textContent = files.map((file) => file.name).join(', ');
 }
 
 function photoData(file) {
@@ -163,12 +183,15 @@ export async function startAssigned() {
     return formError('work-assign', 'Enter the time spent in hours.');
   const choose = !stage && (job.status === 'open' || !job.assigned_to);
   if (choose && !owner) return formError('work-assign', 'Choose who is doing this job.');
-  if (photos.length + keep.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024))
+  if (photos.length + keep.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024)) {
+    $('#wa-photos-panel').open = true;
     return formError('work-assign', 'Choose up to five photos, each under 2 MB.');
+  }
   $('#wa-go').disabled = true;
   try {
     const body = { message, hours, photos: await Promise.all(photos.map(photoData)), machine_running: $('#wa-running').checked };
-    const parts = stagePartsForSave();
+    let parts;
+    try { parts = stagePartsForSave(); } catch (error) { $('#wa-parts-panel').open = true; throw error; }
     if (parts.length || stage) body.parts = parts;
     if (choose) body.assigned_to = Number(owner);
     if (stage) body.keep_photos = keep;
@@ -197,4 +220,4 @@ export async function deleteLatestStage() {
   } finally { $('#wa-delete').disabled = false; }
 }
 
-Object.assign(window, { editLatestStage, deleteLatestStage, stageToggleChanged });
+Object.assign(window, { editLatestStage, deleteLatestStage, stageToggleChanged, stagePhotoSelectionChanged });

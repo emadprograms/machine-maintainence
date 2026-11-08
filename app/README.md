@@ -61,18 +61,18 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 595 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 355 |
+| `public/index.html` | The whole UI shell: every screen and form | 594 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 395 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 479 |
 | `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 304 · 356 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `public/stage-parts.js` | Optional staged part picker and draft consumption | 92 |
-| `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 200 |
+| `public/stage-parts.js` | Optional staged part picker and draft consumption | 100 |
+| `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 223 |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 635 behaviours | 3,487 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 495 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 637 behaviours | 3,495 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 548 |
 | `scripts/stage-migration-test.js` | Tests upgrading existing stage hours and part costs | 51 |
 | `scripts/machine-state-migration-test.js` | Tests the state-event migration and idempotence | 62 |
 | `scripts/photo-cleanup-test.js` | Tests failed writes and photo-cleanup errors | 40 |
@@ -95,7 +95,7 @@ The route files, one per screen group:
 | `routes/admin.js` | users, assignable people, backup | 84 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 55 |
 
-Total application code: **about 6,019 lines**, and about 4,287 of tests. No file is past the
+Total application code: **about 6,089 lines**, and about 4,348 of tests. No file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -251,7 +251,10 @@ stored `role` values keep the word *user*, because everything else already speak
   loading errors and a server needing restart are distinguished. Each stage keeps its author,
   UTC timestamp, duration, photos, machine state and optional parts. Add as many parts as
   needed (up to 50 lines); the actual unit cost starts with the catalog price and is editable.
-  Saving deducts stock and records costs atomically.
+  Saving deducts stock and records costs atomically. In the update dialog, *Previous
+  updates* opens the timeline, while *Spare parts* and *Photos* expand when needed; their
+  summaries show selected items even when collapsed. The action bar and validation errors
+  remain visible while the form scrolls. In *View updates*, history opens automatically.
 * **An admin can correct or delete only the latest stage.** Open *View updates* and choose
   *Edit latest stage*, including on a closed job. Correct its description, time, machine
   state, photos or parts, or confirm *Delete stage* to permanently remove it and its photos.
@@ -491,10 +494,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 635 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 637 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`635 passed, 0 failed`.
+`637 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

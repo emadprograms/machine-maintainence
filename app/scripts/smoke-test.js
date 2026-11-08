@@ -3406,6 +3406,14 @@ ok('the stage dialog uses an accessible two-state machine switch',
   /id="wa-running" type="checkbox" role="switch"/.test(assignDialog)
   && !/No change/.test(assignDialog) && /toggle-track/.test(assignDialog)
   && /input:checked \+ \.toggle-track/.test(uiCss));
+ok('stage history and optional additions use accessible disclosures',
+  ['wa-history-panel', 'wa-parts-panel', 'wa-photos-panel'].every((id) => assignDialog.includes(`<details id="${id}"`))
+  && assignDialog.includes('id="wa-history-count"') && assignDialog.includes('id="wa-parts-summary"')
+  && assignDialog.includes('id="wa-photos-summary"') && assignDialog.includes('aria-describedby="wa-running-help"'));
+ok('the stage form scrolls independently of its visible actions and errors',
+  assignDialog.includes('id="wa-scroll" class="stage-scroll"') && assignDialog.includes('class="stage-footer"')
+  && /class="stage-footer"><p class="form-error" role="alert"/.test(assignDialog)
+  && /\.stage-scroll \{[^}]*overflow-y: auto/.test(uiCss) && !/#work-assign \.stage-actions \{[^}]*position: sticky/.test(uiCss));
 ok('the stage dialog explains loading failures and offers retry',
   assignDialog.includes('id="wa-load-status"') && assignDialog.includes('id="wa-retry"')
   && assignDialog.includes('onclick="retryWorkUpdateLoading()"') && appSrc13.includes('function retryWorkUpdateLoading()'));
