@@ -159,6 +159,8 @@ CREATE TABLE IF NOT EXISTS work_update_parts (
   qty INTEGER NOT NULL CHECK (qty > 0),
   unit_price REAL NOT NULL CHECK (unit_price >= 0)
 );
+-- Group same-part, same-price stage lines without scanning the whole history.
+CREATE INDEX IF NOT EXISTS idx_work_update_parts_group ON work_update_parts(update_id, part_id, unit_price);
 
 -- The table the reviewed repo did not have: real repeating maintenance.
 CREATE TABLE IF NOT EXISTS pm_schedule (

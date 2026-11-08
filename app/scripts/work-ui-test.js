@@ -101,6 +101,53 @@ globalThis.api = async (path, options = {}) => {
 const work = await import('../public/work.js');
 const stageParts = await import('../public/stage-parts.js');
 const updateUI = await import('../public/work-updates.js');
+// The parts editor consolidates only an identical part and actual price, whether
+// the second selection is added explicitly or left pending when Save is pressed.
+const originalParts = [{ part_id: 5, qty: 1, unit_price: 1.001, part_name: 'Motor' }, { part_id: 5, qty: 2, unit_price: 1.001, part_name: 'Motor' }];
+assert.equal(stageParts.groupStageParts(originalParts)[0].qty, 3);
+assert.equal(originalParts[0].qty, 1); // rendering does not rewrite server history
+assert.equal(stageParts.formatStagePrice(1.001), '1.001');
+assert.equal(stageParts.formatStagePrice(1), '1.00');
+stageParts.resetStageParts(); await stageParts.loadStageParts();
+stageParts.addStagePart();
+assert.match(errors.at(-1)[1], /choose a spare part/i);
+el('#wa-part').value = '5'; stageParts.selectStagePart(); el('#wa-part-qty').value = '2'; stageParts.addStagePart();
+el('#wa-part').value = '5'; stageParts.selectStagePart(); el('#wa-part-price').value = '100.00'; el('#wa-part-qty').value = '3';
+stageParts.updateStagePartsSummary();
+assert.equal(el('#wa-parts-summary').textContent, '1 part selected');
+assert.deepEqual(stageParts.stagePartsForSave(), [{ part_id: 5, qty: 5, unit_price: 100 }]);
+stageParts.addStagePart();
+assert.equal((el('#wa-part-list').innerHTML.match(/<tr>/g) || []).length, 1);
+assert.match(el('#wa-part-list').innerHTML, /<td>5<\/td>/);
+assert.match(el('#wa-part-list').innerHTML, /aria-label="Remove &lt;Motor>"/);
+assert.match(el('#wa-part-list').innerHTML, /<circle/);
+el('#wa-part').value = '5'; stageParts.selectStagePart(); el('#wa-part-price').value = '100.005';
+stageParts.updateStagePartsSummary();
+assert.equal(el('#wa-parts-summary').textContent, '2 parts selected');
+stageParts.addStagePart();
+assert.equal((el('#wa-part-list').innerHTML.match(/<tr>/g) || []).length, 2);
+assert.match(el('#wa-part-list').innerHTML, /100\.005/);
+assert.deepEqual(stageParts.stagePartsForSave(), [{ part_id: 5, qty: 5, unit_price: 100 }, { part_id: 5, qty: 1, unit_price: 100.005 }]);
+stageParts.removeStagePart(1);
+assert.deepEqual(stageParts.stagePartsForSave(), [{ part_id: 5, qty: 5, unit_price: 100 }]);
+// Existing oversized grouped totals are split into valid API lines on save.
+stageParts.setStageParts([{ part_id: 5, qty: 1_000_000, unit_price: 75, part_name: 'Motor' },
+  { part_id: 5, qty: 3, unit_price: 75, part_name: 'Motor' }]);
+assert.equal((el('#wa-part-list').innerHTML.match(/<tr>/g) || []).length, 1);
+assert.deepEqual(stageParts.stagePartsForSave(), [{ part_id: 5, qty: 1_000_000, unit_price: 75 }, { part_id: 5, qty: 3, unit_price: 75 }]);
+stageParts.setStageParts(Array.from({ length: 50 }, (_, i) => ({ part_id: 5, qty: 1, unit_price: i, part_name: 'Motor' })));
+el('#wa-part').value = '5'; el('#wa-part-price').value = '500';
+assert.throws(() => stageParts.stagePartsForSave(), /up to 50/i);
+stageParts.addStagePart();
+assert.match(errors.at(-1)[1], /up to 50/i);
+assert.equal((el('#wa-part-list').innerHTML.match(/<tr>/g) || []).length, 50);
+el('#wa-part').value = ''; el('#wa-part-price').value = '';
+assert.equal(stageParts.stagePartsForSave().length, 50); // failed add preserved the draft
+el('#wa-part').value = '5'; el('#wa-part-price').value = '49'; el('#wa-part-qty').value = '1';
+stageParts.addStagePart(); // merging an existing row is still allowed at the limit
+assert.equal(stageParts.stagePartsForSave().length, 50);
+assert.equal(stageParts.stagePartsForSave().at(-1).qty, 2);
+stageParts.resetStageParts();
 await work.loadWork();
 await work.openNewWork();
 assert.equal(opened.at(-1), 'work-form');
@@ -485,6 +532,9 @@ await work.openWorkUpdates(42, true);
 assert.equal(el('#wa-cancel').textContent, 'Close');
 assert.equal(el('#wa-history-panel').open, true);
 assert.match(el('#wa-history').innerHTML, /editLatestStage\(52\)/);
+assert.match(el('#wa-history').innerHTML, /aria-label="Edit latest stage"/);
+assert.match(el('#wa-history').innerHTML, /stage-edit-action[\s\S]*<svg/);
+assert.ok(el('#wa-history').innerHTML.indexOf('Stage 2') < el('#wa-history').innerHTML.indexOf('Stage 1'));
 assert.doesNotMatch(el('#wa-history').innerHTML, /editLatestStage\(51\)/);
 updateUI.editLatestStage(51);
 assert.equal(el('#wa-entry').hidden, true);

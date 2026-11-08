@@ -1,6 +1,6 @@
 // Timeline, new stage and admin correction share one spacious dialog. The server
 // remains authoritative about the latest stage, stock, photos and machine state.
-import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts, hasStagePartsDraft } from './stage-parts.js';
+import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts, hasStagePartsDraft, groupStageParts, formatStagePrice } from './stage-parts.js';
 let refreshAfterUpdate = () => {}, rememberPeople = () => {};
 let updatingWork = null, updateJob = null, editingStage = null, latestStage = null;
 let updateRun = 0, updateLoad = 0, updateEditing = false, stateReady = false;
@@ -45,11 +45,11 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
 
 function timeline(updates, workId) {
   const admin = window.me?.role === 'admin';
-  return updates.map((u, i) => `<div class="update-entry"><div class="update-top"><strong>Stage ${Number(u.stage)}</strong>
-      ${admin && i === updates.length - 1 ? `<button type="button" class="ghost small" onclick="editLatestStage(${Number(u.id)})">Edit latest stage</button>` : ''}</div>
+  return [...updates].reverse().map((u, i) => `<div class="update-entry"><div class="update-top"><strong>Stage ${Number(u.stage)}</strong>
+      ${admin && i === 0 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
     <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
     <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
-    ${(u.parts || []).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${Number(p.unit_price).toFixed(2)} each</p>`).join('')}
+    ${groupStageParts(u.parts).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${formatStagePrice(p.unit_price)} each</p>`).join('')}
     ${(u.photos || []).map((photo, n) => `<a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${n + 1}</a>`).join(' ')}</div>`).join('')
     || '<p class="hint">No updates yet.</p>';
 }

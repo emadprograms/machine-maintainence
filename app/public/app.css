@@ -146,9 +146,6 @@
 .parts-pick { display: flex; gap: 6px; align-items: center; }
 .parts-pick select { flex: 1; }
 .parts-pick input { width: 72px; }
-.stage-parts-pick { flex-wrap: wrap; align-items: end; }
-.stage-parts-pick label { display: flex; flex-direction: column; gap: 5px; }
-.stage-parts-pick label:first-child { flex: 1 1 200px; min-width: 0; }
 .part-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-soft); }
 .part-list:empty { display: none; }
 
@@ -300,7 +297,7 @@ th.sorted .sort-btn { color: var(--ink); }
 .stage-eyebrow, .stage-kicker { color: #58718e; font-size: 10px; font-weight: 700; letter-spacing: .09em; }
 .stage-modal-head .sheet-sub { margin: 6px 0 0; line-height: 1.45; }
 .stage-scroll .hint { color: var(--soft); }
-.stage-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 30px 18px; }
+.stage-scroll { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 30px 18px; }
 .stage-scroll > .hint:empty, .stage-extra-content > .hint:empty, #wa-photo-selection:empty { display: none; }
 .stage-scroll > .form-error:empty { display: none; }
 .stage-disclosure { border-bottom: 1px solid #e9edf2; }
@@ -311,7 +308,7 @@ th.sorted .sort-btn { color: var(--ink); }
 .disclosure-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
 .disclosure-copy strong { font-size: 14px; font-weight: 650; }
 .disclosure-copy small { color: var(--soft); font-size: 12px; }
-.disclosure-chevron { color: #7b8999; font-size: 20px; line-height: 1; transition: transform .15s; }
+.disclosure-chevron { flex: 0 0 19px; width: 19px; height: 19px; color: #718195; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .stage-disclosure[open] > summary .disclosure-chevron { transform: rotate(180deg); }
 .stage-history-panel { border: 0; border-radius: 10px; background: #f6f8fb; padding: 0 14px; }
 .stage-history-panel > summary { min-height: 54px; }
@@ -327,7 +324,7 @@ th.sorted .sort-btn { color: var(--ink); }
 .stage-heading h4 { margin: 3px 0 0; font-size: 20px; letter-spacing: -.02em; }
 .stage-required { color: var(--soft); font-size: 12px; }
 .stage-fields { display: grid; gap: 15px; }
-.stage-fields .field > span:first-child, .stage-parts-pick label > span { font-weight: 600; font-size: 13px; }
+.stage-fields .field > span:first-child { font-weight: 600; font-size: 13px; }
 .stage-fields textarea { resize: vertical; min-height: 80px; }
 .stage-details-row { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; }
 .stage-time { width: 180px; max-width: 100%; }
@@ -352,15 +349,26 @@ th.sorted .sort-btn { color: var(--ink); }
 .toggle-status { color: var(--red); font-size: 13px; }
 .machine-toggle input:checked ~ .toggle-status { color: var(--green); }
 .machine-toggle input:disabled ~ .toggle-status { color: var(--soft); }
-.stage-extras { border-top: 1px solid #e9edf2; margin-top: 2px; }
+.stage-extras { min-width: 0; border-top: 1px solid #e9edf2; margin-top: 2px; }
 .stage-extra-content { padding: 0 0 18px 46px; }
-.stage-parts-pick { display: grid; grid-template-columns: minmax(0, 1fr) 90px 135px; gap: 10px; align-items: end; }
-.stage-parts-pick label { display: grid; gap: 5px; min-width: 0; }
-.stage-parts-pick input { width: 100%; }
-.stage-parts-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.stage-parts-actions .hint { line-height: 1.4; }
-.stage-extra-content .part-list { list-style: none; padding: 0; margin: 0 0 12px; }
-.stage-extra-content .part-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #f5f8fb; margin-bottom: 6px; }
+.stage-parts-table-wrap { min-width: 0; overflow-x: auto; border: 1px solid #e4eaf0; border-radius: 9px; }
+.stage-parts-table { width: 100%; min-width: 480px; border-collapse: collapse; table-layout: fixed; }
+.stage-parts-table th { background: #f6f8fb; color: #637185; text-align: left; font-size: 12px; font-weight: 600; padding: 9px 10px; }
+.stage-parts-table th:nth-child(2) { width: 100px; }
+.stage-parts-table th:nth-child(3) { width: 150px; }
+.stage-parts-table th:last-child { width: 48px; }
+.stage-parts-table td { border-top: 1px solid #e9edf2; padding: 8px 10px; font-size: 13px; overflow-wrap: anywhere; }
+.stage-parts-table td:last-child { text-align: center; padding: 5px; }
+.stage-parts-table select, .stage-parts-table input { width: 100%; min-width: 0; font-size: 13px; padding: 8px; }
+.stage-parts-table .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.stage-row-action { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 6px; border: 0; border-radius: 8px; background: transparent; color: #60758e; cursor: pointer; }
+.stage-row-action svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stage-row-action:hover { background: #edf4fc; color: #1768b2; }
+.stage-add-part { color: #1768b2; }
+.stage-remove-part { color: #bd3b32; }
+.stage-remove-part:hover { background: #fef3f2; color: #b42318; }
+.stage-table-scroll-hint { display: none; color: var(--soft); font-size: 12px; margin-top: 7px; }
+.stage-parts-hint { margin: 10px 0 0; line-height: 1.4; }
 .stage-photos { display: grid; gap: 8px; margin-bottom: 10px; }
 .stage-photos:empty { display: none; }
 .stage-photo-row, .stage-photos label { display: flex; gap: 8px; align-items: center; }
@@ -388,8 +396,8 @@ th.sorted .sort-btn { color: var(--ink); }
   .stage-editor { margin-top: 22px; }
   .stage-machine { align-items: flex-start; flex-direction: column; gap: 8px; }
   .stage-extra-content { padding-left: 0; }
-  .stage-parts-pick { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .stage-parts-pick label:first-child { grid-column: 1 / -1; }
   .stage-footer { padding: 12px 20px; }
   #work-assign .stage-actions { gap: 8px; }
 }
+
+@media (max-width: 550px) { .stage-table-scroll-hint { display: block; } }

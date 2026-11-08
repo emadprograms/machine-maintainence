@@ -2353,6 +2353,51 @@ ok('deleting the machine cascades its stage-specific part records', (await late(
   && (await late(`/api/parts/${motor.id}`, { method: 'DELETE' })).status === 200);
 await late(`/api/parts/${belt.id}`, { method: 'DELETE' });
 
+// Repeated part-and-price lines are one stage row; different prices and
+// different parts stay separate, without weakening stock/cost reconciliation.
+const groupedMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Grouped parts machine' } })).data;
+const groupedJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: groupedMachine.id, title: 'Grouped parts' } })).data;
+const groupedPart = (await late('/api/parts', { method: 'POST', body: { name: 'Grouped bearing', qty: 20, unit_price: 12 } })).data;
+const groupedOther = (await late('/api/parts', { method: 'POST', body: { name: 'Other bearing', qty: 5, unit_price: 12 } })).data;
+const groupedUrl = `/api/work-orders/${groupedJob.id}/updates`;
+const groupPost = await late(groupedUrl, { method: 'POST', body: { message: 'Installed parts', hours: 0, assigned_to: 1, parts: [
+  { part_id: groupedPart.id, qty: 2, unit_price: 12 }, { part_id: groupedPart.id, qty: 3, unit_price: 12 },
+  { part_id: groupedPart.id, qty: 1, unit_price: 13 }, { part_id: groupedOther.id, qty: 1, unit_price: 12 }] } });
+let groupHistory = (await late(groupedUrl)).data[0];
+let groupWork = (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id);
+ok('same stage part and price combine, while different prices and parts stay distinct', groupPost.status === 201
+  && groupHistory.parts.length === 3 && groupHistory.parts[0].qty === 5 && groupHistory.parts[0].unit_price === 12
+  && groupHistory.parts[1].qty === 1 && groupHistory.parts[1].unit_price === 13 && groupHistory.parts[2].part_id === groupedOther.id);
+ok('combining parts retains exact costs and consumes the correct stock', groupWork.cost === 85
+  && await partStock(groupedPart.id) === 14 && await partStock(groupedOther.id) === 4);
+const groupedStageUrl = `${groupedUrl}/${groupPost.data.id}`;
+const groupEdit = await late(groupedStageUrl, { method: 'PUT', body: { parts: [
+  { part_id: groupedPart.id, qty: 2, unit_price: 12 }, { part_id: groupedPart.id, qty: 1, unit_price: 12 },
+  { part_id: groupedPart.id, qty: 1, unit_price: 14 }] } });
+groupHistory = (await late(groupedUrl)).data[0];
+groupWork = (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id);
+ok('editing a stage also combines matching prices and returns removed stock', groupEdit.status === 200
+  && groupHistory.parts.length === 2 && groupHistory.parts[0].qty === 3 && groupHistory.parts[1].unit_price === 14
+  && groupWork.cost === 50 && await partStock(groupedPart.id) === 16 && await partStock(groupedOther.id) === 5);
+const groupFail = await late(groupedStageUrl, { method: 'PUT', body: { parts: [
+  { part_id: groupedPart.id, qty: 3, unit_price: 12 }, { part_id: groupedPart.id, qty: 30, unit_price: 12 }] } });
+ok('insufficient stock during grouped corrections leaves the old stage intact', groupFail.status === 400
+  && await partStock(groupedPart.id) === 16 && (await late(groupedUrl)).data[0].parts[0].qty === 3);
+await late(groupedStageUrl, { method: 'DELETE' });
+ok('deleting a grouped stage restores all its quantities', await partStock(groupedPart.id) === 20
+  && (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id).cost === 0);
+const preciseGroup = await late(groupedUrl, { method: 'POST', body: { message: 'Exact prices', hours: 0, assigned_to: 1, parts: [
+  { part_id: groupedPart.id, qty: 1, unit_price: 12.001 }, { part_id: groupedPart.id, qty: 1, unit_price: 12.002 },
+  { part_id: groupedPart.id, qty: 1, unit_price: '12.001' }] } });
+const preciseLines = (await late(groupedUrl)).data[0].parts;
+ok('prices differing below a cent stay separate; numerically equal prices merge', preciseGroup.status === 201
+  && preciseLines.length === 2 && preciseLines[0].qty === 2 && preciseLines[0].unit_price === 12.001
+  && preciseLines[1].qty === 1 && preciseLines[1].unit_price === 12.002);
+await late(`${groupedUrl}/${preciseGroup.data.id}`, { method: 'DELETE' });
+await late(`/api/equipment/${groupedMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${groupedPart.id}`, { method: 'DELETE' });
+await late(`/api/parts/${groupedOther.id}`, { method: 'DELETE' });
+
 // Admin corrections operate only on the newest stage and reconcile every effect.
 const correctionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage correction machine' } })).data;
 const correctionJob = (await late('/api/work-orders', { method: 'POST', body: {
@@ -3410,6 +3455,11 @@ ok('stage history and optional additions use accessible disclosures',
   ['wa-history-panel', 'wa-parts-panel', 'wa-photos-panel'].every((id) => assignDialog.includes(`<details id="${id}"`))
   && assignDialog.includes('id="wa-history-count"') && assignDialog.includes('id="wa-parts-summary"')
   && assignDialog.includes('id="wa-photos-summary"') && assignDialog.includes('aria-describedby="wa-running-help"'));
+ok('the stage form provides a labelled parts table and clear disclosure arrows',
+  /<table class="stage-parts-table">/.test(assignDialog) && /<th scope="col">Spare part/.test(assignDialog)
+  && /<th scope="col">Quantity/.test(assignDialog) && /<th scope="col">Actual unit cost/.test(assignDialog)
+  && /aria-label="Add selected part"/.test(assignDialog) && (assignDialog.match(/class="disclosure-chevron"/g) || []).length === 3
+  && /<path d="m6 9 6 6 6-6"/.test(assignDialog));
 ok('the stage form scrolls independently of its visible actions and errors',
   assignDialog.includes('id="wa-scroll" class="stage-scroll"') && assignDialog.includes('class="stage-footer"')
   && /class="stage-footer"><p class="form-error" role="alert"/.test(assignDialog)

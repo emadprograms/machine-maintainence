@@ -18,8 +18,12 @@ export function useStock(workId, updateId, lines, originalNames = new Map()) {
       ON CONFLICT (work_order_id, part_id) DO UPDATE SET qty = qty + excluded.qty,
         cost_total = COALESCE(cost_total, 0) + excluded.cost_total`, workId, partId, qty, qty * price);
     run('UPDATE parts SET qty = qty - ? WHERE id = ?', qty, partId);
-    if (updateId) run('INSERT INTO work_update_parts (update_id, part_id, part_name, qty, unit_price) VALUES (?,?,?,?,?)',
-      updateId, partId, originalNames.get(partId) || part.name, qty, price);
+    if (updateId) {
+      const previous = get('SELECT id FROM work_update_parts WHERE update_id = ? AND part_id = ? AND unit_price = ? ORDER BY id LIMIT 1', updateId, partId, price);
+      if (previous) run('UPDATE work_update_parts SET qty = qty + ? WHERE id = ?', qty, previous.id);
+      else run('INSERT INTO work_update_parts (update_id, part_id, part_name, qty, unit_price) VALUES (?,?,?,?,?)',
+        updateId, partId, originalNames.get(partId) || part.name, qty, price);
+    }
   }
 }
 
