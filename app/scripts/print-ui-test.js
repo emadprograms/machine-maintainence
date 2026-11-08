@@ -16,22 +16,25 @@ const job = { id: 42, code: 'WO-42', equipment_name: 'Pump <unsafe>', status: 'd
   priority: 'high', reported_by: 'Alice', assignee_name: 'Tech', created_at: '2026-01-01',
   last_reported_running: 0, notes: '<script>alert(1)</script>', photo: 'picture.png', barcode: '101220054',
   equipment_category: 'Pump', equipment_location: 'Bay', equipment_manufacturer: 'ACME',
-  effective_hours: 3, parts_cost_display: 1.01, total_cost: 61.01, resolution: 'Replaced seal', verified_by: 'Inspector' };
-const data = { job, rate: 20, parts: [{ name: 'Seal', reference: 'A1', qty: 1, display_cost: 1.01 }],
+  effective_hours: 3, parts_cost_display: 1.01, total_cost: 1.01, resolution: 'Replaced seal', verified_by: 'Inspector' };
+const data = { job, cost_basis: 'parts', parts: [{ name: 'Seal', reference: 'A1', qty: 1, display_cost: 1.01 }],
   updates: [{ id: 10, stage: 1, message: 'Repaired <seal>', hours: 2, author: 'Tech', created_at: '2026-01-02',
     edited_by: 'Admin', edited_at: '2026-01-03', machine_running: 1, photos: [11],
     parts: [{ part_name: 'Seal', qty: 1, unit_price: 1.005 }] }] };
 setup('?id=42', data); await import('../public/print-job.js?success');
 assert.deepEqual(requests, ['/api/work-orders/42/print']);
 for (const text of ['WO-42', 'Pump &lt;unsafe&gt;', 'Broken &lt;seal&gt;', '&lt;script&gt;alert(1)&lt;/script&gt;',
-  '101220054', 'Stage 1', 'Repaired &lt;seal&gt;', '1.005', '1.01', '61.01', 'Inspector', 'Replaced seal',
+  '101220054', 'Stage 1', 'Repaired &lt;seal&gt;', '1.005', '1.01', 'Total service hours', 'Inspector', 'Replaced seal',
   '/api/work-orders/42/photo?v=picture.png', '/api/work-orders/42/updates/10/photos/11', 'Out of service']) assert.ok(root.innerHTML.includes(text), text);
+assert.doesNotMatch(root.innerHTML, /Hourly rate|Labour cost/);
 assert.equal(button.disabled, false); assert.equal(prints, 1); button.click(); assert.equal(prints, 2);
 assert.match(document.title, /WO-42/);
-setup('?id=42', { job: { ...job, last_reported_running: null, photo: null }, rate: 0, parts: [], updates: [] });
+setup('?id=42', { job: { ...job, last_reported_running: null, photo: null }, cost_basis: 'parts', parts: [], updates: [] });
 await import('../public/print-job.js?empty');
 assert.match(root.innerHTML, /No stages recorded/); assert.match(root.innerHTML, /No parts recorded/);
 assert.match(root.innerHTML, /Not reported/); assert.doesNotMatch(root.innerHTML, /Fault photo/);
+setup('?id=42', { job, parts: [], updates: [] }); await import('../public/print-job.js?old-server');
+assert.match(root.innerHTML, /Restart the server/); assert.equal(button.disabled, true); assert.equal(prints, 0);
 setup('?id=42', null, 401); await import('../public/print-job.js?unauthorized');
 assert.match(root.innerHTML, /Please sign in/); assert.equal(button.disabled, true); assert.equal(prints, 0);
 setup('?id=42', null, 404); await import('../public/print-job.js?missing');

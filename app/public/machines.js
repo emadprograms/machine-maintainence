@@ -7,7 +7,7 @@
 // repeating them: this is one page, not a bundle of independent widgets.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
-import { numericCost, needsMachineCosts, fillMissingMachineCosts } from './machine-cost.js';
+import { numericCost, needsMachineCosts, fillMissingMachineCosts, clearUntrustedMachineCosts } from './machine-cost.js';
 
 // ---- what a row shows ------------------------------------------------------
 // status.js sends the latest reported operating state and an explanation. The
@@ -95,8 +95,6 @@ function drawEquipment() {
   if (notice) {
     const messages = [];
     if (machineCostUnavailable) messages.push('Some service costs are unavailable. Restart the server after updating and try again.');
-    if (Number(window.workshopSettings?.hourly_rate) === 0 && equipmentRows.some((e) => Number(e.total_hours) > 0))
-      messages.push('The hourly rate is 0.00, so labour adds no cost. An administrator can set the rate in Settings.');
     notice.textContent = messages.join(' '); notice.hidden = !messages.length;
   }
   $('#equipment-rows').innerHTML = rows.map((e) => `
@@ -149,7 +147,7 @@ export async function loadEquipment() {
   let nextRows = rows, unavailable = false;
   if (needsMachineCosts(rows)) {
     try { nextRows = fillMissingMachineCosts(rows, await api('/work-orders')); }
-    catch { unavailable = true; }
+    catch { nextRows = clearUntrustedMachineCosts(rows); unavailable = true; }
   }
   if (load !== equipmentLoad) return;
   equipmentRows = nextRows;

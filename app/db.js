@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS pm_schedule (
 -- session on restart and put the owner back on the login screen every time.
 -- Only a SHA-256 of the token is stored: a copy of this file is not a set of
 -- usable sessions.
--- One row per setting. A workshop has one hourly rate, and putting it in a table
+-- One row per setting. Putting workshop settings in a table
 -- rather than in the source means changing it is not a code change.
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,

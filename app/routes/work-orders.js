@@ -10,7 +10,8 @@ import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '.
 import { all, get, run, transaction } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
-import { hourlyRate, timeZone } from '../settings.js';
+import { timeZone } from '../settings.js';
+import { workOrderCost } from '../costs.js';
 import { exportTimes } from '../time-export.js';
 import { nextWorkOrderCode } from '../codes.js';
 import { effectiveHours } from '../hours.js';
@@ -28,17 +29,14 @@ export default {
              MAX(w.created_at, COALESCE(w.closed_at, w.created_at), COALESCE(
                (SELECT MAX(COALESCE(u.edited_at, u.created_at)) FROM work_order_updates u WHERE u.work_order_id = w.id), w.created_at)) AS last_activity_at,
              CASE WHEN e.status = 'retired' THEN 0 ELSE ${machineRunningSql('e.id')} END AS machine_running,
-             -- Parts use the cost recorded when used; hours include live stages.
-             ROUND(COALESCE(${effectiveHours()}, 0) * ?
-                   + (SELECT COALESCE(SUM(wop.cost_total), 0)
-                        FROM work_order_parts wop
-                       WHERE wop.work_order_id = w.id), 2) AS cost
+             -- Only recorded parts are a monetary service cost.
+             ${workOrderCost()} AS cost, 'parts' AS cost_basis
       FROM work_orders w
       JOIN equipment e ON e.id = w.equipment_id
       LEFT JOIN users u ON u.id = w.assigned_to
       ${f.sql}
       ORDER BY CASE w.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
-               w.created_at DESC`, hourlyRate(), ...f.params));
+               w.created_at DESC`, ...f.params));
   }),
 
   'POST /api/work-orders': route(async (req, res) => {

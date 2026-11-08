@@ -1,37 +1,25 @@
-// What an hour costs, and what a month did.
-//
-// The rate is a settings row rather than a constant so changing it is a form,
-// not a deployment, and so a report can say which rate produced its numbers.
+// Workshop settings and a month of recorded parts costs.
 
 import { send, readBody, route, sendCsv } from '../http.js';
-import { hourlyRate, setSetting, RATE_KEY, TIME_ZONE_KEY, timeZone } from '../settings.js';
+import { setSetting, TIME_ZONE_KEY, timeZone } from '../settings.js';
 import { validTimeZone } from '../public/time-zone.js';
-import { transaction } from '../db.js';
 import { monthReport } from '../report.js';
 
 export default {
   // ---- settings and the month report
   'GET /api/settings': route(async (_req, res) =>
-    send(res, 200, { hourly_rate: hourlyRate(), time_zone: timeZone() })),
+    send(res, 200, { time_zone: timeZone() })),
 
   'PUT /api/settings': route(async (req, res) => {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     const b = await readBody(req);
-    const hasRate = b?.hourly_rate !== undefined, hasZone = b?.time_zone !== undefined;
-    if (!hasRate && !hasZone) return send(res, 400, { error: 'Choose a setting to change' });
-    const rate = hasRate ? Number(b.hourly_rate) : hourlyRate();
-    if (hasRate && !((typeof b.hourly_rate === 'number') || (typeof b.hourly_rate === 'string' && b.hourly_rate.trim())))
-      return send(res, 400, { error: 'Hourly rate must be a number' });
-    if (!Number.isFinite(rate)) return send(res, 400, { error: 'Hourly rate must be a number' });
-    if (rate < 0) return send(res, 400, { error: 'Hourly rate cannot be negative' });
-    const zone = hasZone && typeof b.time_zone === 'string' ? b.time_zone.trim() : b?.time_zone;
-    if (hasZone && !validTimeZone(zone)) return send(res, 400, { error: 'Choose a valid IANA time zone, such as Asia/Bahrain' });
-    transaction(() => {
-      if (hasRate) setSetting(RATE_KEY, rate);
-      if (hasZone) setSetting(TIME_ZONE_KEY, zone);
-    });
+    if (Object.keys(b || {}).some((key) => key !== 'time_zone'))
+      return send(res, 400, { error: 'Only the workshop time zone can be changed here' });
+    const zone = typeof b?.time_zone === 'string' ? b.time_zone.trim() : b?.time_zone;
+    if (!validTimeZone(zone)) return send(res, 400, { error: 'Choose a valid IANA time zone, such as Asia/Bahrain' });
+    setSetting(TIME_ZONE_KEY, zone);
     res.setHeader('X-Workshop-Time-Zone', timeZone());
-    send(res, 200, { hourly_rate: rate, time_zone: timeZone() });
+    send(res, 200, { time_zone: timeZone() });
   }),
 
   'GET /api/report': route(async (req, res) => {
@@ -47,20 +35,18 @@ export default {
     // numbers get added to something else.
     const rows = report.machines.map((m) => ({
       month: report.month, machine: m.name, jobs: m.jobs, hours: m.hours,
-      parts_cost: m.parts_cost, labour_cost: m.labour_cost, total: m.total,
+      total: m.total,
     }));
     rows.push({
       month: report.month, machine: 'All machines', jobs: report.jobs, hours: report.hours,
-      parts_cost: report.parts_cost, labour_cost: report.labour_cost, total: report.total,
+      total: report.total,
     });
     sendCsv(res, `report-${report.month}.csv`, rows, [
       { key: 'month', label: 'Month' },
       { key: 'machine', label: 'Machine' },
       { key: 'jobs', label: 'Jobs closed' },
       { key: 'hours', label: 'Hours' },
-      { key: 'parts_cost', label: 'Parts cost' },
-      { key: 'labour_cost', label: 'Labour cost' },
-      { key: 'total', label: 'Total' },
+      { key: 'total', label: 'Total service cost' },
     ]);
   }),
 

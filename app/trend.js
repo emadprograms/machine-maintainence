@@ -39,11 +39,11 @@ export function monthlyTrend(count = 6, now = new Date()) {
     if (report.error) throw new Error(`trend month ${key}: ${report.error}`);
     return {
       month: key,
+      cost_basis: 'parts',
       label,
       closed: report.jobs,
       hours: report.hours,
       parts_cost: report.parts_cost,
-      labour_cost: report.labour_cost,
       total: report.total,
     };
   });

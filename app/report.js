@@ -1,10 +1,9 @@
 // One month of work: how many jobs, how long they took, and what they cost.
 //
-// The money is deliberately simple and honest: parts cost what was recorded when
-// used, and labour is hours × one rate. Per-person rates or overtime would be a
-// different product.
+// Money is recorded parts only; service hours are reported separately.
 import { all, get } from './db.js';
-import { hourlyRate, timeZone } from './settings.js';
+import { timeZone } from './settings.js';
+import { workOrderCost } from './costs.js';
 import { effectiveHours } from './hours.js';
 
 const MONTH = /^\d{4}-\d{2}$/;
@@ -36,63 +35,42 @@ export function monthReport(month) {
   const range = monthRange(month);
   if (range.error) return range;
   const { start, next } = range;
-  const rate = hourlyRate();
   const zone = timeZone();
 
   const totals = get(`SELECT COUNT(*) AS jobs, COALESCE(SUM(${effectiveHours()}), 0) AS hours
                       FROM work_orders w WHERE ${IN_MONTH}`, zone, start, zone, next);
 
-  const parts = get(`SELECT COALESCE(SUM(wop.cost_total), 0) AS cost
-                     FROM work_order_parts wop
-                     JOIN work_orders w ON w.id = wop.work_order_id
-                     JOIN parts p ON p.id = wop.part_id
-                     WHERE ${IN_MONTH}`, zone, start, zone, next);
-
+  // Sum the same rounded job costs that appear on the work-order list.
+  const costs = get(`SELECT COALESCE(SUM(${workOrderCost()}), 0) AS cost
+                     FROM work_orders w WHERE ${IN_MONTH}`, zone, start, zone, next);
   const perMachine = all(`SELECT e.id, e.name, COUNT(*) AS jobs,
-                                 COALESCE(SUM(${effectiveHours()}), 0) AS hours
-                          FROM work_orders w
-                          JOIN equipment e ON e.id = w.equipment_id
-                          WHERE ${IN_MONTH}
-                          GROUP BY e.id
+                                 COALESCE(SUM(${effectiveHours()}), 0) AS hours,
+                                 COALESCE(SUM(${workOrderCost()}), 0) AS cost
+                          FROM work_orders w JOIN equipment e ON e.id = w.equipment_id
+                          WHERE ${IN_MONTH} GROUP BY e.id
                           ORDER BY jobs DESC, e.name`, zone, start, zone, next);
-
-  // Parts per machine is a second query rather than a correlated subquery in the
-  // GROUP BY: two readable queries beat one that needs explaining.
-  const partsPerMachine = all(`SELECT w.equipment_id AS id,
-                                      COALESCE(SUM(wop.cost_total), 0) AS cost
-                               FROM work_order_parts wop
-                               JOIN work_orders w ON w.id = wop.work_order_id
-                               JOIN parts p ON p.id = wop.part_id
-                               WHERE ${IN_MONTH}
-                               GROUP BY w.equipment_id`, zone, start, zone, next);
-
-  const partsByMachine = new Map(partsPerMachine.map((r) => [Number(r.id), Number(r.cost)]));
-
   const hours = Number(totals.hours);
-  const partsCost = Number(parts.cost);
-  const labourCost = round2(hours * rate);
+  const partsCost = round2(Number(costs.cost));
 
   return {
     month: String(month),
-    hourly_rate: rate,
+    cost_basis: 'parts',
     jobs: Number(totals.jobs),
     hours: round2(hours),
-    parts_cost: round2(partsCost),
-    labour_cost: labourCost,
-    total: round2(partsCost + labourCost),
+    parts_cost: partsCost,
+    total: partsCost,
     // The machines that took the most work, which is the question behind the
     // question: what is failing, and where should the next hour go?
     machines: perMachine.map((m) => {
       const machineHours = Number(m.hours);
-      const machineParts = partsByMachine.get(Number(m.id)) || 0;
+      const machineParts = round2(Number(m.cost));
       return {
         id: Number(m.id),
         name: m.name,
         jobs: Number(m.jobs),
         hours: round2(machineHours),
-        parts_cost: round2(machineParts),
-        labour_cost: round2(machineHours * rate),
-        total: round2(machineParts + machineHours * rate),
+        parts_cost: machineParts,
+        total: machineParts,
       };
     }),
   };

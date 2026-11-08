@@ -10,6 +10,7 @@
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
 import { zoneDateTime } from './time-zone.js';
+import { numericCost } from './machine-cost.js';
 import * as updateUI from './work-updates.js';
 
 // ------------------------------------------------------------ work orders
@@ -49,6 +50,11 @@ export async function loadWork() {
  *  clicked without asking the server for the same rows again. */
 function drawWork() {
   const rows = rowsFor('work-rows', workCache);
+  const notice = $('#work-cost-status');
+  if (notice) {
+    notice.hidden = !workCache.some((w) => w.cost_basis !== 'parts' || numericCost(w.cost) === null);
+    notice.textContent = notice.hidden ? '' : 'Parts-only costs are unavailable. Restart the server after updating.';
+  }
   $('#work-rows').innerHTML = rows.map((w) => `<tr>
         ${strong(w.equipment_name)}<td class="cell-strong">${esc(w.title)}${w.photo
           ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
@@ -59,7 +65,7 @@ function drawWork() {
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}${w.status === 'in_progress' && w.current_stage ? ` <span class="row-sub">Stage ${Number(w.current_stage)}</span>` : ''}</td>
         <td class="cell-muted cell-date">${w.last_activity_at ? esc(zoneDateTime(w.last_activity_at) || w.last_activity_at) : '—'}</td>
         <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
-        <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
+        <td class="cell-num">${w.cost_basis === 'parts' && numericCost(w.cost) !== null ? numericCost(w.cost).toFixed(2) : '—'}</td>
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
           menuItem('View updates', `openWorkUpdates(${w.id}, true)`, { icon: 'view' }),
           ...(w.status !== 'done' ? [menuItem('Add update', `openWorkUpdates(${w.id})`, { icon: 'add' })] : []),
@@ -89,7 +95,7 @@ register('work-rows', {
   status: (w) => WORK_STATUS_RANK[w.status] ?? 3,
   last_activity_at: (w) => w.last_activity_at,
   labour_hours: (w) => w.effective_hours,
-  cost: (w) => w.cost,
+  cost: (w) => w.cost_basis === 'parts' ? numericCost(w.cost) : null,
 }, drawWork);
 
 // ---- editing a job -------------------------------------------------------

@@ -223,7 +223,6 @@ async function showPage(key) {
 async function syncTimeZone() {
   const [settings, time] = await Promise.all([api('/settings'), timeReady]);
   time.setDisplayZone(settings.time_zone || 'UTC');
-  window.workshopSettings = settings;
   const label = $('#last-activity-zone');
   if (label) label.textContent = time.getDisplayZone();
   const status = $('#settings-status');
@@ -234,9 +233,9 @@ async function syncTimeZone() {
 let settingsLoad = 0;
 async function openSettings() {
   openForm('app-settings');
-  const run = ++settingsLoad, input = $('#settings-time-zone'), rate = $('#settings-hourly-rate'), admin = window.me?.role === 'admin';
-  input.readOnly = rate.readOnly = !admin;
-  input.disabled = rate.disabled = true;
+  const run = ++settingsLoad, input = $('#settings-time-zone'), admin = window.me?.role === 'admin';
+  input.readOnly = !admin;
+  input.disabled = true;
   $('#settings-save').disabled = true;
   $('#settings-save').hidden = !admin;
   $('#settings-permission').hidden = admin;
@@ -250,10 +249,8 @@ async function openSettings() {
     const settings = await syncTimeZone();
     if (run !== settingsLoad) return;
     input.value = settings.time_zone || 'UTC';
-    rate.value = settings.hourly_rate;
     input.dataset.original = input.value;
-    rate.dataset.original = String(settings.hourly_rate);
-    input.disabled = rate.disabled = false;
+    input.disabled = false;
     $('#settings-save').disabled = false;
     input.focus();
   } catch (error) { if (run === settingsLoad) formError('app-settings', `Could not load settings: ${error.message}. Close and try again.`); }
@@ -263,17 +260,11 @@ async function saveSettings() {
   const button = $('#settings-save');
   button.disabled = true;
   try {
-    const rateText = $('#settings-hourly-rate').value.trim();
-    const rate = Number(rateText);
-    if (!rateText || !Number.isFinite(rate) || rate < 0) throw new Error('Enter a valid non-negative hourly rate.');
-    const zoneInput = $('#settings-time-zone'), rateInput = $('#settings-hourly-rate');
+    const zoneInput = $('#settings-time-zone');
     const changes = {};
     if (zoneInput.value.trim() !== zoneInput.dataset.original) changes.time_zone = zoneInput.value.trim();
-    if (rate !== Number(rateInput.dataset.original)) changes.hourly_rate = rate;
     if (!Object.keys(changes).length) { formDone('app-settings'); await showPage(currentPage); return; }
     const result = await api('/settings', { method: 'PUT', body: JSON.stringify(changes) });
-    const reportRate = $('#report-rate');
-    if (reportRate?.dataset.filled) reportRate.value = result.hourly_rate;
     const time = await timeReady;
     time.setDisplayZone(result.time_zone || time.getDisplayZone());
     formDone('app-settings');

@@ -84,10 +84,8 @@ function chartsRow(charts) {
 
   const labels = trend.map((m) => m.label);
   const closed = [{ name: 'Jobs closed', values: trend.map((m) => m.closed), tone: 'brand' }];
-  const cost = [
-    { name: 'Parts', values: trend.map((m) => m.parts_cost), tone: 'soft' },
-    { name: 'Labour', values: trend.map((m) => m.labour_cost), tone: 'brand' },
-  ];
+  const cost = [{ name: 'Parts', values: trend.map((m) => m.parts_cost), tone: 'brand' }];
+  const costsAvailable = trend.every((m) => m.cost_basis === 'parts');
 
   return `<div class="charts-grid">
     <div class="card chart-card">
@@ -99,9 +97,9 @@ function chartsRow(charts) {
     </div>
     <div class="card chart-card">
       <div class="chart-head"><span class="chart-title">What it cost</span>
-        <span class="chart-note">parts + labour</span></div>
-      ${stackedBars({ labels, series: cost, title: 'Cost per month', format: money })}
-      ${legend(cost)}
+        <span class="chart-note">parts only</span></div>
+      ${costsAvailable ? `${stackedBars({ labels, series: cost, title: 'Cost per month', format: money })}${legend(cost)}`
+        : '<p class="dash-empty">Parts-only costs are unavailable. Restart the server after updating.</p>'}
     </div>
   </div>`;
 }

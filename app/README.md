@@ -60,7 +60,7 @@ Check with `node --version`.
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
-| `settings.js` / `dates.js` / `public/time-zone.js` | Hourly rate and workshop time zone; date parsing and DST-aware display | — |
+| `settings.js` / `dates.js` / `public/time-zone.js` | Workshop time zone; date parsing and DST-aware display | — |
 | `public/index.html` | The whole UI shell: every screen and form | 594 |
 | `public/app.css` | The main stylesheet — was a `<style>` block until the page reached 600 lines | 406 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
@@ -74,7 +74,7 @@ Check with `node --version`.
 | `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 685 behaviours | 3,645 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 687 behaviours | 3,645 |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
@@ -99,7 +99,7 @@ The route files, one per screen group:
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
 | `routes/admin.js` | users, assignable people, backup | 84 |
-| `routes/report.js` | the hourly rate, the month, report.csv | 55 |
+| `routes/report.js` | workshop time zone, the month, report.csv | — |
 
 Total application code: **about 6,364 lines**, and about 4,702 of tests. No application file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
@@ -282,13 +282,16 @@ stored `role` values keep the word *user*, because everything else already speak
   menu. A fresh local print view includes the original report, machine details, closure,
   totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
   dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
-* **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
-  total service hours and total service cost, meaning maintenance labour rather than machine running time. Machine cost is the sum of every job (open or closed): recorded parts costs plus effective service hours at the **current** hourly rate. Changing the rate recalculates historical labour costs; it is not a ledger of rates actually paid. Hours
-  and parts are entered on stages, not at closure. Historical reviewed totals are preserved;
-  later stages and corrections remain correctly rebaselined without double-counting. The rate starts at zero until an administrator sets it in Settings (or Report); when it is zero, Machines explains that labour contributes no cost. Missing cost data is shown as unavailable, never silently as zero. Existing part-use costs
-  are captured at the catalog price on upgrade (zero if no price was recorded); later catalog
-  price changes do not rewrite them. Copy the data/photos folder with the database when moving
-  or backing up.
+* **Hours and costs stay live, separately.** The work-order cost is its recorded
+  parts costs only. Total service cost on a machine is the sum of its work-order costs,
+  including open and closed jobs; there is no hourly rate or labour cost. Hours remain
+  a separate service-time total. Stage corrections and deletions update both recorded
+  parts costs and stock. Each job cost is rounded to cents before adding job totals.
+  Historical reviewed hours remain preserved without double-counting. Existing part-use
+  costs were captured at the catalog price on upgrade (zero if no price was recorded);
+  later catalog price changes do not rewrite them. Missing or incompatible cost data is
+  shown as unavailable rather than as zero; restart the server after updating. Copy the
+  data/photos folder with the database when moving or backing up.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -323,21 +326,19 @@ stored `role` values keep the word *user*, because everything else already speak
   stage creation/correction or closure with date and time, and sorts in either direction.
   A job with no stages falls back to its report time.
 * **Workshop time zone.** Open *Settings* in the top bar. Administrators can save an IANA
-  time zone such as `Asia/Bahrain` and the hourly labour rate; technicians can view them. UTC is the default for an
+  time zone such as `Asia/Bahrain`; technicians can view it. UTC is the default for an
   existing installation. The setting is saved with the database and is used workshop-wide,
   including timeline and print timestamps, CSV exports, history date ranges, report months,
   dashboard trends and maintenance "today"/due calculations. Daylight saving is applied
   using the time-zone rules built into the local runtime, with no network request. Other
   sessions pick up changes when they next load data or navigate. Stored timestamps stay UTC;
-  maintenance dates entered as calendar days are never shifted. Updating the report's hourly
-  rate does not change the time zone, or vice versa.
+  maintenance dates entered as calendar days are never shifted.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
   we close in October".
-* **Report** adds a month up: jobs closed, hours, parts cost, labour cost and total, plus
-  the machines that took the most work. The hourly rate that turns hours into money is a
-  field on that screen, not a number in the source.
+* **Report** adds a month up: jobs closed, service hours and parts-only cost, plus the
+  machines that took the most work.
 * **The Dashboard draws two charts** — jobs closed per month and what each month cost,
-  parts under labour — for the last six months. They are drawn as SVG in the page: no
+  recorded parts only — for the last six months. They are drawn as SVG in the page: no
   charting library, no request to anything outside the machine.
 
 ### Worked example: add a "Serial number" field to machines
@@ -527,10 +528,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 685 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 687 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`685 passed, 0 failed`.
+`687 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

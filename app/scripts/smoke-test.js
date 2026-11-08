@@ -1295,28 +1295,19 @@ const withHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
 ok('hours are stored and come back', Number(withHours.data.labour_hours) === 2.5,
   JSON.stringify(withHours.data.labour_hours));
 
-// The rate is a setting, so it can be fixed without a deploy.
-// A fresh technician: the one from phase 4 was disabled on purpose, and its
-// client is dead now. Using it here would test the wrong thing twice over.
+// A fresh technician for subsequent permission and stage checks.
 await c('/api/users', { method: 'POST', body: {
   name: 'Ratechecker', email: 'rate@local', password: 'rate-password', role: 'technician' } });
 const rateTech = makeClient();
 await rateTech('/api/login', { method: 'POST', body: {
   email: 'rate@local', password: 'rate-password' } });
-const rateForTech = await rateTech('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
-ok('only an admin can change the hourly rate', rateForTech.status === 403,
-  `status ${rateForTech.status}`);
-const negativeRate = await c2('/api/settings', { method: 'PUT', body: { hourly_rate: -5 } });
-ok('a negative hourly rate is refused',
-  negativeRate.status === 400 && /cannot be negative/.test(negativeRate.data.error || ''),
-  JSON.stringify(negativeRate.data));
-const setRate = await c2('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } });
-const readRate = await c2('/api/settings');
-ok('the hourly rate is saved and read back',
-  setRate.status === 200 && Number(readRate.data.hourly_rate) === 40,
-  JSON.stringify(readRate.data));
+ok('only an admin can change the workshop time zone',
+  (await rateTech('/api/settings', { method: 'PUT', body: { time_zone: 'UTC' } })).status === 403);
+ok('hourly rate is not an application setting',
+  (await c2('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } })).status === 400
+  && !('hourly_rate' in (await c2('/api/settings')).data));
 
-// COST-02 — a job costs its parts plus its hours at that rate.
+// COST-02 — a job costs only the recorded parts.
 const costedPart = await c2('/api/parts', {
   method: 'POST', body: { name: 'Seal kit', qty: 10, unit_price: 12.5 },
 });
@@ -1326,19 +1317,17 @@ await c2(`/api/work-orders/${pumpJob.data.id}/parts`, {
 await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Impeller cleaned' } });
 const costedList = await c2('/api/work-orders');
 const costed = costedList.data.find((w) => w.id === pumpJob.data.id);
-// 2.5 h x 40 = 100 of labour, 2 x 12.5 = 25 of parts.
-ok('a job costs parts plus hours at the configured rate',
-  costed && Number(costed.cost) === 125, `cost ${costed && costed.cost}, expected 125`);
+// 2.5 service hours are separate; 2 x 12.5 = 25 of parts.
+ok('a job costs recorded parts only',
+  costed && Number(costed.cost) === 25 && costed.cost_basis === 'parts', `cost ${costed && costed.cost}, expected 25`);
 
 // COST-03 — one month, added up.
 const report = await c2(`/api/report?month=${month}`);
 ok('the report answers for a month',
   report.status === 200 && report.data.month === month, JSON.stringify(report.data).slice(0, 120));
-ok('the report counts the jobs, hours, parts and labour at the rate',
+ok('the report counts jobs, hours and parts-only cost',
   report.data.jobs >= 1 && report.data.hours >= 2.5 && report.data.parts_cost >= 25
-  && Number(report.data.labour_cost) === Math.round(report.data.hours * 40 * 100) / 100
-  && Number(report.data.total)
-     === Math.round((report.data.parts_cost + report.data.labour_cost) * 100) / 100,
+  && report.data.total === report.data.parts_cost && !('labour_cost' in report.data),
   JSON.stringify(report.data).slice(0, 200));
 ok('the report names the machines that took the most work',
   report.data.machines.some((m) => m.name === 'Costed pump'),
@@ -2323,13 +2312,12 @@ const livePost = (body) => late(liveUrl, { method: 'POST', body });
 const liveRow = async () => (await late('/api/work-orders')).data.find((w) => w.id === liveJob.id);
 const liveEquipment = async () => (await late('/api/equipment')).data.find((e) => e.id === liveMachine.id);
 const partStock = async (id) => (await late('/api/parts')).data.find((p) => p.id === id).qty;
-const rate = Number((await late('/api/settings')).data.hourly_rate);
 const liveOne = await livePost({ message: 'Replaced motor; belt still needs work', hours: 2, assigned_to: 1,
   machine_running: true, parts: [{ part_id: motor.id, qty: 1, unit_price: 75 }] });
 let live = await liveRow();
 let machineNow = await liveEquipment();
 ok('stage one records an actual part price and live labour before closure', liveOne.status === 201
-  && live.status === 'in_progress' && live.effective_hours === 2 && live.cost === 75 + 2 * rate
+  && live.status === 'in_progress' && live.effective_hours === 2 && live.cost === 75
   && await partStock(motor.id) === 2, JSON.stringify(live));
 ok('a running answer restores the machine without closing the job', machineNow.status === 'active'
   && machineNow.total_hours === 2 && machineNow.total_service_cost === live.cost && live.stops_machine === 0);
@@ -2347,14 +2335,14 @@ const liveTwo = await rateTech(liveUrl, { method: 'POST', body: { message: 'Fitt
 live = await liveRow();
 machineNow = await liveEquipment();
 ok('a technician can add hours and multiple actual-cost parts to the running total', liveTwo.status === 201
-  && live.effective_hours === 3.5 && live.cost === 137.5 + 3.5 * rate
+  && live.effective_hours === 3.5 && live.cost === 137.5
   && await partStock(motor.id) === 1 && await partStock(belt.id) === 3, JSON.stringify(live));
 ok('a newer running answer overrides an older stopping job', machineNow.status === 'active' && machineNow.total_hours === 3.5 && machineNow.total_service_cost === live.cost);
 await late(`/api/work-orders/${blocker.id}`, { method: 'PATCH', body: { stops_machine: false } });
 ok('clearing the other stopping job makes the machine running again', (await liveEquipment()).status === 'active');
 await late(`/api/parts/${motor.id}`, { method: 'PUT', body: { unit_price: 999, name: 'Renamed motor' } });
 liveHistory = (await late(liveUrl)).data;
-ok('catalog price and name changes do not rewrite recorded stage costs or history', (await liveRow()).cost === 137.5 + 3.5 * rate
+ok('catalog price and name changes do not rewrite recorded stage costs or history', (await liveRow()).cost === 137.5
   && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].unit_price === 75);
 const liveNo = await livePost({ message: 'Stopped for safety', hours: 0, machine_running: false });
 const liveUnchanged = await livePost({ message: 'Waiting for a part', hours: 0.5,
@@ -2384,16 +2372,16 @@ const liveClose = await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH'
 } });
 live = await liveRow();
 ok('the reviewed final hours replace the running total, without double counting', liveClose.status === 200
-  && live.effective_hours === 10 && live.cost === 137.5 + 10 * rate && (await liveEquipment()).total_hours === 10
+  && live.effective_hours === 10 && live.cost === 137.5 && (await liveEquipment()).total_hours === 10
   && (await liveEquipment()).total_service_cost === live.cost);
 let liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
 ok('the monthly report uses recorded actual part cost and reviewed hours', liveReport.hours === 10
-  && liveReport.parts_cost === 137.5 && liveReport.total === 137.5 + 10 * rate, JSON.stringify(liveReport));
+  && liveReport.parts_cost === 137.5 && liveReport.total === 137.5, JSON.stringify(liveReport));
 await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'open' } });
 await livePost({ message: 'Follow-up after reopening', hours: 0.5, machine_running: true });
 live = await liveRow();
 ok('after reopening, new stage hours add to the reviewed total exactly once', live.effective_hours === 10.5
-  && live.cost === 137.5 + 10.5 * rate && (await liveEquipment()).total_hours === 10.5
+  && live.cost === 137.5 && (await liveEquipment()).total_hours === 10.5
   && (await liveEquipment()).total_service_cost === live.cost);
 await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Checked again', labour_hours: 10.5 } });
 live = await liveRow();
@@ -2484,8 +2472,7 @@ ok('print snapshot has the original report, machine, stage parts and photo ident
   && snapshot.data.updates[0].photos.length === 1 && snapshot.data.updates[0].parts[0].unit_price === 8.005
   && snapshot.data.parts[0].qty === 2 && Math.abs(snapshot.data.parts[0].cost_total - 16.01) < 1e-8);
 ok('print snapshot uses reviewed live hours and the same total as the job list', snapshot.data.job.effective_hours === lockedAfter.effective_hours
-  && snapshot.data.job.total_cost === lockedAfter.cost
-  && Math.abs(snapshot.data.job.parts_cost + snapshot.data.job.effective_hours * snapshot.data.rate - lockedAfter.cost) < 0.011);
+  && snapshot.data.job.total_cost === lockedAfter.cost && !('rate' in snapshot.data));
 ok('print snapshot is available to technicians, but not anonymous visitors, and unknown jobs are 404',
   (await rateTech(`${printUrl}/print`)).status === 200 && (await makeClient()(`${printUrl}/print`)).status === 401
   && (await late('/api/work-orders/99999999/print')).status === 404);
@@ -2570,7 +2557,7 @@ let correctionCurrent = await correctionRow();
 ok('admin edits latest stage time, description and actual-cost parts', revisedStage.status === 200
   && correctedHistory[1].message === 'Corrected repair' && correctedHistory[1].hours === 4
   && correctedHistory[1].edited_by === 'Admin' && correctedHistory[1].parts[0].part_name === 'Correction motor'
-  && correctionCurrent.effective_hours === 5 && correctionCurrent.cost === 28 + 5 * rate, JSON.stringify(correctionCurrent));
+  && correctionCurrent.effective_hours === 5 && correctionCurrent.cost === 28, JSON.stringify(correctionCurrent));
 ok('editing parts adjusts stock by the difference, not the whole quantity twice',
   await partStock(correctionMotor.id) === 1 && await partStock(correctionBelt.id) === 4);
 ok('editing keeps selected photos, removes unchecked ones, and adds a new photo',
@@ -2602,7 +2589,7 @@ const removeLatest = await late(correctionTwoUrl, { method: 'DELETE' });
 correctionCurrent = await correctionRow();
 ok('deleting the latest stage restores its stock, hours and cost without touching earlier stages', removeLatest.status === 200
   && (await late(correctionUrl)).data.length === 1 && correctionCurrent.effective_hours === 1
-  && correctionCurrent.cost === 10 + rate && await partStock(correctionMotor.id) === 3 && await partStock(correctionBelt.id) === 5);
+  && correctionCurrent.cost === 10 && await partStock(correctionMotor.id) === 3 && await partStock(correctionBelt.id) === 5);
 ok('deleting a stage removes its photos and preserves a newer machine-state report',
   (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 404
   && !existsSync(join(photosDir, deletedPhotoFiles[0])) && (await correctionState()).status === 'down');
@@ -3563,6 +3550,9 @@ ok('stage photo thumbnails, previews and object URL cleanup work', galleryTest.s
 const printUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'print-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('print page handles escaping, missing images, failures and the print action', printUiTest.status === 0,
   (printUiTest.stderr || printUiTest.stdout).slice(0, 500));
+const partsOnlyUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'parts-only-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('report and dashboard show only verified parts costs', partsOnlyUiTest.status === 0,
+  String(partsOnlyUiTest.stderr || partsOnlyUiTest.stdout).slice(0, 400));
 const machineCostTest = spawnSync(process.execPath, [join(root, 'scripts', 'machine-cost-test.js')], { cwd: root, encoding: 'utf8' });
 ok('missing machine costs fall back to job totals without inventing zeroes', machineCostTest.status === 0,
   String(machineCostTest.stderr || machineCostTest.stdout).slice(0, 400));

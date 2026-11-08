@@ -32,8 +32,7 @@ const WIDTH = 360;
 const PAD = { left: 40, right: 8, top: 10, bottom: 24 };
 
 /**
- * A bar chart. Several series stack on top of each other (parts under labour,
- * say), so one column answers "how much in total" and "how much of which".
+ * A bar chart. Several series can stack on top of each other when needed.
  *
  * labels  — one string per column, shown under the axis
  * series  — [{ name, values: [number, …], tone: 'brand' | 'soft' }], bottom first

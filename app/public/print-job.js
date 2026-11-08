@@ -10,7 +10,7 @@ const photo = (src, label) => `<figure><img src="${src}" alt="${esc(label)}"><fi
 const paragraphs = (v) => value(v).replace(/\n/g, '<br>');
 const unitPrice = (v) => Math.round(Number(v) * 100) / 100 === Number(v) ? Number(v).toFixed(2) : String(Number(v));
 
-function render({ job, updates, parts, rate, time_zone = 'UTC' }) {
+function render({ job, updates, parts, time_zone = 'UTC' }) {
   const stamp = (v) => v ? `${zoneDateTime(v, time_zone) || v} ${time_zone}` : null;
   const photos = (u) => (u.photos || []).map((id, i) => photo(`/api/work-orders/${job.id}/updates/${u.id}/photos/${id}`, `Stage ${u.stage} · Photo ${i + 1}`)).join('');
   const stageRows = (u) => (u.parts || []).map((p) => `<tr><td>${esc(p.part_name)}</td><td>${Number(p.qty)}</td><td>${unitPrice(p.unit_price)}</td></tr>`).join('');
@@ -25,7 +25,7 @@ function render({ job, updates, parts, rate, time_zone = 'UTC' }) {
     <section><h2>Machine details</h2><dl class="details">${item('Machine', job.equipment_name)}${item('Barcode', job.barcode)}${item('Category', job.equipment_category)}${item('Location', job.equipment_location)}${item('Manufacturer', job.equipment_manufacturer)}</dl></section>
     <section><h2>Work updates <span class="count">${updates.length}</span></h2>${stageMarkup || '<p class="muted">No stages recorded.</p>'}</section>
     <section><h2>Parts summary</h2>${parts.length ? `<table><thead><tr><th>Part</th><th>Reference</th><th>Quantity</th><th>Total cost</th></tr></thead><tbody>${parts.map((p) => `<tr><td>${esc(p.name)}</td><td>${value(p.reference, '—')}</td><td>${Number(p.qty)}</td><td>${money(p.display_cost)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No parts recorded.</p>'}</section>
-    <section><h2>Closure and totals</h2><dl class="details">${item('Closed', stamp(job.closed_at))}${item('Checked by', job.verified_by)}${item('Total labour hours', job.effective_hours)}${item('Hourly rate', money(rate))}${item('Parts cost', money(job.parts_cost_display))}${item('Total cost', money(job.total_cost))}</dl><h3>Closing note / historical resolution</h3><p>${paragraphs(job.resolution)}</p></section>`;
+    <section><h2>Closure and totals</h2><dl class="details">${item('Closed', stamp(job.closed_at))}${item('Checked by', job.verified_by)}${item('Total service hours', job.effective_hours)}${item('Parts cost', money(job.parts_cost_display))}${item('Total cost', money(job.total_cost))}</dl><h3>Closing note / historical resolution</h3><p>${paragraphs(job.resolution)}</p></section>`;
   document.title = `${job.code || `Job ${job.id}`} — Work order`;
 }
 
@@ -47,7 +47,9 @@ try {
   if (!/^\d+$/.test(id || '') || Number(id) < 1) throw new Error('Invalid work order number.');
   const response = await fetch(`/api/work-orders/${id}/print`, { credentials: 'same-origin' });
   if (!response.ok) throw new Error(response.status === 401 ? 'Please sign in in the main app, then reload this page.' : 'Could not load this work order.');
-  render(await response.json());
+  const snapshot = await response.json();
+  if (snapshot.cost_basis !== 'parts') throw new Error('Parts-only costs are unavailable. Restart the server after updating.');
+  render(snapshot);
   let timer;
   try { await Promise.race([waitForImages(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Photos are taking too long to load. Reload this page before printing.')), 15000); })]); }
   finally { clearTimeout(timer); }
