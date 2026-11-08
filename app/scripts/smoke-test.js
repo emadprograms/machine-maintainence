@@ -1128,6 +1128,15 @@ ok('the collapsed state is written defensively', /try \{[\s\S]{0,140}localStorag
 ok('the current screen is announced with aria-current', /aria-current/.test(shellSrc));
 ok('every entry carries an accessible name', /aria-label="\$\{p\.label\}"/.test(shellSrc));
 ok('the toggle reports its state with aria-expanded', /aria-expanded/.test(shellSrc));
+const shellCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+ok('the sidebar toggle is above navigation and does not get pushed to the bottom',
+  shellSrc.indexOf('class="side-brand"') < shellSrc.indexOf('class="side-toggle"')
+  && shellSrc.indexOf('class="side-toggle"') < shellSrc.indexOf('class="side-nav"')
+  && !/\.side-toggle \{[^}]*margin-top:\s*auto/.test(shellCss)
+  && /\.side-nav \{[^}]*overflow-y:\s*auto/.test(shellCss));
+const shellUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'shell-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('the sidebar control works, persists and stays accessible', shellUiTest.status === 0,
+  (shellUiTest.stderr || shellUiTest.stdout).slice(0, 500));
 ok('icons are inline svg, not files or a font',
   /<svg/.test(shellSrc) && !/\.(png|svg|woff)\b/.test(shellSrc));
 ok('no external URL was added to the shell',

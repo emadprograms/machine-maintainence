@@ -57,7 +57,8 @@ export function renderShell({ pages, current, onNavigate }) {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
-  sidebar.classList.toggle('collapsed', readCollapsed());
+  const collapsed = readCollapsed();
+  sidebar.classList.toggle('collapsed', collapsed);
 
   const entries = pages.map((p) => `
     <button class="side-link${p.key === current ? ' on' : ''}"
@@ -74,18 +75,18 @@ export function renderShell({ pages, current, onNavigate }) {
       <span class="side-mark">MM</span>
       <span class="side-label">Machine Maintenance</span>
     </div>
-    <nav class="side-nav" aria-label="Sections">${entries}</nav>
     <button class="side-toggle" type="button"
-            aria-expanded="${readCollapsed() ? 'false' : 'true'}"
+            aria-expanded="${!collapsed}"
             aria-controls="sidebar"
-            aria-label="Toggle navigation width"
-            title="Toggle navigation width">
+            aria-label="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}"
+            title="${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
            stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-        <path d="M9 6l6 6-6 6"/>
+        <path d="M15 6l-6 6 6 6"/>
       </svg>
       <span class="side-label">Collapse</span>
-    </button>`;
+    </button>
+    <nav class="side-nav" aria-label="Sections">${entries}</nav>`;
 
   // Clicking outside the sidebar should not navigate; each entry stops here.
   sidebar.querySelectorAll('.side-link').forEach((btn) => {
@@ -96,7 +97,11 @@ export function renderShell({ pages, current, onNavigate }) {
     const nowCollapsed = !sidebar.classList.contains('collapsed');
     sidebar.classList.toggle('collapsed', nowCollapsed);
     writeCollapsed(nowCollapsed);
-    sidebar.querySelector('.side-toggle').setAttribute('aria-expanded', String(!nowCollapsed));
+    const toggle = sidebar.querySelector('.side-toggle');
+    const action = nowCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    toggle.setAttribute('aria-expanded', String(!nowCollapsed));
+    toggle.setAttribute('aria-label', action);
+    toggle.setAttribute('title', action);
   });
 }
 
