@@ -74,7 +74,7 @@ Check with `node --version`.
 | `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 674 behaviours | 3,645 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 675 behaviours | 3,645 |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
@@ -305,7 +305,8 @@ stored `role` values keep the word *user*, because everything else already speak
   the technician who finds the fault is exactly who needs to photograph it. Deleting a
   machine still takes its jobs and their photographs with it.
 * **Closing confirms the machine is running.** The close dialog uses the same red/green
-  machine-status switch as stage updates, initialized from the latest state, and an optional closing note; it does not ask for labour, parts or a checker.
+  machine-status switch as stage updates, initialized from the latest state, and an optional closing note;
+  the close button is disabled when out of service, with a reason on hover or keyboard focus; it does not ask for labour, parts or a checker.
   The server refuses closure without an explicit running confirmation, or for a retired
   machine. Closure records a fresh running state atomically. Reopening retains historical
   details and clears the closed date; a later close requires a new running confirmation.
@@ -513,10 +514,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 674 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 675 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`674 passed, 0 failed`.
+`675 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

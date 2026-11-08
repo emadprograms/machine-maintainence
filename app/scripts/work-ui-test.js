@@ -44,7 +44,7 @@ let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', equipment_id: 1, t
 let updates = [];
 let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false, failParts = false, failState = false;
 let machineState = 'active', waitState = null;
-let waitPeople = null, waitMachines = null, waitUpdates = null, updateError = null;
+let waitPeople = null, waitMachines = null, waitUpdates = null, updateError = null, waitClose = null;
 globalThis.api = async (path, options = {}) => {
   requests.push({ path, options });
   if (path === '/equipment?service=active') {
@@ -93,6 +93,7 @@ globalThis.api = async (path, options = {}) => {
     updates.splice(index, 1); return { ok: true, warning: stageWarning ? 'Photo cleanup failed' : null };
   }
   if (path === '/work-orders/42' && options.method === 'PATCH') {
+    if (waitClose && JSON.parse(options.body).status === 'done') await waitClose;
     Object.assign(jobs[0], JSON.parse(options.body));
     return jobs[0];
   }
@@ -614,6 +615,7 @@ await work.loadWork();
 machineState = 'active'; await work.openWorkClose(42);
 assert.equal(el('#wc-running').checked, true);
 assert.equal(el('#wc-running-label').textContent, 'Running');
+assert.equal(el('#wc-go').disabled, false); assert.equal(el('#wc-disabled-tip').hidden, true);
 failState = true; await work.openWorkClose(42);
 assert.equal(el('#wc-go').disabled, true); assert.equal(el('#wc-retry').hidden, false);
 assert.match(el('#wc-current').textContent, /state unavailable/i);
@@ -625,14 +627,24 @@ machineState = 'down';
 await work.openWorkClose(42);
 assert.equal(el('#wc-running').checked, false);
 assert.equal(el('#wc-running-label').textContent, 'Out of service');
+assert.equal(el('#wc-go').disabled, true); assert.equal(el('#wc-disabled-tip').hidden, false);
+assert.equal(el('#wc-action').tabIndex, 0);
 const count = requests.length;
 await work.confirmCloseWork();
 assert.equal(requests.length, count);
-assert.match(errors.at(-1)[1], /must be running/i);
 el('#wc-running').checked = true; work.closeToggleChanged();
 assert.equal(el('#wc-running-label').textContent, 'Running');
+assert.equal(el('#wc-go').disabled, false); assert.equal(el('#wc-disabled-tip').hidden, true);
+assert.equal(el('#wc-action').tabIndex, -1);
+el('#wc-running').checked = false; work.closeToggleChanged();
+assert.equal(el('#wc-go').disabled, true);
+el('#wc-running').checked = true; work.closeToggleChanged();
 el('#wc-resolution').value = '';
-await work.confirmCloseWork();
+let releaseClose; waitClose = new Promise((resolve) => { releaseClose = resolve; });
+const savingClose = work.confirmCloseWork();
+assert.equal(el('#wc-go').disabled, true); assert.equal(el('#wc-running').disabled, true);
+work.closeToggleChanged(); assert.equal(el('#wc-go').disabled, true);
+releaseClose(); await savingClose; waitClose = null;
 const closeRequest = requests.findLast((r) => r.options.method === 'PATCH');
 assert.deepEqual(JSON.parse(closeRequest.options.body), { status: 'done', machine_running: true, resolution: null });
 jobs[0].closed_at = '2026-01-02'; await work.loadWork(); await work.openWorkUpdates(42, true);

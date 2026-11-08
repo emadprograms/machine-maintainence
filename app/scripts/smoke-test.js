@@ -2835,6 +2835,11 @@ ok('the close dialog asks for running state and an optional note, not stage data
   && !['wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts'].some((id) => closeDialog.includes(`id="${id}"`)));
 ok('closing opens that dialog instead of a one-click PATCH',
   /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc));
+ok('the disabled close action explains an out-of-service machine on hover or focus',
+  closeDialog.includes('id="wc-disabled-tip" role="tooltip"')
+  && closeDialog.includes('aria-describedby="wc-disabled-tip"')
+  && /close-action:hover/.test(uiCss) && /close-action:focus \.close-tooltip/.test(uiCss)
+  && /wc-go'\)\.disabled = !closeStateReady/.test(workSrc));
 ok('closure requires running and sends no hours or parts',
   /machine_running: true/.test(workSrc) && /wc-running/.test(workSrc)
   && !workSrc.includes("$('#wc-hours')") && !workSrc.includes("$('#wc-part')"));

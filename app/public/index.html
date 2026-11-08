@@ -313,7 +313,7 @@
           <p class="form-error" role="alert"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
-            <button class="primary" id="wc-go" type="button" onclick="confirmCloseWork()">Close the job</button>
+            <span class="close-action" id="wc-action" tabindex="-1" role="group" aria-label="Close the job unavailable" aria-describedby="wc-disabled-tip"><button class="primary" id="wc-go" type="button" onclick="confirmCloseWork()" disabled>Close the job</button><span class="close-tooltip" id="wc-disabled-tip" role="tooltip" hidden>The machine is out of service. Switch it to Running to close the job.</span></span>
           </div>
         </form>
       </dialog>

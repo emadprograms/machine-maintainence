@@ -415,3 +415,12 @@ th.sorted .sort-btn { color: var(--ink); }
 .photo-preview { position: relative; }
 .photo-remove { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #fff; border-radius: 50%; background: #a12828; color: white; font-size: 22px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px #0004; }
 .photo-remove:focus-visible { outline: 3px solid #7cb5ef; outline-offset: 2px; }
+
+/* Disabled controls do not reliably receive pointer events; the wrapper provides
+   the same explanation on hover, keyboard focus and touch focus. */
+.close-action { position: relative; display: inline-flex; border-radius: 9px; }
+.close-action:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.close-action button.primary:disabled { background: #d0d5dd; border-color: #d0d5dd; color: #475467; cursor: not-allowed; pointer-events: none; }
+.close-action:has(button:disabled) { cursor: not-allowed; }
+.close-tooltip { position: absolute; z-index: 3; bottom: calc(100% + 9px); right: 0; width: min(240px, calc(100vw - 50px)); padding: 9px 11px; border-radius: 8px; background: #263342; color: #fff; font-size: 12px; line-height: 1.4; text-align: left; box-shadow: 0 4px 14px #10182833; visibility: hidden; opacity: 0; pointer-events: none; }
+.close-action:hover .close-tooltip:not([hidden]), .close-action:focus .close-tooltip:not([hidden]) { visibility: visible; opacity: 1; }

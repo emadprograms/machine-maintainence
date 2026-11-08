@@ -277,16 +277,22 @@ export const retryWorkUpdateLoading = () => updateUI.retryWorkUpdateLoading();
 export const startAssigned = () => updateUI.startAssigned();
 
 // ---- closing a job -------------------------------------------------------
-let closingWork = null, closeJob = null, closeLoad = 0, closeStateReady = false;
+let closingWork = null, closeJob = null, closeLoad = 0, closeStateReady = false, closeSaving = false;
 function showCloseToggle(running) {
   $('#wc-running').checked = Boolean(running);
   $('#wc-running-label').textContent = running ? 'Running' : 'Out of service';
 }
-export function closeToggleChanged() { showCloseToggle($('#wc-running').checked); formError('work-close', ''); }
+function syncCloseAction() {
+  const blocked = closeStateReady && !$('#wc-running').checked && !closeSaving;
+  $('#wc-go').disabled = !closeStateReady || !$('#wc-running').checked || closeSaving;
+  $('#wc-disabled-tip').hidden = !blocked;
+  $('#wc-action').tabIndex = blocked ? 0 : -1;
+}
+export function closeToggleChanged() { showCloseToggle($('#wc-running').checked); syncCloseAction(); formError('work-close', ''); }
 export async function openWorkClose(idToClose) {
   const job = workCache.find((w) => w.id === idToClose);
   if (!job) return;
-  closingWork = idToClose; closeJob = job;
+  closingWork = idToClose; closeJob = job; closeSaving = false;
   $('#work-close-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wc-resolution').value = '';
   formError('work-close', '');
@@ -297,7 +303,7 @@ export async function retryCloseState() {
   if (!closingWork || !closeJob) return;
   const run = ++closeLoad, job = closeJob;
   closeStateReady = false;
-  $('#wc-go').disabled = true; $('#wc-running').disabled = true; $('#wc-retry').hidden = true;
+  syncCloseAction(); $('#wc-running').disabled = true; $('#wc-retry').hidden = true;
   $('#wc-load').hidden = false; $('#wc-current').textContent = 'Loading machine state…';
   $('#wc-running-label').textContent = 'Loading…';
   try {
@@ -312,9 +318,9 @@ export async function retryCloseState() {
       return;
     }
     showCloseToggle(machine.status === 'active');
-    $('#wc-running').disabled = false; $('#wc-go').disabled = false;
+    $('#wc-running').disabled = false;
     $('#wc-current').textContent = ''; $('#wc-load').hidden = true;
-    closeStateReady = true;
+    closeStateReady = true; syncCloseAction();
   } catch (e) {
     if (run !== closeLoad) return;
     $('#wc-running-label').textContent = 'Unavailable';
@@ -326,13 +332,13 @@ export async function confirmCloseWork() {
   if (!closingWork || !closeStateReady || $('#wc-go').disabled) return;
   if (!$('#wc-running').checked)
     return formError('work-close', 'The machine must be running before this job can be closed.');
-  $('#wc-go').disabled = true;
+  closeSaving = true; $('#wc-running').disabled = true; syncCloseAction();
   try {
     await api(`/work-orders/${closingWork}`, { method: 'PATCH', body: JSON.stringify({
       status: 'done', machine_running: true, resolution: $('#wc-resolution').value.trim() || null,
     })});
-    closingWork = null; closeJob = null; closeStateReady = false; ++closeLoad;
+    closingWork = null; closeJob = null; closeStateReady = false; closeSaving = false; ++closeLoad; syncCloseAction();
     formDone('work-close');
     await loadWork();
-  } catch (e) { formError('work-close', e.message); $('#wc-go').disabled = false; }
+  } catch (e) { closeSaving = false; $('#wc-running').disabled = !closeStateReady; syncCloseAction(); formError('work-close', e.message); }
 }
