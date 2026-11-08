@@ -21,7 +21,7 @@ export default {
   'GET /api/work-orders': route(async (req, res) => {
     const f = workOrderFilter(req.query);
     send(res, 200, all(`
-      SELECT w.*, e.name AS equipment_name, u.name AS assignee_name,
+      SELECT w.*, e.name AS equipment_name, e.status AS machine_service_status, u.name AS assignee_name,
              (SELECT MAX(stage) FROM work_order_updates WHERE work_order_id = w.id) AS current_stage,
              ${effectiveHours()} AS effective_hours,
              CASE WHEN e.status = 'retired' THEN 0 ELSE ${machineRunningSql('e.id')} END AS machine_running,
@@ -102,21 +102,14 @@ export default {
     if (status === 'in_progress' && before.status !== 'in_progress') {
       return send(res, 400, { error: 'Add a stage update to start the job' });
     }
-    // A job cannot be closed without an account of the repair. "Bearing noise —
-    // done" answers nothing six months later, and the moment to write it down is
-    // the moment the job is finished. The rule is about the transition, not the
-    // state: a change to a job that is already closed does not ask again, but a job
-    // reopened because the fix did not hold must be closed with a new account
-    // rather than inheriting the story of the repair that failed.
-    // A job that is already closed keeps its account when something else about it
-    // changes; a job being closed now has to bring one, even if it was closed once
-    // before and reopened because that repair did not hold.
-    const done = resolution.missing
-      ? (before.status === 'done' ? before.resolution : null)
-      : resolution.value;
-    if (status === 'done' && before.status !== 'done' && !done) {
-      return send(res, 400, { error: 'Say what was done before closing the job' });
-    }
+    // Closing explicitly reports a running machine. Never infer this from an old
+    // stage or silently close an out-of-service/retired machine.
+    const closing = status === 'done' && before.status !== 'done';
+    if (closing && b.machine_running !== true)
+      return send(res, 400, { error: 'Confirm that the machine is running before closing the job' });
+    if (closing && get('SELECT status FROM equipment WHERE id = ?', before.equipment_id)?.status === 'retired')
+      return send(res, 400, { error: 'Restore the retired machine before closing the job' });
+    const done = resolution.missing ? (closing ? null : before.resolution) : resolution.value;
     transaction(() => {
       run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
            labour_hours=?, labour_stage_baseline=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
@@ -127,9 +120,10 @@ export default {
         hours.missing ? before.labour_stage_baseline : get('SELECT COALESCE(SUM(hours), 0) AS total FROM work_order_updates WHERE work_order_id = ?', before.id).total,
         reporter.missing ? before.reported_by : reporter.value,
         done, verifier.missing ? before.verified_by : verifier.value,
-        b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine),
+        closing ? 0 : (b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine)),
         id(req.params.id));
-      if (b.stops_machine !== undefined)
+      if (closing) recordMachineState(before.equipment_id, before.id, null, true, 'closure');
+      else if (b.stops_machine !== undefined)
         recordMachineState(before.equipment_id, before.id, null, !stopsValue(b.stops_machine), 'correction');
     });
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));

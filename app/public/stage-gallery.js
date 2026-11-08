@@ -31,8 +31,9 @@ function showPhoto(src, title) {
   $('#stage-photo-image').alt = title; $('#stage-photo-caption').textContent = title;
   if (!dialog.open) dialog.showModal();
 }
+export function previewFaultPhoto() { if (workId) showPhoto(`/api/work-orders/${Number(workId)}/photo`, 'Reported fault photo'); }
 export function previewStagePhoto(stage, photo, number) { showPhoto(url(stage, photo), `Stage photo ${Number(number)}`); }
 export function previewNewStagePhoto(index) { if (selectedUrls[index]) showPhoto(selectedUrls[index], `New photo ${Number(index) + 1}`); }
 $('#stage-photo-image').addEventListener?.('error', () => { $('#stage-photo-caption').textContent = 'This photo could not be loaded.'; });
-Object.assign(window, { previewStagePhoto, previewNewStagePhoto });
+Object.assign(window, { previewStagePhoto, previewNewStagePhoto, previewFaultPhoto });
 $('#work-assign').addEventListener?.('close', () => { if (!$('#work-assign').open) resetStageGallery(null); });

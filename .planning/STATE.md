@@ -1,11 +1,11 @@
 ---
 gsd_state_version: "1.0"
-milestone: v5.0
-milestone_name: Work-order experience and print
+milestone: v6.0
+milestone_name: Work-order timeline and close experience
 status: Awaiting next milestone
 last_updated: "2026-11-05T15:16:52.889Z"
 last_activity: 2026-11-05
-last_activity_desc: Milestone v5.0 completed
+last_activity_desc: Milestone v6.0 completed
 progress:
   total_phases: 1
   completed_phases: 1
@@ -22,14 +22,14 @@ current_phase: null
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** v1.0, v1.1, v2.0, v3.0, v4.0 and v5.0 are complete. No milestone is in progress.
+**Current focus:** v1.0, v1.1, v2.0, v3.0, v4.0, v5.0 and v6.0 are complete. No milestone is in progress.
 
 ## Current Position
 
-Phase: Milestone v5.0 complete
+Phase: Milestone v6.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — sidebar collapse control redesigned as a conventional icon
+Last activity: 2026-11-05 — chronological work-order timeline, running-only close, calmer creation form and machine detail improvements
 
 ## Quick Tasks Completed
 

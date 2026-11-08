@@ -217,7 +217,7 @@ ok('status advances open -> in_progress',
     .data.status === 'in_progress');
 ok('starting with an assignment saves both together',
   (await c('/api/work-orders')).data.some((w) => w.id === wo.data.id && w.status === 'in_progress' && w.assigned_to === 1));
-const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Replaced the seal' } });
+const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Replaced the seal' } });
 ok('done sets closed_at', done.data.status === 'done' && !!done.data.closed_at);
 ok('invalid status is rejected with a message',
   (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'nonsense' } }))
@@ -1034,7 +1034,7 @@ const openListForClose = (await c2('/api/work-orders')).data
   .filter((w) => w.status !== 'done');
 const beforeClose = (await c2('/api/dashboard')).data.work_orders.count;
 if (openListForClose.length) {
-  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Belt re-tensioned' } });
+  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Belt re-tensioned' } });
 }
 const afterClose = (await c2('/api/dashboard')).data.work_orders.count;
 ok('closing a work order drops it from the open count',
@@ -1214,7 +1214,7 @@ const hose = await c2('/api/work-orders', {
 const flywheel = await c2('/api/work-orders', {
   method: 'POST', body: { equipment_id: press.data.id, title: 'Noise from flywheel' },
 });
-await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Flywheel balanced' } });
+await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Flywheel balanced' } });
 
 // FIND-01 — one box over the problem, the notes and the machine's name.
 const byProblem = await c2('/api/work-orders?q=hose');
@@ -1323,7 +1323,7 @@ const costedPart = await c2('/api/parts', {
 await c2(`/api/work-orders/${pumpJob.data.id}/parts`, {
   method: 'POST', body: { part_id: costedPart.data.id, qty: 2 },
 });
-await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Impeller cleaned' } });
+await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Impeller cleaned' } });
 const costedList = await c2('/api/work-orders');
 const costed = costedList.data.find((w) => w.id === pumpJob.data.id);
 // 2.5 h x 40 = 100 of labour, 2 x 12.5 = 25 of parts.
@@ -1379,7 +1379,7 @@ const stillOpen = await c2('/api/work-orders', {
 const toClose = await c2('/api/work-orders', {
   method: 'POST', body: { equipment_id: histId, title: 'Oil leak' },
 });
-await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Greased and tested' } });
+await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Greased and tested' } });
 
 // HIST-01 — a machine's own history includes the job that is still running.
 const machineHistory = await c2(`/api/history?equipment_id=${histId}`);
@@ -1514,9 +1514,9 @@ ok('the dashboard counts the same machine as down',
   (await c('/api/dashboard')).data.machines.items.some((m) => m.id === fixable.data.id),
   'the card and the list disagree about a machine');
 
-await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
-ok('closing a job does not invent a newer machine-state report',
-  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { status: 'done', machine_running: true, resolution: 'Motor rewound' });
+ok('closing a job records the confirmed running machine state',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 await setJob(urgent.id, { stops_machine: false });
 
 const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
@@ -1528,7 +1528,7 @@ await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { mess
 ok('and then it does, and the reason names the job',
   (await statusOf(fixable.data.id)) === 'down'
   && /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
-await setJob(routine.id, { status: 'done', resolution: 'Filters changed' });
+await setJob(routine.id, { status: 'done', machine_running: true, resolution: 'Filters changed' });
 ok('the flag can be taken off again without closing the job',
   (await setJob(urgent.id, { stops_machine: true })).data.stops_machine === 1
   && (await setJob(urgent.id, { stops_machine: false })).data.stops_machine === 0);
@@ -1540,11 +1540,11 @@ ok('a retired machine reads retired, not down, even with a job on it',
 await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
 ok('restoring it does not hide the job that is still holding it down',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
-await setJob(reopenedUrgent.id, { status: 'done', resolution: 'Shaft aligned' });
-ok('closing the last job preserves the last explicitly reported machine state',
-  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(reopenedUrgent.id, { status: 'done', machine_running: true, resolution: 'Shaft aligned' });
+ok('closing records a fresh running state',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 await setJob(reopenedUrgent.id, { stops_machine: false });
-await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
+await setJob(urgent.id, { status: 'done', machine_running: true, resolution: 'Motor rewound' });
 
 // ---- a technician keeps the doors they need ------------------------------
 await c('/api/users', { method: 'POST', body: {
@@ -1730,7 +1730,7 @@ const codeOnly = (text) => text
   .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 ok('every machine row offers Edit',
-  /menuItem\('Edit machine', `editEquipment\(\$\{machine\.id\}\)`\)/.test(appEq),
+  /menuItem\('Edit machine details', `editEquipment\(\$\{machine\.id\}\)`\)/.test(appEq),
   'no control, no edit');
 ok('the edit form carries every field a machine has',
   ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
@@ -1865,7 +1865,7 @@ ok('everything about a machine sits behind three dots',
 ok('and the menu holds edit, history, retire and delete',
   ['editEquipment', 'openMachineHistory', 'toggleStatus', 'openEquipmentDelete']
     .every((fn) => actionsFn.includes(fn))
-  && ['Edit machine', 'History', 'Retire machine', 'Delete machine']
+  && ['Edit machine details', 'History', 'Retire machine', 'Delete machine']
     .every((label) => appEq.includes(label)), 'an action went missing from the menu');
 ok('delete is the red item in it',
   /menuItem\('Delete machine', `openEquipmentDelete\(\$\{machine\.id\}\)`, \{ danger: true \}\)/.test(appEq)
@@ -2257,7 +2257,7 @@ srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
 ok('server restarts after stage updates', await waitForServer());
 stages = (await late(stageUrl)).data;
 ok('stage history and its photos survive a restart', stages.length === 2 && stages[0].photos.length === 2 && (await late(stagePhotoUrl)).bytes.equals(pngBytes));
-const stageClosed = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Bearing replaced', labour_hours: 1.75 } });
+const stageClosed = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Bearing replaced', labour_hours: 1.75 } });
 ok('closing records the final total without deleting stages', stageClosed.status === 200 && stageClosed.data.labour_hours === 1.75 && (await late(stageUrl)).data.length === 2);
 ok('a closed ticket refuses new updates', (await stagePost({ message: 'Too late', hours: 1 })).status === 400);
 await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'open' } });
@@ -2346,7 +2346,7 @@ ok('a failed stage rolls back all part uses, hours, machine state and photos', s
   && await partStock(belt.id) === stockBeforeFailure && (await late(liveUrl)).data.length === beforeInvalid
   && (await liveEquipment()).status === 'down' && readdirSync(photosDir).length === photosBeforeFailure);
 const liveClose = await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: {
-  status: 'done', resolution: 'Fixed', labour_hours: 10,
+  status: 'done', machine_running: true, resolution: 'Fixed', labour_hours: 10,
 } });
 live = await liveRow();
 ok('the reviewed final hours replace the running total, without double counting', liveClose.status === 200
@@ -2359,7 +2359,7 @@ await livePost({ message: 'Follow-up after reopening', hours: 0.5, machine_runni
 live = await liveRow();
 ok('after reopening, new stage hours add to the reviewed total exactly once', live.effective_hours === 10.5
   && live.cost === 137.5 + 10.5 * rate && (await liveEquipment()).total_hours === 10.5);
-await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Checked again', labour_hours: 10.5 } });
+await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Checked again', labour_hours: 10.5 } });
 live = await liveRow();
 liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
 ok('reclosing keeps the combined total and report consistent', live.effective_hours === 10.5 && liveReport.hours === 10.5
@@ -2420,7 +2420,8 @@ const printPart = (await late('/api/parts', { method: 'POST', body: { name: 'Pri
 const printJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: printMachine.id, title: 'Original fault', notes: 'Original notes', reported_by: 'Alice', assigned_to: 1, stops_machine: true } })).data;
 const printUrl = `/api/work-orders/${printJob.id}`;
 ok('original report can be edited before its first stage', (await late(printUrl, { method: 'PATCH', body: { title: 'Corrected fault' } })).data.title === 'Corrected fault');
-const unreportedPrint = (await late(`/api/work-orders/${editableJob.id}/print`)).data;
+const unreportedJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: printMachine.id, title: 'No state supplied' } })).data;
+const unreportedPrint = (await late(`/api/work-orders/${unreportedJob.id}/print`)).data;
 ok('an unreported machine state is not misrepresented as running in print', unreportedPrint.job.last_reported_running === null);
 ok('fault photo can be added before work starts', (await late(`${printUrl}/photo`, { method: 'POST', contentType: 'image/png', rawBody: pngBytes })).status === 200);
 const printStage = await late(`${printUrl}/updates`, { method: 'POST', body: { message: 'Replaced bearing', hours: 2, machine_running: true, photos: [stagePhoto], parts: [{ part_id: printPart.id, qty: 2, unit_price: 8.005 }] } });
@@ -2429,7 +2430,7 @@ for (const change of [{ title: 'Different problem' }, { priority: 'high' }, { no
   const refused = await late(printUrl, { method: 'PATCH', body: change });
   ok(`stage locks original report field ${Object.keys(change)[0]}`, refused.status === 409 && /cannot be edited/i.test(refused.data.error || ''));
 }
-const mixed = await late(printUrl, { method: 'PATCH', body: { title: 'Changed', status: 'done', resolution: 'Must not close' } });
+const mixed = await late(printUrl, { method: 'PATCH', body: { title: 'Changed', status: 'done', machine_running: true, resolution: 'Must not close' } });
 const lockedAfter = (await late('/api/work-orders')).data.find((w) => w.id === printJob.id);
 ok('a mixed report edit and closure is rejected atomically', mixed.status === 409 && lockedAfter.title === lockedBefore.title && lockedAfter.status === 'in_progress' && lockedAfter.resolution === lockedBefore.resolution);
 const filesBeforeLock = photoCount();
@@ -2454,7 +2455,7 @@ ok('print snapshot is available to technicians, but not anonymous visitors, and 
   && (await late('/api/work-orders/99999999/print')).status === 404);
 ok('latest stage remains correctable after report lock',
   (await late(`${printUrl}/updates/${printStage.data.id}`, { method: 'PUT', body: { message: 'Corrected stage' } })).status === 200);
-const lockedClose = await late(printUrl, { method: 'PATCH', body: { status: 'done', resolution: 'Bearing replaced', labour_hours: 3, verified_by: 'Inspector' } });
+const lockedClose = await late(printUrl, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Bearing replaced', labour_hours: 3, verified_by: 'Inspector' } });
 const closedPrint = await late(`${printUrl}/print`);
 ok('closure and reviewed totals stay available, including in print', lockedClose.status === 200
   && closedPrint.data.job.resolution === 'Bearing replaced' && closedPrint.data.job.verified_by === 'Inspector' && closedPrint.data.job.effective_hours === 3);
@@ -2578,14 +2579,14 @@ const correctionAgain = await correctionPost({ message: 'Retried fix', hours: 1,
 const correctionAgainUrl = `${correctionUrl}/${correctionAgain.data.id}`;
 ok('a later stage answer controls the whole machine despite an earlier stopping job',
   correctionAgain.status === 201 && (await correctionState()).status === 'active');
-await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Fixed', labour_hours: 0.5 } });
+await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Fixed', labour_hours: 0.5 } });
 const editClosed = await late(correctionAgainUrl, { method: 'PUT', body: { hours: 2, machine_running: false } });
 ok('an admin may correct the latest stage after closure and its hours adjust the reviewed total', editClosed.status === 200
-  && (await correctionRow()).effective_hours === 1.5 && (await correctionState()).status === 'down');
+  && (await correctionRow()).effective_hours === 1.5 && (await correctionState()).status === 'active');
 await late(correctionAgainUrl, { method: 'DELETE' });
 correctionCurrent = await correctionRow();
 ok('deleting a reviewed stage cannot produce negative hours and keeps the closed job closed', correctionCurrent.status === 'done'
-  && correctionCurrent.effective_hours === 0 && (await correctionState()).status === 'down');
+  && correctionCurrent.effective_hours === 0 && (await correctionState()).status === 'active');
 await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'open' } });
 await correctionPost({ message: 'More work after correction', hours: 0.25, machine_running: true });
 ok('new time after a zero-clamped correction is not swallowed by the old baseline',
@@ -2747,16 +2748,29 @@ const closeJob = (await late('/api/work-orders', { method: 'POST', body: {
 
 const silentClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
   status: 'done' } });
-ok('a job cannot be closed without saying what was done',
-  silentClose.status === 400 && /Say what was done/.test(silentClose.data.error || ''),
+ok('a job cannot be closed without confirming it is running',
+  silentClose.status === 400 && /machine is running/i.test(silentClose.data.error || ''),
   JSON.stringify(silentClose.data));
+const falseClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: false } });
+const stringClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: 'true' } });
+ok('out of service and ambiguous running answers cannot close a job', falseClose.status === 400 && stringClose.status === 400);
+await late(`/api/equipment/${closeMachine.id}`, { method: 'PUT', body: { status: 'retired' } });
+const retiredClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+ok('a retired machine cannot be reported running by closing a job', retiredClose.status === 400);
+await late(`/api/equipment/${closeMachine.id}`, { method: 'PUT', body: { status: 'active' } });
+const noNoteJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: closeMachine.id, title: 'No closing note', assigned_to: 1, stops_machine: true } })).data;
+await late(`/api/work-orders/${noNoteJob.id}/updates`, { method: 'POST', body: { message: 'Stage work', hours: 2, machine_running: false } });
+const noNoteClose = await late(`/api/work-orders/${noNoteJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+const noNoteRow = (await late('/api/work-orders')).data.find((w) => w.id === noNoteJob.id);
+const noNoteMachine = (await late('/api/equipment')).data.find((m) => m.id === closeMachine.id);
+ok('closing with no note preserves stage hours and records the running state', noNoteClose.status === 200 && noNoteClose.data.resolution === null && noNoteRow.effective_hours === 2 && noNoteMachine.status === 'active');
 const closeAttempt = (await late('/api/work-orders')).data.find((w) => w.id === closeJob.id);
 ok('and it is still open, not half closed',
   closeAttempt?.status === 'open' && closeAttempt.closed_at === null,
   JSON.stringify(closeAttempt?.status));
 
 const closedJob = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
-  status: 'done', resolution: '  New spindle bearings, re-greased  ',
+  status: 'done', machine_running: true, resolution: '  New spindle bearings, re-greased  ',
   verified_by: '  Sam  ', labour_hours: 2.5 } });
 ok('closing records what was done, who checked it and the hours',
   closedJob.status === 200 && closedJob.data.resolution === 'New spindle bearings, re-greased'
@@ -2777,23 +2791,23 @@ ok('reopening clears the closed date and keeps what was done',
   JSON.stringify(reopenedJob.data));
 const reopenAgain = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
   status: 'done' } });
-ok('but closing it again needs a new account, not the story of the failed repair',
-  reopenAgain.status === 400 && /Say what was done/.test(reopenAgain.data.error || ''),
+ok('but closing it again requires a fresh running confirmation',
+  reopenAgain.status === 400 && /machine is running/i.test(reopenAgain.data.error || ''),
   JSON.stringify(reopenAgain.data));
 const reclosed = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
-  status: 'done', resolution: 'Shimmed the mount; wobble gone' } });
+  status: 'done', machine_running: true, resolution: 'Shimmed the mount; wobble gone' } });
 ok('and the new account replaces the old one',
   reclosed.data.resolution === 'Shimmed the mount; wobble gone', JSON.stringify(reclosed.data.resolution));
 
 const longResolution = await late('/api/work-orders', { method: 'POST', body: {
   equipment_id: closeMachine.id, title: 'Long story' } });
 const refusedLong = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
-  status: 'done', resolution: 'x'.repeat(2001) } });
+  status: 'done', machine_running: true, resolution: 'x'.repeat(2001) } });
 ok('a resolution longer than 2000 characters is refused with a sentence',
   refusedLong.status === 400 && /2000 characters/.test(refusedLong.data.error || ''),
   JSON.stringify(refusedLong.data));
 const refusedVerifier = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
-  status: 'done', resolution: 'Adjusted', verified_by: 'n'.repeat(121) } });
+  status: 'done', machine_running: true, resolution: 'Adjusted', verified_by: 'n'.repeat(121) } });
 ok('and so is a name longer than 120',
   refusedVerifier.status === 400 && /120 characters/.test(refusedVerifier.data.error || ''),
   JSON.stringify(refusedVerifier.data));
@@ -2815,29 +2829,14 @@ ok('the history file gives the repair a column of its own',
 
 // ---- the dialog that asks for it ------------------------------------------
 const closeDialog = (indexEq.match(/<dialog id="work-close"[\s\S]*?<\/dialog>/) || [''])[0];
-ok('the close dialog names itself and asks what was done, the hours, who checked it and which parts',
-  closeDialog.includes('<h3 id="work-close-title">')
-  && ['wc-resolution', 'wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts']
-    .every((wanted) => closeDialog.includes(`id="${wanted}"`)),
-  closeDialog ? 'a field is missing' : 'work-close is gone');
+ok('the close dialog asks for running state and an optional note, not stage data',
+  closeDialog.includes('id="wc-running"') && closeDialog.includes('id="wc-resolution"')
+  && !['wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts'].some((id) => closeDialog.includes(`id="${id}"`)));
 ok('closing opens that dialog instead of a one-click PATCH',
-  /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc),
-  'advance() still closes jobs by itself');
-ok('the browser refuses an empty account before the server has to',
-  /formError\('work-close', 'Say what was done/.test(workSrc));
-ok('and sends what was done with the close',
-  /status: 'done',\s*\n?\s*resolution,/.test(workSrc)
-  && /verified_by: \$\('#wc-verified'\)/.test(workSrc));
-// The whole function, not a fragment of the file: the same refresh line exists in
-// openWorkClose(), so a file-wide search passed when usePart() stopped refreshing
-// and the count on the shelf silently went stale.
-const usePartFn = (workSrc.match(/export async function usePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
-ok('a part taken while closing is recorded on the job, and the shelf count follows',
-  /work-orders\/\$\{closingWork\}\/parts/.test(usePartFn)
-  && /partChoices = await api\('\/parts'\)/.test(usePartFn)
-  && /fillPartChoices\(\)/.test(usePartFn)
-  && /showUsedParts\(closingWork\)/.test(usePartFn),
-  usePartFn ? 'the picker posts nowhere, or the stock never refreshes' : 'usePart() is not defined');
+  /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc));
+ok('closure requires running and sends no hours or parts',
+  /machine_running: true/.test(workSrc) && /wc-running/.test(workSrc)
+  && !workSrc.includes("$('#wc-hours')") && !workSrc.includes("$('#wc-part')"));
 ok('the history row shows what was done under the job',
   /row-sub/.test(histSrc) && /w\.resolution/.test(histSrc));
 
@@ -3018,7 +3017,7 @@ ok('editing a work order opens a dialog that carries the whole record',
   editDialog ? 'a field is missing' : 'work-edit is gone');
 ok('the list itself has no editor left in it',
   !/we-title-\$\{/.test(workSrc) && !/id="we-owner-\$\{/.test(workSrc)
-  && /menuItem\('Edit', `editWork\(\$\{w\.id\}\)`\)/.test(workSrc),
+  && /menuItem\('Edit', `editWork\(\$\{w\.id\}\)`/.test(workSrc),
   'a row still draws inputs, or Edit does not open anything');
 // The function itself: the close dialog also reads workCache, so a file-wide search
 // for it passed while editWork had been changed to fetch the job again.
@@ -3421,7 +3420,7 @@ const historyClient = makeTextClient({ email: 'admin@local', password: 'smoke-te
 const csvMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'CSV press' } })).data;
 const closedForCsv = (await late('/api/work-orders', { method: 'POST', body: {
   equipment_id: csvMachine.id, title: 'Closed for the file', priority: 'low' } })).data;
-await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Closed for the file' } });
+await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Closed for the file' } });
 
 const historyCsv = await historyClient(`/api/export/history.csv?equipment_id=${csvMachine.id}`);
 ok('the history export answers', historyCsv.status === 200, `status ${historyCsv.status}`);
@@ -3526,9 +3525,9 @@ const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-t
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
 const assignDialog = (html.match(/<dialog id="work-assign"[\s\S]*?<\/dialog>/) || [''])[0];
-ok('final labour hours appear only in the close dialog',
+ok('labour hours are captured in stages, not the work order or close forms',
   !workForm.includes('id="w-hours"') && !editDialog.includes('id="we-hours"')
-  && indexEq.includes('id="wc-hours"') && !createWorkFn.includes('labour_hours') && !saveWorkFn.includes('labour_hours'));
+  && !indexEq.includes('id="wc-hours"') && !createWorkFn.includes('labour_hours') && !saveWorkFn.includes('labour_hours'));
 ok('the stage dialog asks for an update, time and optional photos',
   ['wa-message', 'wa-hours', 'wa-photos', 'wa-history'].every((id) => assignDialog.includes(`id="${id}"`))
   && assignDialog.includes('multiple'));

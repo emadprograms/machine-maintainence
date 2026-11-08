@@ -86,7 +86,7 @@
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="manufacturer">Manufacturer<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="location">Location<span class="sort-mark" aria-hidden="true"></span></button></th>
-            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours">Total hours<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours" title="Total labour hours recorded for this machine">Total service hours<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th></th></tr></thead>
             <tbody id="equipment-rows"></tbody></table>
         </div>
@@ -120,10 +120,10 @@
       <dialog id="equipment-edit" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
-            <h3 id="equipment-edit-title">Edit machine</h3>
+            <h3 id="equipment-edit-title">Edit machine details</h3>
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-edit')">&times;</button>
           </div>
-          <p class="sheet-sub">What this machine <em>is</em>. Its state comes from its work orders: open a job, or close one, and the list follows.</p>
+          <p class="sheet-sub">What this machine <em>is</em>. Its operating state comes from the latest explicit report or update.</p>
           <div class="form-grid form-grid-wide">
             <label class="field"><span>Name</span><input id="ee-name" placeholder="e.g. CNC lathe" /></label>
             <label class="field"><span>Barcode</span><input id="ee-tag" placeholder="e.g. 101220054" /></label>
@@ -136,7 +136,7 @@
             <div id="ee-photo-preview" class="photo-preview"></div>
             <div class="photo-pick">
               <label class="field"><span>Photograph — JPEG, PNG or WebP, under 2 MB</span><input id="ee-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
-              <label class="check"><input id="ee-photo-clear" type="checkbox" /> Remove the photograph</label>
+              <input id="ee-photo-clear" type="checkbox" hidden /><button id="ee-photo-undo" type="button" class="ghost small" onclick="undoEquipmentPhotoRemoval()" hidden>Undo removal</button>
             </div>
           </div>
           <input type="hidden" id="ee-id" />
@@ -219,10 +219,13 @@
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-form')">&times;</button>
           </div>
           <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
-          <div class="form-grid form-grid-wide">
+          <div class="form-grid form-grid-wide work-report-grid">
+            <div class="report-section-title field-wide"><strong>Problem details</strong><span>Start with the machine and what happened.</span></div>
             <label class="field"><span>Machine</span><select id="w-equipment" onchange="syncWorkMachineState()" required></select>
               <span id="w-machine-status" class="hint" role="status"></span><button id="w-machine-retry" class="ghost small" type="button" onclick="retryWorkMachines()" hidden>Retry loading machines</button></label>
             <label class="field"><span>Problem <span class="required-mark" aria-hidden="true">*</span></span><input id="w-title" required placeholder="What is wrong?" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span><textarea id="w-notes" rows="3" placeholder="Add any useful details about the problem"></textarea></label>
+            <div class="report-section-title field-wide"><strong>Job details</strong><span>Set the priority and who should handle it.</span></div>
             <label class="field"><span>Assigned to</span><select id="w-owner"><option value="">— unassigned —</option></select></label>
             <label class="field"><span>Priority</span>
               <select id="w-priority">
@@ -239,8 +242,6 @@
             </label>
             <label class="field"><span>Reported by (optional)</span>
               <input id="w-reporter" placeholder="Who saw it — e.g. Ada on line 2" /></label>
-            <label class="field field-wide"><span>What you saw (optional)</span>
-              <textarea id="w-notes" rows="2" placeholder="Only fails above 20 m/min; started after the belt was replaced"></textarea></label>
             <label class="field field-wide"><span>Photograph of the fault (optional) — JPEG, PNG or WebP, under 2 MB</span>
               <input id="w-photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
           </div>
@@ -303,25 +304,15 @@
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-close')">&times;</button>
           </div>
           <p class="sheet-sub" id="work-close-what"></p>
-          <div class="form-grid form-grid-wide">
-            <label class="field field-wide"><span>What was done</span>
-              <textarea id="wc-resolution" rows="3"
-                        placeholder="Replaced the bearing and re-greased; noise gone at full speed"></textarea></label>
-            <label class="field"><span>Total labour hours (optional)</span>
-              <input id="wc-hours" type="number" min="0" step="any" placeholder="e.g. 1.5" /><span id="wc-hours-hint" class="hint"></span></label>
-            <label class="field"><span>Checked by (optional)</span>
-              <input id="wc-verified" placeholder="Who signed it off" /></label>
-            <div class="field field-wide"><span>Parts used</span>
-              <div class="parts-pick">
-                <select id="wc-part"></select>
-                <input id="wc-qty" type="number" min="1" step="1" value="1" aria-label="How many" />
-                <button class="ghost small" type="button" onclick="usePart()">Add part</button>
-              </div>
-            </div>
+          <div class="close-fields">
+            <label class="field"><span>Is the machine now running?</span>
+              <select id="wc-running" required><option value="">Choose a state</option><option value="1">Yes — running</option><option value="0">No — out of service</option></select>
+              <span id="wc-current" class="hint"></span><span class="hint">The machine must be running to close this job.</span>
+            </label>
+            <label class="field"><span>Closing note (optional)</span>
+              <textarea id="wc-resolution" rows="3" maxlength="2000" placeholder="Anything else to note about closing this job"></textarea></label>
           </div>
-          <ul id="wc-parts" class="part-list"></ul>
-          <input type="hidden" id="wc-id" />
-          <p class="form-error"></p>
+          <p class="form-error" role="alert"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
             <button class="primary" type="button" onclick="confirmCloseWork()">Close the job</button>
@@ -333,7 +324,7 @@
           <div class="stage-modal-head"><div class="sheet-head"><div><span class="stage-eyebrow">WORK ORDER</span><h3 id="work-assign-title" tabindex="-1">Work order updates</h3></div>
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-assign')">&times;</button></div><p class="sheet-sub" id="work-assign-what"></p></div>
           <div id="wa-scroll" class="stage-scroll">
-            <details id="wa-history-panel" class="stage-disclosure stage-history-panel"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4M12 8v4l3 2"/></svg></span><span class="disclosure-copy"><strong>Previous updates</strong><small id="wa-history-count">Loading…</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div id="wa-history" class="update-history" aria-live="polite"></div></details>
+            <details id="wa-history-panel" class="stage-disclosure stage-history-panel"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4M12 8v4l3 2"/></svg></span><span class="disclosure-copy"><strong id="wa-history-label">Previous updates</strong><small id="wa-history-count">Loading…</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div id="wa-history" class="update-history" aria-live="polite"></div></details>
             <p id="wa-load-status" class="hint" role="status"></p><button id="wa-retry" class="ghost small" type="button" onclick="retryWorkUpdateLoading()" hidden>Retry loading</button>
             <div id="wa-entry" class="stage-editor">
               <div class="stage-heading"><div><span class="stage-kicker">WORK PROGRESS</span><h4 id="wa-stage-title">Stage 1</h4></div><span class="stage-required">* Required</span></div>

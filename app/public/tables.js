@@ -80,8 +80,17 @@ document.addEventListener('click', (event) => {
 // maintenance, users, due soon. One row of buttons per row made a table of twenty
 // look like a toolbar.
 
-export function menuItem(label, onclick, { danger = false } = {}) {
-  return `<button type="button"${danger ? ' class="danger"' : ''} onclick="${onclick}">${label}</button>`;
+const menuIcons = {
+  view: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+  add: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  print: '<path d="M6 9V3h12v6M6 18H4V9h16v9h-2M6 14h12v7H6zM17 11h.01"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/>',
+  close: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  reopen: '<path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4"/>',
+};
+export function menuItem(label, onclick, { danger = false, icon = null } = {}) {
+  const svg = menuIcons[icon] ? `<svg class="menu-icon" aria-hidden="true" viewBox="0 0 24 24">${menuIcons[icon]}</svg>` : '';
+  return `<button type="button"${danger ? ' class="danger"' : ''} onclick="${onclick}">${svg}${label}</button>`;
 }
 
 /** @param what  what the row is about, for the button's accessible name */

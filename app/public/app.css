@@ -404,3 +404,14 @@ th.sorted .sort-btn { color: var(--ink); }
 }
 
 @media (max-width: 550px) { .stage-table-scroll-hint { display: block; } }
+
+/* Work-order actions and quieter, grouped report form. */
+.row-menu .menu .menu-icon { width: 17px; height: 17px; vertical-align: -4px; margin-right: 10px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.work-report-grid { gap: 20px 18px; }
+.report-section-title { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid #e6ebf1; }
+.report-section-title strong { color: var(--ink); font-size: 14px; }
+.report-section-title span { color: var(--soft); font-size: 12px; }
+.close-fields { display: grid; gap: 22px; }
+.photo-preview { position: relative; }
+.photo-remove { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #fff; border-radius: 50%; background: #a12828; color: white; font-size: 22px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px #0004; }
+.photo-remove:focus-visible { outline: 3px solid #7cb5ef; outline-offset: 2px; }

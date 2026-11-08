@@ -39,7 +39,7 @@ function statusCell(machine) {
 function actions(machine) {
   const admin = window.me?.role === 'admin';
   return rowMenu(machine.name, [
-    admin ? menuItem('Edit machine', `editEquipment(${machine.id})`) : '',
+    admin ? menuItem('Edit machine details', `editEquipment(${machine.id})`) : '',
     menuItem('History', `openMachineHistory(${machine.id}, this)`),
     admin ? menuItem(machine.service_status === 'retired' ? 'Return to service' : 'Retire machine',
       `toggleStatus(${machine.id}, '${machine.service_status}')`) : '',
@@ -193,9 +193,25 @@ export function editEquipment(idToEdit) {
   $('#ee-photo-preview').innerHTML = machine.photo
     ? `<img src="/api/equipment/${machine.id}/photo?t=${Date.now()}" alt="${esc(machine.name)}" />`
     : '<span>No photograph yet</span>';
-  $('#equipment-edit-title').textContent = `Edit ${machine.name}`;
+  $('#equipment-edit-title').textContent = `Edit machine details · ${machine.name}`;
+  $('#ee-photo-undo').hidden = true;
+  if (machine.photo) $('#ee-photo-preview').insertAdjacentHTML('beforeend', '<button type="button" class="photo-remove" onclick="removeEquipmentPhoto()" aria-label="Remove photograph" title="Remove photograph">−</button>');
   openForm('equipment-edit');
 }
+
+let photoBeforeRemoval = '';
+export function removeEquipmentPhoto() {
+  photoBeforeRemoval = $('#ee-photo-preview').innerHTML;
+  $('#ee-photo-clear').checked = true;
+  $('#ee-photo-preview').innerHTML = '<span>Photograph will be removed</span>';
+  $('#ee-photo-undo').hidden = false;
+}
+export function undoEquipmentPhotoRemoval() {
+  $('#ee-photo-clear').checked = false;
+  $('#ee-photo-preview').innerHTML = photoBeforeRemoval;
+  $('#ee-photo-undo').hidden = true;
+}
+Object.assign(window, { removeEquipmentPhoto, undoEquipmentPhotoRemoval });
 
 /** Send the bytes as they are. The server sniffs the type and picks the name;
  *  the header below is a courtesy, not a claim it will believe. */

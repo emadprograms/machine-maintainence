@@ -17,7 +17,6 @@ const NEXT_STATUS = { open: 'in_progress', in_progress: 'done', done: 'open' };
 
 let workCache = [];
 let assignable = [];          // { id, name } — fetched once per session
-let partChoices = [];         // every part, for the picker in the close dialog
 
 /**
  * The filters on the Work orders screen, as a query string. The list and the CSV
@@ -60,14 +59,12 @@ function drawWork() {
         <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
-          menuItem(w.status === 'done' ? 'Reopen'
-            : NEXT_STATUS[w.status] === 'done' ? 'Close job'
-              : `Move to ${NEXT_STATUS[w.status].replace('_', ' ')}`,
-          `advance(${w.id}, '${NEXT_STATUS[w.status]}')`),
-          ...(w.status === 'in_progress' ? [menuItem('Add update', `openWorkUpdates(${w.id})`)] : []),
-          menuItem('View updates', `openWorkUpdates(${w.id}, true)`),
-          menuItem('Print job', `printWork(${w.id})`),
-          ...(w.current_stage == null ? [menuItem('Edit', `editWork(${w.id})`)] : []),
+          menuItem('View updates', `openWorkUpdates(${w.id}, true)`, { icon: 'view' }),
+          ...(w.status !== 'done' ? [menuItem('Add update', `openWorkUpdates(${w.id})`, { icon: 'add' })] : []),
+          menuItem('Print job', `printWork(${w.id})`, { icon: 'print' }),
+          ...(w.current_stage == null ? [menuItem('Edit', `editWork(${w.id})`, { icon: 'edit' })] : []),
+          ...(w.status === 'in_progress' ? [menuItem('Close job', `advance(${w.id}, 'done')`, { icon: 'close' })] : []),
+          ...(w.status === 'done' ? [menuItem('Reopen', `advance(${w.id}, 'open')`, { icon: 'reopen' })] : []),
         ])}
       </tr>`).join('')
     || emptyRow(8, searchTerm('#wo-search')
@@ -273,7 +270,6 @@ export async function advance(id, status) {
 // Keep the stage editor separate from the table and close dialog.
 export function openWorkUpdates(id, viewOnly = false) {
   return updateUI.openWorkUpdates(workCache.find((w) => w.id === id), viewOnly, async () => {
-    partChoices = []; // stock may have changed
     await loadWork();
   }, (users) => { assignable = users; });
 }
@@ -282,76 +278,28 @@ export const startAssigned = () => updateUI.startAssigned();
 
 // ---- closing a job -------------------------------------------------------
 let closingWork = null;
-
-/** Fill the close dialog from the row that was clicked, and from the parts list. */
 export async function openWorkClose(idToClose) {
   const job = workCache.find((w) => w.id === idToClose);
   if (!job) return;
   closingWork = idToClose;
-  $('#wc-id').value = idToClose;
   $('#work-close-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
-  $('#wc-resolution').value = job.resolution || '';
-  // Prefill the live total, including any stages added after a previous close.
-  // It can still be reviewed and adjusted without double-counting the stages.
-  let updates = [], loaded = true;
-  try { updates = await api(`/work-orders/${idToClose}/updates`); } catch { loaded = false; }
-  const stageHours = Math.round(updates.reduce((sum, u) => sum + Number(u.hours), 0) * 1e6) / 1e6;
-  const total = job.labour_hours == null ? (updates.length ? stageHours : null)
-    : Math.max(0, Math.round((Number(job.labour_hours) + stageHours - Number(job.labour_stage_baseline || 0)) * 1e6) / 1e6);
-  $('#wc-hours').value = (loaded ? total : (job.effective_hours ?? job.labour_hours)) ?? '';
-  $('#wc-hours-hint').textContent = !loaded ? 'Could not load the latest stages. Review the final total before closing.'
-    : updates.length ? `Stages total ${stageHours} hours. Review the final total before closing.` : '';
-  $('#wc-verified').value = job.verified_by || '';
+  $('#wc-running').value = '';
+  $('#wc-resolution').value = '';
+  $('#wc-current').textContent = job.machine_service_status === 'retired' ? 'This machine is retired and must be restored before closing.'
+    : (job.machine_running ? 'Last loaded state: Running.' : 'Last loaded state: Out of service.');
   formError('work-close', '');
-  // The parts screen may never have been opened in this session; the select must
-  // still offer something to add.
-  if (!partChoices.length) { try { partChoices = await api('/parts'); } catch { partChoices = []; } }
-  fillPartChoices();
-  await showUsedParts(idToClose);
   openForm('work-close');
 }
-
-export function fillPartChoices() {
-  $('#wc-part').innerHTML = partChoices.map((p) =>
-    `<option value="${p.id}">${esc(p.name)} — ${p.qty} in stock</option>`).join('')
-    || '<option value="">No parts on the shelf</option>';
-}
-
-export async function showUsedParts(workId) {
-  const used = await api(`/work-orders/${workId}/parts`).catch(() => []);
-  $('#wc-parts').innerHTML = used.map((p) => `<li>${esc(p.name)} × ${p.qty}</li>`).join('');
-}
-
-/** Add one part to the job being closed. Stock moves here, not on save: a part
- *  taken off the shelf is off the shelf whether or not the job is closed next. */
-export async function usePart() {
-  const partId = $('#wc-part').value;
-  if (!partId) return formError('work-close', 'There is no part to add.');
-  const qty = Number($('#wc-qty').value) || 1;
-  try {
-    await api(`/work-orders/${closingWork}/parts`, { method: 'POST',
-      body: JSON.stringify({ part_id: partId, qty }) });
-    partChoices = await api('/parts');
-    fillPartChoices();
-    $('#wc-qty').value = 1;
-    await showUsedParts(closingWork);
-  } catch (e) { formError('work-close', e.message); }
-}
-
 export async function confirmCloseWork() {
-  const resolution = $('#wc-resolution').value.trim();
-  if (!resolution) {
-    return formError('work-close', 'Say what was done — that sentence is the whole history of the job.');
-  }
+  if (!closingWork) return;
+  if ($('#wc-running').value !== '1')
+    return formError('work-close', 'The machine must be running before this job can be closed.');
   try {
     await api(`/work-orders/${closingWork}`, { method: 'PATCH', body: JSON.stringify({
-      status: 'done',
-      resolution,
-      labour_hours: $('#wc-hours').value,
-      verified_by: $('#wc-verified').value.trim() || null,
+      status: 'done', machine_running: true, resolution: $('#wc-resolution').value.trim() || null,
     })});
     closingWork = null;
     formDone('work-close');
-    loadWork();
+    await loadWork();
   } catch (e) { formError('work-close', e.message); }
 }

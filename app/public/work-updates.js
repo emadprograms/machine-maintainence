@@ -29,6 +29,7 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#wa-go').textContent = 'Save update'; $('#wa-cancel').textContent = editing ? 'Cancel' : 'Close';
   $('#wa-delete').hidden = true;
   $('#wa-history-panel').open = viewOnly; $('#wa-parts-panel').open = false; $('#wa-photos-panel').open = false;
+  $('#wa-history-label').textContent = viewOnly ? 'Timeline' : 'Previous updates';
   $('#wa-history-count').textContent = 'Loading…'; $('#wa-photos-summary').textContent = 'Optional · Attach up to 5 photos';
   $('#wa-photo-selection').textContent = ''; $('#wa-scroll').scrollTop = 0;
   $('#wa-message').value = ''; $('#wa-hours').value = ''; $('#wa-photos').value = '';
@@ -47,14 +48,21 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
 }
 
 function timeline(updates) {
-  const admin = window.me?.role === 'admin';
-  return [...updates].reverse().map((u, i) => `<article class="update-entry"><div class="update-top"><div><strong>Stage ${Number(u.stage)}</strong>${i === 0 ? '<span class="stage-latest">Latest</span>' : ''}</div>
-      ${admin && i === 0 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
+  const admin = window.me?.role === 'admin', job = updateJob;
+  const report = `<article class="update-entry timeline-report"><div class="update-top"><strong>Problem reported</strong></div>
+    <small class="update-meta">${esc(job.created_at || 'Date not recorded')}${job.created_at ? ' UTC' : ''}${job.reported_by ? ` · Reported by ${esc(job.reported_by)}` : ''}</small>
+    <p><strong>${esc(job.title)}</strong></p>${job.priority ? `<small>Priority: ${esc(job.priority)}</small>` : ''}${job.notes ? `<p>${esc(job.notes)}</p>` : ''}
+    ${job.photo ? `<div class="stage-photo-grid"><button type="button" class="stage-thumbnail" onclick="previewFaultPhoto()" aria-label="Preview fault photo"><img src="/api/work-orders/${Number(job.id)}/photo" alt="" loading="lazy"><span>Fault photo</span></button></div>` : ''}</article>`;
+  const stages = updates.map((u, i) => `<article class="update-entry"><div class="update-top"><div><strong>Stage ${Number(u.stage)}</strong>${i === updates.length - 1 ? '<span class="stage-latest">Latest</span>' : ''}</div>
+      ${admin && i === updates.length - 1 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
     <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} ${Number(u.hours) === 1 ? 'hour' : 'hours'}${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
     <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
     ${groupStageParts(u.parts).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${formatStagePrice(p.unit_price)} each</p>`).join('')}
-    ${historyPhotos(u)}</article>`).join('')
-    || '<p class="hint">No updates yet.</p>';
+    ${historyPhotos(u)}</article>`).join('');
+  const closure = job.status === 'done' ? `<article class="update-entry timeline-closed"><div class="update-top"><strong>Job closed</strong></div>
+    <small class="update-meta">${esc(job.closed_at || 'Date not recorded')}${job.closed_at ? ' UTC' : ''}</small>
+    ${job.resolution ? `<p>${esc(job.resolution)}</p>` : ''}</article>` : '';
+  return report + (stages || '<p class="hint">No updates yet.</p>') + closure;
 }
 
 // Independent lookups prevent a failed history, people or machine request from
@@ -79,7 +87,7 @@ export async function retryWorkUpdateLoading() {
   $('#wa-go').disabled = true; $('#wa-retry').hidden = true;
   $('#wa-running').disabled = needsState;
   formError('work-assign', '');
-  if (job.status === 'open' && job.current_stage === null) $('#wa-history').innerHTML = '<p class="hint">No updates yet.</p>';
+  if (job.status === 'open' && job.current_stage === null) $('#wa-history').innerHTML = timeline([]);
   else $('#wa-history').textContent = 'Loading updates…';
   if (choose) { $('#wa-owner').innerHTML = '<option value="">Loading people…</option>'; $('#wa-owner').disabled = true; }
   refresh();

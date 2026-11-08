@@ -74,7 +74,7 @@ Check with `node --version`.
 | `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 673 behaviours | 3,645 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 674 behaviours | 3,645 |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
@@ -225,8 +225,8 @@ stored `role` values keep the word *user*, because everything else already speak
 * **The latest explicit answer says whether the machine is running.** The report form
   defaults to the selected machine's currently recorded state, and the stage dialog has
   a red *Out of service* / green *Running* switch. A later report or update supersedes an
-  older one, even on a different work order; closing a job does not by itself change the
-  machine's state. Saving an unrelated work-order edit does not create a new state report.
+  older one, even on a different work order. Closing requires a fresh confirmation that
+  the machine is running, which is saved as the newest state event. Saving an unrelated work-order edit does not create a new state report.
   Retirement is a separate administrative state and takes precedence. On upgrade, the
   previous displayed state is preserved as a migration baseline; the app cannot reconstruct
   missing pre-upgrade state history. A correction to a stage changes that stage's historical
@@ -265,9 +265,9 @@ stored `role` values keep the word *user*, because everything else already speak
   all columns. Saving deducts stock and records costs atomically. In the update dialog, *Previous
   updates* opens the timeline, while *Spare parts* and *Photos* expand when needed; their
   summaries show selected items even when collapsed. The action bar and validation errors
-  remain visible while the form scrolls. History shows cards with the newest stage first;
-  thumbnails open a larger preview, and both existing and newly selected photos can be
-  previewed during stage correction. In *View updates* history opens automatically.
+  remain visible while the form scrolls. *View updates* opens an oldest-first timeline
+  with the original report, fault photo, each stage, and the final closure. Thumbnails open
+  a larger preview, and both existing and newly selected photos can be previewed during correction.
 * **An admin can correct or delete only the latest stage.** Open *View updates*, then use the
   pencil beside the latest stage, including on a closed job. Correct its description, time, machine
   state, photos or parts, or confirm *Delete stage* to permanently remove it and its photos.
@@ -282,9 +282,9 @@ stored `role` values keep the word *user*, because everything else already speak
   totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
   dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
 * **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
-  total hours. Closing offers the live hours for review; after review, new stages add only
-  time recorded since that review. Editing/deleting a stage adjusts the reviewed total and
-  rebases it without going below zero or swallowing subsequent hours. Existing part-use costs
+  total service hours, meaning maintenance labour rather than machine running time. Hours
+  and parts are entered on stages, not at closure. Historical reviewed totals are preserved;
+  later stages and corrections remain correctly rebaselined without double-counting. Existing part-use costs
   are captured at the catalog price on upgrade (zero if no price was recorded); later catalog
   price changes do not rewrite them. Copy the data/photos folder with the database when moving
   or backing up.
@@ -304,17 +304,19 @@ stored `role` values keep the word *user*, because everything else already speak
   difference is deliberate — **any signed-in person may attach or remove one**, because
   the technician who finds the fault is exactly who needs to photograph it. Deleting a
   machine still takes its jobs and their photographs with it.
-* **Closing a job is where the history is written.** The step that used to be one click
-  opens a dialog that asks what was done, the hours, who checked it and which parts were
-  used; the server refuses a job that is *being* closed without an account of the repair
-  (`400 Say what was done before closing the job`). A change to a job that is already
-  closed does not ask again, and a job reopened because the fix did not hold must be closed
-  with a new account rather than inheriting the story of the repair that failed.
-  Reopening keeps what was done and clears the closed date. Parts added in that dialog
-  move stock immediately and are listed on the job; the History screen shows what was done
-  under the job title, and the history file has it as its own column.
-* **A machine has a history.** The History button on its row opens every job ever
-  reported against it, open ones included.
+* **Closing confirms the machine is running.** The close dialog asks for the machine's
+  state and an optional closing note; it does not ask for labour, parts or a checker.
+  The server refuses closure without an explicit running confirmation, or for a retired
+  machine. Closure records a fresh running state atomically. Reopening retains historical
+  details and clears the closed date; a later close requires a new running confirmation.
+  Historical resolution, verification and reviewed-hour records remain readable.
+* **Work-order actions are ordered and labelled with icons.** View updates, Add update,
+  Print job, any applicable editing action, and finally Close job. Open jobs use Add update
+  to start the first stage; closed jobs can be reopened.
+* **Machine details are easier to understand.** The total service hours heading describes
+  maintenance labour; the row action is Edit machine details. Remove an existing photo
+  using the minus on its preview; undo is available before saving.
+
 * **History** lists finished work, newest first, narrowable to a date range — "what did
   we close in October".
 * **Report** adds a month up: jobs closed, hours, parts cost, labour cost and total, plus
@@ -511,10 +513,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 673 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 674 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`673 passed, 0 failed`.
+`674 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

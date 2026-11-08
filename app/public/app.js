@@ -235,7 +235,6 @@ function printWork(id) {
 function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
 function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
-function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
 function openWorkUpdates(id, viewOnly = false) { (workReady).then((m) => m.openWorkUpdates(id, viewOnly)); }
 function retryWorkUpdateLoading() { (workReady).then((m) => m.retryWorkUpdateLoading()); }
