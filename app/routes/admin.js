@@ -41,7 +41,7 @@ export default {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     const b = await readBody(req);
     const target = get('SELECT * FROM users WHERE id = ?', id(req.params.id));
-    if (!target) return send(res, 404, { error: 'User not found' });
+    if (!target) return send(res, 404, { error: 'That account no longer exists' });
 
     // Never let an admin lock themselves out of their own installation.
     // Two traps here, both of which bit this file once:

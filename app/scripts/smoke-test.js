@@ -2757,6 +2757,39 @@ ok('marking a schedule done from Due soon does not depend on another table',
   && /picker \? picker\.value : today\(\)/.test(appSrc13),
   'the date is read from a field that only exists on one screen');
 
+// ---- the section is called Admins & Technicians, not Users -----------------
+// The screen lists people by role: administrators and technicians. "Users" is the
+// word the database uses, and the word leaked into the name of the screen.
+const SECTION_NAME = 'Admins & Technicians';
+const navLabel = (appSrc13.match(/\{ key: 'users', label: '([^']+)', adminOnly: true \}/) || [])[1];
+const pageHeading = (indexEq.match(/<section data-page="users"[\s\S]*?<h2>([^<]+)<\/h2>/) || [])[1];
+ok('the menu and the page heading give the section the same name',
+  navLabel === SECTION_NAME && pageHeading === SECTION_NAME.replace('&', '&amp;'),
+  `menu: ${navLabel || 'missing'} · heading: ${pageHeading || 'missing'}`);
+ok('and nothing on that screen still calls the people users',
+  !/>Users</.test(indexEq) && !/New user|Create user/.test(indexEq)
+  && !/New user/.test(appSrc13),
+  (indexEq.match(/>Users<|New user|Create user/g) || []).join(', '));
+// "Account" is the word the dialog, the filter and the empty state use, so creating
+// one says the same thing in all three places.
+ok('creating one is called an account, like the filter that lists them',
+  indexEq.includes('>New account</button>') && indexEq.includes('>Create account</button>')
+  && indexEq.includes('<h3>New account</h3>')
+  && indexEq.includes('<option value="all" selected>All accounts</option>'),
+  'the button, the dialog title and the filter disagree about what is being made');
+// The rename is of the word on the screen. The table, the route and the role values
+// stay as they are, because everything else in the app already speaks them.
+ok('the endpoint underneath keeps its name',
+  /'GET \/api\/users':/.test(readFileSync(join(root, 'routes', 'admin.js'), 'utf8'))
+  && /fetch|api\('\/users'\)|\/users`/.test(appSrc13),
+  'renaming what a word looks like renamed the API');
+// A 404 for a row that has gone is read by a person, so it is a sentence about an
+// account rather than a bare "User not found".
+const staleAccount = await late('/api/users/999999', { method: 'PUT', body: { active: 0 } });
+ok('a missing account is reported as a sentence, not as "User not found"',
+  staleAccount.status === 404 && !/user/i.test(staleAccount.data.error || ''),
+  `${staleAccount.status} ${JSON.stringify(staleAccount.data)}`);
+
 // ---- every list has a filter, and none of them is a checkbox --------------
 // The machines screen had one; spare parts had a checkbox that could only say one
 // thing; maintenance and users had nothing at all. A filter on this page is a named

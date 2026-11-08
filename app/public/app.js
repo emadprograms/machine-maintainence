@@ -161,7 +161,7 @@ const PAGES = [
   { key: 'report', label: 'Report' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
-  { key: 'users', label: 'Users', adminOnly: true },
+  { key: 'users', label: 'Admins & Technicians', adminOnly: true },
   { key: 'backup', label: 'Backup', adminOnly: true },
 ];
 let currentPage = 'due';
@@ -431,7 +431,7 @@ function drawUsers() {
       ])}
     </tr>`).join('')
     || emptyRow(5, filter === 'all'
-      ? 'Only your account exists. Create the rest with "New user".'
+      ? 'Only your account exists. Add the rest with "New account".'
       : 'No account matches this filter.');
   kit.markTable('users-rows');
 }

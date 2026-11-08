@@ -494,14 +494,14 @@
       </dialog>
     </section>
 
-    <!-- Users (admin only) -->
+    <!-- Admins & technicians (admin only) -->
     <section data-page="users" class="hidden">
       <div class="page-head">
         <div>
-          <h2>Users</h2>
+          <h2>Admins &amp; Technicians</h2>
           <p class="page-sub">Who can sign in, and what they are allowed to do.</p>
         </div>
-        <button class="primary" onclick="openForm('users-form')">New user</button>
+        <button class="primary" onclick="openForm('users-form')">New account</button>
       </div>
       <div class="card">
         <div class="card-toolbar">
@@ -521,7 +521,7 @@
       <dialog id="users-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
-            <h3>New user</h3>
+            <h3>New account</h3>
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('users-form')">&times;</button>
           </div>
           <p class="sheet-sub">There is no public sign-up; only an admin can create an account.</p>
@@ -539,7 +539,7 @@
           <p class="form-error"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('users-form')">Cancel</button>
-            <button class="primary" type="button" onclick="addUser()">Create user</button>
+            <button class="primary" type="button" onclick="addUser()">Create account</button>
           </div>
         </form>
       </dialog>

@@ -67,7 +67,7 @@ Check with `node --version`.
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 531 behaviours | 3,072 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 536 behaviours | 3,105 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -128,9 +128,11 @@ photograph pushed that page past 600 lines.
 ### The screens
 
 `Dashboard` · `Due soon` · `Machines` · `Work orders` · `History` · `Report` · `Maintenance` ·
-`Spare parts` · `Users` (admins) · `Backup` (admins)
+`Spare parts` · `Admins & Technicians` (admins) · `Backup` (admins)
 
-`Users` has no public sign-up counterpart: accounts exist only if an admin creates them.
+`Admins & Technicians` has no public sign-up counterpart: accounts exist only if an admin
+creates them. The screen is named for the two roles it holds — the table, the route and the
+stored `role` values keep the word *user*, because everything else already speaks it.
 
 * **Every list has a search box** that works with the filters beside it, and the CSV
   download next to it produces exactly the rows on screen.
@@ -416,7 +418,7 @@ Stop the server, replace `maintain.db` with a backup file, start the server.
 You cannot be locked out any more. Two ways back in, both run with the app stopped:
 
 1. `first-password.txt` beside the database holds the password from the very first start.
-   It is deleted as soon as you change that password in **Users**.
+   It is deleted as soon as you change that password in **Admins & Technicians**.
 2. Otherwise, open a command prompt in this folder and run:
 
    ```
@@ -446,10 +448,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 531 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 536 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`531 passed, 0 failed`.
+`536 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
