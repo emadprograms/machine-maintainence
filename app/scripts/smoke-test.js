@@ -2830,7 +2830,8 @@ ok('the history file gives the repair a column of its own',
 // ---- the dialog that asks for it ------------------------------------------
 const closeDialog = (indexEq.match(/<dialog id="work-close"[\s\S]*?<\/dialog>/) || [''])[0];
 ok('the close dialog asks for running state and an optional note, not stage data',
-  closeDialog.includes('id="wc-running"') && closeDialog.includes('id="wc-resolution"')
+  closeDialog.includes('id="wc-running" type="checkbox" role="switch"') && closeDialog.includes('id="wc-resolution"')
+  && closeDialog.includes('class="machine-toggle"') && !closeDialog.includes('Is the machine now running?')
   && !['wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts'].some((id) => closeDialog.includes(`id="${id}"`)));
 ok('closing opens that dialog instead of a one-click PATCH',
   /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc));

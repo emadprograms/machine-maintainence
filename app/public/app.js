@@ -236,6 +236,8 @@ function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
 function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
+function closeToggleChanged() { (workReady).then((m) => m.closeToggleChanged()); }
+function retryCloseState() { (workReady).then((m) => m.retryCloseState()); }
 function openWorkUpdates(id, viewOnly = false) { (workReady).then((m) => m.openWorkUpdates(id, viewOnly)); }
 function retryWorkUpdateLoading() { (workReady).then((m) => m.retryWorkUpdateLoading()); }
 function startAssigned() { (workReady).then((m) => m.startAssigned()); }

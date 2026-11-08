@@ -277,29 +277,62 @@ export const retryWorkUpdateLoading = () => updateUI.retryWorkUpdateLoading();
 export const startAssigned = () => updateUI.startAssigned();
 
 // ---- closing a job -------------------------------------------------------
-let closingWork = null;
+let closingWork = null, closeJob = null, closeLoad = 0, closeStateReady = false;
+function showCloseToggle(running) {
+  $('#wc-running').checked = Boolean(running);
+  $('#wc-running-label').textContent = running ? 'Running' : 'Out of service';
+}
+export function closeToggleChanged() { showCloseToggle($('#wc-running').checked); formError('work-close', ''); }
 export async function openWorkClose(idToClose) {
   const job = workCache.find((w) => w.id === idToClose);
   if (!job) return;
-  closingWork = idToClose;
+  closingWork = idToClose; closeJob = job;
   $('#work-close-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
-  $('#wc-running').value = '';
   $('#wc-resolution').value = '';
-  $('#wc-current').textContent = job.machine_service_status === 'retired' ? 'This machine is retired and must be restored before closing.'
-    : (job.machine_running ? 'Last loaded state: Running.' : 'Last loaded state: Out of service.');
   formError('work-close', '');
   openForm('work-close');
+  return retryCloseState();
+}
+export async function retryCloseState() {
+  if (!closingWork || !closeJob) return;
+  const run = ++closeLoad, job = closeJob;
+  closeStateReady = false;
+  $('#wc-go').disabled = true; $('#wc-running').disabled = true; $('#wc-retry').hidden = true;
+  $('#wc-load').hidden = false; $('#wc-current').textContent = 'Loading machine state…';
+  $('#wc-running-label').textContent = 'Loading…';
+  try {
+    const machines = await api('/equipment');
+    if (run !== closeLoad) return;
+    const machine = machines.find((m) => Number(m.id) === Number(job.equipment_id));
+    if (!machine) throw new Error('Machine not found');
+    if (machine.status === 'retired') {
+      showCloseToggle(false);
+      $('#wc-current').textContent = 'This machine is retired and must be restored before closing.';
+      $('#wc-retry').hidden = false;
+      return;
+    }
+    showCloseToggle(machine.status === 'active');
+    $('#wc-running').disabled = false; $('#wc-go').disabled = false;
+    $('#wc-current').textContent = ''; $('#wc-load').hidden = true;
+    closeStateReady = true;
+  } catch (e) {
+    if (run !== closeLoad) return;
+    $('#wc-running-label').textContent = 'Unavailable';
+    $('#wc-current').textContent = `Could not load machine state: ${e.message}.`;
+    $('#wc-retry').hidden = false;
+  }
 }
 export async function confirmCloseWork() {
-  if (!closingWork) return;
-  if ($('#wc-running').value !== '1')
+  if (!closingWork || !closeStateReady || $('#wc-go').disabled) return;
+  if (!$('#wc-running').checked)
     return formError('work-close', 'The machine must be running before this job can be closed.');
+  $('#wc-go').disabled = true;
   try {
     await api(`/work-orders/${closingWork}`, { method: 'PATCH', body: JSON.stringify({
       status: 'done', machine_running: true, resolution: $('#wc-resolution').value.trim() || null,
     })});
-    closingWork = null;
+    closingWork = null; closeJob = null; closeStateReady = false; ++closeLoad;
     formDone('work-close');
     await loadWork();
-  } catch (e) { formError('work-close', e.message); }
+  } catch (e) { formError('work-close', e.message); $('#wc-go').disabled = false; }
 }

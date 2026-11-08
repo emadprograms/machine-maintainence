@@ -304,8 +304,8 @@ stored `role` values keep the word *user*, because everything else already speak
   difference is deliberate — **any signed-in person may attach or remove one**, because
   the technician who finds the fault is exactly who needs to photograph it. Deleting a
   machine still takes its jobs and their photographs with it.
-* **Closing confirms the machine is running.** The close dialog asks for the machine's
-  state and an optional closing note; it does not ask for labour, parts or a checker.
+* **Closing confirms the machine is running.** The close dialog uses the same red/green
+  machine-status switch as stage updates, initialized from the latest state, and an optional closing note; it does not ask for labour, parts or a checker.
   The server refuses closure without an explicit running confirmation, or for a retired
   machine. Closure records a fresh running state atomically. Reopening retains historical
   details and clears the closed date; a later close requires a new running confirmation.

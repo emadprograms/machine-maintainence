@@ -29,12 +29,13 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 Phase: Milestone v6.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-05 — chronological work-order timeline, running-only close, calmer creation form and machine detail improvements
+Last activity: 2026-11-05 — close-job state uses the same red/green switch as work updates
 
 ## Quick Tasks Completed
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | close-status-switch | Replaced the close-state dropdown with the stage switch, initialized from current state; preserved running-only closure | See git history |
 | 2026-11-05 | debug-sidebar-icon | Replaced the visible collapse row with an accessible icon-only panel control in the sidebar header | See git history |
 | 2026-11-05 | sidebar-toggle-top | Moved collapse/expand above navigation, preserved keyboard and preference, and kept short-screen navigation scrollable | See git history |
 | 2026-11-05 | machine-status-theme | Aligned the machine-status control with the time field and muted form palette while retaining the red/green switch | See git history |

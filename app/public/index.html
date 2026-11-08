@@ -305,17 +305,15 @@
           </div>
           <p class="sheet-sub" id="work-close-what"></p>
           <div class="close-fields">
-            <label class="field"><span>Is the machine now running?</span>
-              <select id="wc-running" required><option value="">Choose a state</option><option value="1">Yes — running</option><option value="0">No — out of service</option></select>
-              <span id="wc-current" class="hint"></span><span class="hint">The machine must be running to close this job.</span>
-            </label>
+            <div class="stage-machine close-machine"><div class="stage-machine-copy"><strong id="wc-running-title">Machine status</strong><span id="wc-running-help" class="hint">The machine must be running to close this job.</span></div><label class="machine-toggle"><input id="wc-running" type="checkbox" role="switch" aria-labelledby="wc-running-title wc-running-label" aria-describedby="wc-running-help wc-current" onchange="closeToggleChanged()" /><span class="toggle-track" aria-hidden="true"></span><strong id="wc-running-label" class="toggle-status">Out of service</strong></label></div>
+            <div id="wc-load" hidden><span id="wc-current" class="hint" role="status"></span><button id="wc-retry" class="ghost small" type="button" onclick="retryCloseState()" hidden>Retry loading machine state</button></div>
             <label class="field"><span>Closing note (optional)</span>
               <textarea id="wc-resolution" rows="3" maxlength="2000" placeholder="Anything else to note about closing this job"></textarea></label>
           </div>
           <p class="form-error" role="alert"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
-            <button class="primary" type="button" onclick="confirmCloseWork()">Close the job</button>
+            <button class="primary" id="wc-go" type="button" onclick="confirmCloseWork()">Close the job</button>
           </div>
         </form>
       </dialog>
