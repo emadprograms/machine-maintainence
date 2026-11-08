@@ -4,7 +4,7 @@ slug: every-table-sorts-and-has-a-menu
 date: 2026-11-07
 status: complete
 kind: quick
-commit: pending
+commit: 31e1ff5
 files_modified: [app/public/index.html, app/public/tables.js, app/public/machines.js, app/public/work.js, app/public/history.js, app/public/report.js, app/public/app.js, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
