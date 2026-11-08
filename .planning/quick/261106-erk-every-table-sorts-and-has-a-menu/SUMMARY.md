@@ -57,7 +57,7 @@ low and status runs open → in progress → done. Sorting priority alphabetical
 **The maintenance row keeps its date picker.** "Mark done on" is a value, not an action —
 it stays in its column, and the *Mark done* button moved into the menu beside it.
 
-## Checks — 513 → 522
+## Checks — 513 → 523
 
 The new ones are deliberately table-wide rather than one-per-screen:
 
@@ -98,6 +98,15 @@ priority sorted alphabetically · the second click staying ascending.
   fixed by bounding the slice and allowing parameters.
 * The first attempt at the maintenance header added the menu cell to the row and not the
   header — caught by the new parity check, which is exactly why it exists.
+
+## A bug this turned up
+
+`pmDone(id)` read `$('#pm-on-' + id).value` — a date picker that exists only inside a
+Maintenance row. The Due soon table has no picker, so *Mark done* on that screen threw a
+`TypeError` unless the Maintenance table happened to have been drawn first. It was already
+there before this change; moving the button into a menu is what made me read the function.
+
+Now: no picker means today, with a check and a mutation behind it. **523 checks.**
 
 ## Not verified
 

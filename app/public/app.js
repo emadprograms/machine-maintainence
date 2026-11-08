@@ -464,7 +464,13 @@ async function addPm() {
 async function pmDone(id) {
   // Send the date the technician actually chose. Sending {} was how the field
   // silently meant "today" no matter what it said.
-  const on = $(`#pm-on-${id}`).value;
+  //
+  // The picker lives inside the Maintenance row. Due soon is a reminder list with no
+  // picker of its own, so this read used to throw on every Mark done from that
+  // screen unless the Maintenance table happened to have been drawn first — the
+  // button depended on a table the user was not looking at. No picker means today.
+  const picker = $(`#pm-on-${id}`);
+  const on = picker ? picker.value : today();
   try {
     await api(`/pm/${id}/done`, { method: 'POST', body: JSON.stringify({ on }) });
     loadPm();

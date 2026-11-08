@@ -2712,6 +2712,13 @@ ok('and the click finds the table the heading belongs to, rather than the first 
   /button\.closest\('table'\)\?\.querySelector\('tbody'\)\?\.id/.test(tablesSrc),
   'a heading that sorts some other table');
 
+// Due soon has no date picker; the one this reads belongs to the Maintenance table,
+// which may never have been drawn. Without the guard, Mark done on Due soon throws.
+ok('marking a schedule done from Due soon does not depend on another table',
+  appSrc13.includes('const picker = $(`#pm-on-${id}`);')
+  && /picker \? picker\.value : today\(\)/.test(appSrc13),
+  'the date is read from a field that only exists on one screen');
+
 // ---- editing a spare part is a dialog too ---------------------------------
 // It used to turn the row it belonged to into five inputs — which meant the parts
 // table could be edited one cell at a time but the supplier could not be edited at
