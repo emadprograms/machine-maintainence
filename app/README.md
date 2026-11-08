@@ -60,7 +60,7 @@ Check with `node --version`.
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
-| `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
+| `settings.js` / `dates.js` / `public/time-zone.js` | Hourly rate and workshop time zone; date parsing and DST-aware display | — |
 | `public/index.html` | The whole UI shell: every screen and form | 594 |
 | `public/app.css` | The main stylesheet — was a `<style>` block until the page reached 600 lines | 406 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
@@ -259,7 +259,7 @@ stored `role` values keep the word *user*, because everything else already speak
   Stage 1 update, time spent and optionally up to five photos (2 MB each). An in-progress
   ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. Empty history,
   loading errors and a server needing restart are distinguished. Each stage keeps its author,
-  UTC timestamp, duration, photos, machine state and optional parts. Add as many parts as
+  timestamp in the workshop time zone, duration, photos, machine state and optional parts. Add as many parts as
   needed (up to 50 input lines); the actual unit cost starts with the catalog price and is
   editable. The parts table combines quantities for the same part and actual unit cost;
   different prices stay separate. On narrow screens, scroll the table sideways to reach
@@ -283,7 +283,7 @@ stored `role` values keep the word *user*, because everything else already speak
   totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
   dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
 * **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
-  total service hours, meaning maintenance labour rather than machine running time. Hours
+  total service hours and total service cost, meaning maintenance labour rather than machine running time. Machine cost is the sum of every job (open or closed): recorded parts costs plus effective service hours at the **current** hourly rate. Changing the rate recalculates historical labour costs; it is not a ledger of rates actually paid. Hours
   and parts are entered on stages, not at closure. Historical reviewed totals are preserved;
   later stages and corrections remain correctly rebaselined without double-counting. Existing part-use costs
   are captured at the catalog price on upgrade (zero if no price was recorded); later catalog
@@ -319,9 +319,18 @@ stored `role` values keep the word *user*, because everything else already speak
   maintenance labour; the row action is Edit machine details. Remove an existing photo
   using the minus on its preview; undo is available before saving.
 
-* **Last activity (UTC)** on the Work orders table shows the latest surviving report,
+* **Last activity** on the Work orders table shows the latest surviving report,
   stage creation/correction or closure with date and time, and sorts in either direction.
   A job with no stages falls back to its report time.
+* **Workshop time zone.** Open *Settings* in the top bar. Administrators can save an IANA
+  time zone such as `Asia/Bahrain`; technicians can view it. UTC is the default for an
+  existing installation. The setting is saved with the database and is used workshop-wide,
+  including timeline and print timestamps, CSV exports, history date ranges, report months,
+  dashboard trends and maintenance "today"/due calculations. Daylight saving is applied
+  using the time-zone rules built into the local runtime, with no network request. Other
+  sessions pick up changes when they next load data or navigate. Stored timestamps stay UTC;
+  maintenance dates entered as calendar days are never shifted. Updating the report's hourly
+  rate does not change the time zone, or vice versa.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
   we close in October".
 * **Report** adds a month up: jobs closed, hours, parts cost, labour cost and total, plus

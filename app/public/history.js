@@ -11,12 +11,13 @@
 // of independent widgets.
 
 import { register, rowsFor, markTable } from './tables.js';
+import { zoneDate } from './time-zone.js';
 
 const STATUS_LABEL = { open: 'Open', in_progress: 'In progress', done: 'Done' };
 const STATUS_COLOUR = { open: 'amber', in_progress: 'blue', done: 'green' };
 
 /** A stored timestamp as the day it happened. "2026-11-06 15:26:57" -> "2026-11-06". */
-const dayOf = (stamp) => (stamp ? String(stamp).slice(0, 10) : '');
+const dayOf = (stamp) => zoneDate(stamp) || '';
 
 function statusBadge(status) {
   return `<td>${badge(STATUS_LABEL[status] || status, STATUS_COLOUR[status] || 'grey')}</td>`;

@@ -9,6 +9,7 @@
 // of independent widgets.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
+import { zoneDateTime } from './time-zone.js';
 import * as updateUI from './work-updates.js';
 
 // ------------------------------------------------------------ work orders
@@ -56,7 +57,7 @@ function drawWork() {
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
           w.stops_machine ? ` ${badge('last noted out of service', 'red')}` : ''}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}${w.status === 'in_progress' && w.current_stage ? ` <span class="row-sub">Stage ${Number(w.current_stage)}</span>` : ''}</td>
-        <td class="cell-muted cell-date">${w.last_activity_at ? esc(w.last_activity_at) : '—'}</td>
+        <td class="cell-muted cell-date">${w.last_activity_at ? esc(zoneDateTime(w.last_activity_at) || w.last_activity_at) : '—'}</td>
         <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [

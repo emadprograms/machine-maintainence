@@ -10,7 +10,8 @@ import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '.
 import { all, get, run, transaction } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
-import { hourlyRate } from '../settings.js';
+import { hourlyRate, timeZone } from '../settings.js';
+import { exportTimes } from '../time-export.js';
 import { nextWorkOrderCode } from '../codes.js';
 import { effectiveHours } from '../hours.js';
 import { recordMachineState, machineRunningSql } from '../status.js';
@@ -178,7 +179,7 @@ export default {
       JOIN equipment e ON e.id = w.equipment_id
       LEFT JOIN users u ON u.id = w.assigned_to
       ${f.sql} ORDER BY w.created_at DESC`, ...f.params);
-    sendCsv(res, 'work-orders.csv', rows, [
+    sendCsv(res, 'work-orders.csv', exportTimes(rows, timeZone(), ['created_at', 'closed_at']), [
       { key: 'code', label: 'Number' },
       { key: 'id', label: 'ID' },
       { key: 'equipment', label: 'Machine' },

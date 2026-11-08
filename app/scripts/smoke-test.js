@@ -632,7 +632,7 @@ ok('the parts export has the parts header',
 const table = parseCsv(csv.text);
 const header = table[0];
 const col = (name) => table.slice(1).map((r) => r[header.indexOf(name)]).filter(Boolean);
-const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
 ok('created timestamps share one format', col('Created').every((t) => STAMP.test(t)),
   col('Created').join(' | '));
 ok('closed timestamps use the same format as created',
@@ -1462,9 +1462,9 @@ const quickWork = readFileSync(join(root, 'public', 'work.js'), 'utf8');
 ok('machine history shows a sortable work-order number and an accessible timeline action',
   /data-sort="code">Number/.test(quickIndex)
   && /openMachineHistoryJob/.test(histSrc) && /View timeline for/.test(histSrc));
-ok('the work-order activity column shows UTC date and time and is sortable',
+ok('the work-order activity column shows workshop date and time and is sortable',
   /data-sort="last_activity_at"/.test(quickIndex) && /last_activity_at: \(w\) => w.last_activity_at/.test(quickWork)
-  && /esc\(w.last_activity_at\)/.test(quickWork));
+  && /zoneDateTime\(w.last_activity_at\)/.test(quickWork));
 ok('the history screen is reachable and the machine row opens it',
   appUrl.includes("{ key: 'history', label: 'History' }")
   && /openMachineHistory\(\$\{machine\.id\}/.test(clientSrc),
@@ -1833,10 +1833,10 @@ const drawFn = (appEq.match(/function drawEquipment\(\) \{[\s\S]*?\n}/) || [''])
 const sortable = [...eqHead.matchAll(/<button[^>]*class="sort-btn" data-sort="([a-z_]+)"/g)]
   .map((m) => m[1]);
 ok('every column heading but the photograph and the menu can be clicked',
-  sortable.join() === 'name,asset_tag,manufacturer,category,location,status,total_hours',
+  sortable.join() === 'name,asset_tag,manufacturer,category,location,status,total_hours,total_service_cost',
   `sortable: ${sortable.join(', ') || 'none'}`);
 ok('and the headings are real buttons, so Tab and Enter work without extra code',
-  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 7
+  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 8
   && !/<th[^>]*>\s*Photo<\/th>[\s\S]*?data-sort="photo"/.test(eqHead));
 ok('a new heading starts ascending, and the same heading again turns it round',
   /const sorted = new Map\(\)/.test(tablesSrc)
@@ -2332,7 +2332,7 @@ ok('stage one records an actual part price and live labour before closure', live
   && live.status === 'in_progress' && live.effective_hours === 2 && live.cost === 75 + 2 * rate
   && await partStock(motor.id) === 2, JSON.stringify(live));
 ok('a running answer restores the machine without closing the job', machineNow.status === 'active'
-  && machineNow.total_hours === 2 && live.stops_machine === 0);
+  && machineNow.total_hours === 2 && machineNow.total_service_cost === live.cost && live.stops_machine === 0);
 let liveHistory = (await late(liveUrl)).data;
 ok('the timeline remembers the stage part and machine answer', liveHistory[0].machine_running === 1
   && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].qty === 1
@@ -2349,7 +2349,7 @@ machineNow = await liveEquipment();
 ok('a technician can add hours and multiple actual-cost parts to the running total', liveTwo.status === 201
   && live.effective_hours === 3.5 && live.cost === 137.5 + 3.5 * rate
   && await partStock(motor.id) === 1 && await partStock(belt.id) === 3, JSON.stringify(live));
-ok('a newer running answer overrides an older stopping job', machineNow.status === 'active' && machineNow.total_hours === 3.5);
+ok('a newer running answer overrides an older stopping job', machineNow.status === 'active' && machineNow.total_hours === 3.5 && machineNow.total_service_cost === live.cost);
 await late(`/api/work-orders/${blocker.id}`, { method: 'PATCH', body: { stops_machine: false } });
 ok('clearing the other stopping job makes the machine running again', (await liveEquipment()).status === 'active');
 await late(`/api/parts/${motor.id}`, { method: 'PUT', body: { unit_price: 999, name: 'Renamed motor' } });
@@ -2384,7 +2384,8 @@ const liveClose = await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH'
 } });
 live = await liveRow();
 ok('the reviewed final hours replace the running total, without double counting', liveClose.status === 200
-  && live.effective_hours === 10 && live.cost === 137.5 + 10 * rate && (await liveEquipment()).total_hours === 10);
+  && live.effective_hours === 10 && live.cost === 137.5 + 10 * rate && (await liveEquipment()).total_hours === 10
+  && (await liveEquipment()).total_service_cost === live.cost);
 let liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
 ok('the monthly report uses recorded actual part cost and reviewed hours', liveReport.hours === 10
   && liveReport.parts_cost === 137.5 && liveReport.total === 137.5 + 10 * rate, JSON.stringify(liveReport));
@@ -2392,7 +2393,8 @@ await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 
 await livePost({ message: 'Follow-up after reopening', hours: 0.5, machine_running: true });
 live = await liveRow();
 ok('after reopening, new stage hours add to the reviewed total exactly once', live.effective_hours === 10.5
-  && live.cost === 137.5 + 10.5 * rate && (await liveEquipment()).total_hours === 10.5);
+  && live.cost === 137.5 + 10.5 * rate && (await liveEquipment()).total_hours === 10.5
+  && (await liveEquipment()).total_service_cost === live.cost);
 await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Checked again', labour_hours: 10.5 } });
 live = await liveRow();
 liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
@@ -3561,6 +3563,9 @@ ok('stage photo thumbnails, previews and object URL cleanup work', galleryTest.s
 const printUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'print-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('print page handles escaping, missing images, failures and the print action', printUiTest.status === 0,
   (printUiTest.stderr || printUiTest.stdout).slice(0, 500));
+const timeCostTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'timezone-cost-test.js')], { cwd: root, encoding: 'utf8' });
+ok('workshop zone and machine costs survive boundaries, permissions and restart', timeCostTest.status === 0,
+  String(timeCostTest.stderr || timeCostTest.stdout).slice(0, 400));
 const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));

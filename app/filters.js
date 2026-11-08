@@ -86,7 +86,7 @@ export function partsFilter(query = {}) {
 /** Rows a screen will show. The total is counted separately so a cut list says so. */
 export const MAX_ROWS = 500;
 
-export function historyFilter(query = {}) {
+export function historyFilter(query = {}, zone = 'UTC') {
   const where = [];
   const params = [];
 
@@ -105,8 +105,7 @@ export function historyFilter(query = {}) {
     params.push(p, p, p);
   }
 
-  // A closed date range. Compared with date() on both sides so a timestamp in
-  // the column and a plain day from a form compare as days, not as strings.
+  // Closed-date filters use the selected workshop calendar, not the UTC day.
   const from = query.from ? parseDay(String(query.from), 'From') : null;
   if (from?.error) return { error: from.error };
   const to = query.to ? parseDay(String(query.to), 'To') : null;
@@ -116,12 +115,12 @@ export function historyFilter(query = {}) {
     return { error: 'The start of the range is after its end' };
   }
   if (from?.value) {
-    where.push('date(w.closed_at) >= date(?)');
-    params.push(from.value);
+    where.push('workshop_day(w.closed_at, ?) >= ?');
+    params.push(zone, from.value);
   }
   if (to?.value) {
-    where.push('date(w.closed_at) <= date(?)');
-    params.push(to.value);
+    where.push('workshop_day(w.closed_at, ?) <= ?');
+    params.push(zone, to.value);
   }
 
   return whereOf(where, params);

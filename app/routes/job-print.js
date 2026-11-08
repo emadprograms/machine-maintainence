@@ -3,7 +3,7 @@
 import { send, route, id } from '../http.js';
 import { all, get } from '../db.js';
 import { effectiveHours } from '../hours.js';
-import { hourlyRate } from '../settings.js';
+import { hourlyRate, timeZone } from '../settings.js';
 
 export default {
   'GET /api/work-orders/:id/print': route(async (req, res) => {
@@ -26,7 +26,7 @@ export default {
       WHERE u.work_order_id = ? ORDER BY p.id`, workId);
     const parts = all(`SELECT p.name, p.reference, wp.qty, wp.cost_total, ROUND(wp.cost_total, 2) AS display_cost FROM work_order_parts wp
       JOIN parts p ON p.id = wp.part_id WHERE wp.work_order_id = ? ORDER BY p.name`, workId);
-    send(res, 200, { job, rate, parts, updates: updates.map((u) => ({ ...u,
+    send(res, 200, { job, rate, parts, time_zone: timeZone(), updates: updates.map((u) => ({ ...u,
       photos: photos.filter((p) => p.update_id === u.id).map((p) => p.id),
       parts: stageParts.filter((p) => p.update_id === u.id) })) });
   }),

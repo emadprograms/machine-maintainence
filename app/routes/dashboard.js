@@ -7,6 +7,8 @@ import { all } from '../db.js';
 import { workOrderFilter } from '../filters.js';
 import { monthlyTrend } from '../trend.js';
 import { downMachines, IN_SERVICE_SQL } from '../status.js';
+import { timeZone } from '../settings.js';
+import { todayInZone } from '../public/time-zone.js';
 
 export default {
   // ---- dashboard. One request, four answers.
@@ -19,6 +21,7 @@ export default {
   'GET /api/dashboard': route(async (_req, res) => {
     const DUE_DAYS = 7;      // the first option on the Due soon screen
     const CAP = 5;           // enough to act on; the card links to the rest
+    const today = todayInZone(timeZone());
 
     const openWork = workOrderFilter({});
     const openFilter = openWork.sql
@@ -33,11 +36,11 @@ export default {
                w.created_at ASC`);
     const dueRows = all(`
       SELECT p.id, p.task, p.next_due, e.name AS equipment_name,
-             CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
+             CAST(julianday(p.next_due) - julianday(?) AS INTEGER) AS days_left
       FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
-      WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days')
+      WHERE julianday(p.next_due) <= julianday(?, '+' || ? || ' days')
         AND ${IN_SERVICE_SQL}
-      ORDER BY p.next_due`, DUE_DAYS);
+      ORDER BY p.next_due`, today, today, DUE_DAYS);
     const lowRows = all(`
       SELECT part.id, part.name, part.qty, part.reorder_level
       FROM parts part WHERE part.qty <= part.reorder_level

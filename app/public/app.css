@@ -433,3 +433,12 @@ th.sorted .sort-btn { color: var(--ink); }
 .cell-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 #machine-history { width: min(820px, calc(100vw - 32px)); }
+
+.settings-button { white-space: nowrap; }
+.settings-field { display: grid; gap: 6px; font-size: 13px; }
+#settings-status { position: absolute; right: 20px; top: 100%; background: #fff4f2; padding: 6px 10px; }
+@media (max-width: 600px) {
+  header { gap: 8px; padding: 10px 12px; flex-wrap: wrap; }
+  header h1 { font-size: 14px; min-width: 120px; }
+  #who { order: 4; width: 100%; font-size: 11px; }
+}

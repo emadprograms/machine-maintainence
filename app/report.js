@@ -4,7 +4,7 @@
 // used, and labour is hours × one rate. Per-person rates or overtime would be a
 // different product.
 import { all, get } from './db.js';
-import { hourlyRate } from './settings.js';
+import { hourlyRate, timeZone } from './settings.js';
 import { effectiveHours } from './hours.js';
 
 const MONTH = /^\d{4}-\d{2}$/;
@@ -30,22 +30,23 @@ export function monthRange(month) {
 // because a job can be marked done long after it was closed and the date is the
 // thing the owner is asking about.
 const IN_MONTH = `w.status = 'done'
-  AND date(w.closed_at) >= date(?) AND date(w.closed_at) < date(?)`;
+  AND workshop_day(w.closed_at, ?) >= ? AND workshop_day(w.closed_at, ?) < ?`;
 
 export function monthReport(month) {
   const range = monthRange(month);
   if (range.error) return range;
   const { start, next } = range;
   const rate = hourlyRate();
+  const zone = timeZone();
 
   const totals = get(`SELECT COUNT(*) AS jobs, COALESCE(SUM(${effectiveHours()}), 0) AS hours
-                      FROM work_orders w WHERE ${IN_MONTH}`, start, next);
+                      FROM work_orders w WHERE ${IN_MONTH}`, zone, start, zone, next);
 
   const parts = get(`SELECT COALESCE(SUM(wop.cost_total), 0) AS cost
                      FROM work_order_parts wop
                      JOIN work_orders w ON w.id = wop.work_order_id
                      JOIN parts p ON p.id = wop.part_id
-                     WHERE ${IN_MONTH}`, start, next);
+                     WHERE ${IN_MONTH}`, zone, start, zone, next);
 
   const perMachine = all(`SELECT e.id, e.name, COUNT(*) AS jobs,
                                  COALESCE(SUM(${effectiveHours()}), 0) AS hours
@@ -53,7 +54,7 @@ export function monthReport(month) {
                           JOIN equipment e ON e.id = w.equipment_id
                           WHERE ${IN_MONTH}
                           GROUP BY e.id
-                          ORDER BY jobs DESC, e.name`, start, next);
+                          ORDER BY jobs DESC, e.name`, zone, start, zone, next);
 
   // Parts per machine is a second query rather than a correlated subquery in the
   // GROUP BY: two readable queries beat one that needs explaining.
@@ -63,7 +64,7 @@ export function monthReport(month) {
                                JOIN work_orders w ON w.id = wop.work_order_id
                                JOIN parts p ON p.id = wop.part_id
                                WHERE ${IN_MONTH}
-                               GROUP BY w.equipment_id`, start, next);
+                               GROUP BY w.equipment_id`, zone, start, zone, next);
 
   const partsByMachine = new Map(partsPerMachine.map((r) => [Number(r.id), Number(r.cost)]));
 

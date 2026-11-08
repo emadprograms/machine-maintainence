@@ -10,6 +10,8 @@
 // nothing on a local database, and being wrong is expensive.
 
 import { monthReport } from './report.js';
+import { timeZone } from './settings.js';
+import { zoneDate } from './public/time-zone.js';
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -23,9 +25,10 @@ const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
  */
 export function monthlyTrend(count = 6, now = new Date()) {
   const months = [];
+  const [year, month] = zoneDate(now, timeZone()).split('-').map(Number);
   for (let back = count - 1; back >= 0; back -= 1) {
     // Date.UTC normalises a negative month, so this needs no year arithmetic.
-    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - back, 1));
+    const d = new Date(Date.UTC(year, month - 1 - back, 1));
     months.push({ key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
       label: SHORT_MONTHS[d.getUTCMonth()] });
   }

@@ -5,6 +5,8 @@ import { send, readBody, route, id, day } from '../http.js';
 import { all, get, run } from '../db.js';
 import { parseDay } from '../dates.js';
 import { IN_SERVICE_SQL } from '../status.js';
+import { timeZone } from '../settings.js';
+import { todayInZone } from '../public/time-zone.js';
 
 export default {
   // ---- preventive maintenance  (the feature the reviewed repo lacks)
@@ -15,10 +17,10 @@ export default {
     const only = req.query.service === 'active' ? `WHERE ${IN_SERVICE_SQL}` : '';
     send(res, 200, all(`
       SELECT p.*, e.name AS equipment_name,
-             CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
+             CAST(julianday(p.next_due) - julianday(?) AS INTEGER) AS days_left
       FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
       ${only}
-      ORDER BY p.next_due`));
+      ORDER BY p.next_due`, todayInZone(timeZone())));
   }),
 
   // "Due soon": due within N days, or already overdue.
@@ -26,12 +28,13 @@ export default {
   'GET /api/pm/due': route(async (req, res) => {
     const days = Number(req.query.days) || 7;
     const inService = req.query.service === 'active' ? `AND ${IN_SERVICE_SQL}` : '';
+    const today = todayInZone(timeZone());
     send(res, 200, all(`
       SELECT p.*, e.name AS equipment_name,
-             CAST(julianday(p.next_due) - julianday('now') AS INTEGER) AS days_left
+             CAST(julianday(p.next_due) - julianday(?) AS INTEGER) AS days_left
       FROM pm_schedule p JOIN equipment e ON e.id = p.equipment_id
-      WHERE julianday(p.next_due) <= julianday('now', '+' || ? || ' days') ${inService}
-      ORDER BY p.next_due`, days));
+      WHERE julianday(p.next_due) <= julianday(?, '+' || ? || ' days') ${inService}
+      ORDER BY p.next_due`, today, today, days));
   }),
 
   'POST /api/pm': route(async (req, res) => {
@@ -40,7 +43,7 @@ export default {
     if (!b?.equipment_id || !b?.task?.trim() || !(interval > 0)) {
       return send(res, 400, { error: 'Machine, task and a positive interval are required' });
     }
-    const due = b.next_due || new Date(Date.now() + interval * 86400_000).toISOString().slice(0, 10);
+    const due = b.next_due || get("SELECT date(?, '+' || ? || ' days') AS day", todayInZone(timeZone()), interval).day;
     const r = run('INSERT INTO pm_schedule (equipment_id, task, interval_days, last_done, next_due) '
       + 'VALUES (?,?,?,?,?)', id(b.equipment_id), b.task.trim(), interval, day(b.last_done), day(due));
     send(res, 201, get('SELECT * FROM pm_schedule WHERE id = ?', r.lastInsertRowid));
@@ -50,7 +53,7 @@ export default {
     const row = get('SELECT * FROM pm_schedule WHERE id = ?', id(req.params.id));
     if (!row) return send(res, 404, { error: 'Schedule not found' });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInZone(timeZone());
     // Absent means "it was done today" — that default is fine. Present means the
     // caller said something specific, and it must be used or refused, never
     // quietly swapped for today (v1.0 did exactly that: HTTP 200, value ignored).

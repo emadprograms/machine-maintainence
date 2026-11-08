@@ -22,7 +22,9 @@
   <header>
     <h1>Machine Maintenance</h1>
     <span id="who" class="muted"></span>
+    <button class="small settings-button" type="button" onclick="openSettings()" aria-label="Settings" title="Settings"><span aria-hidden="true">⚙</span> Settings</button>
     <button class="small" onclick="logout()">Sign out</button>
+    <span id="settings-status" class="error" role="status" hidden></span>
   </header>
   <div class="layout">
     <aside id="sidebar"></aside>
@@ -64,7 +66,7 @@
       <div class="page-head">
         <div>
           <h2>Machines</h2>
-          <p class="page-sub">Everything you maintain, and the state it is in right now.</p>
+          <p class="page-sub">Everything you maintain, and the state it is in right now. Service cost includes recorded parts and hours at the current hourly rate.</p>
         </div>
         <button class="primary" onclick="openForm('equipment-form')">New machine</button>
       </div>
@@ -86,7 +88,7 @@
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="manufacturer">Manufacturer<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="location">Location<span class="sort-mark" aria-hidden="true"></span></button></th>
-            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours" title="Total labour hours recorded for this machine">Total service hours<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours" title="Total labour hours recorded for this machine">Total service hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_service_cost" title="Recorded parts plus service hours at the current hourly rate, across all jobs">Total service cost<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th></th></tr></thead>
             <tbody id="equipment-rows"></tbody></table>
         </div>
@@ -208,7 +210,7 @@
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
         <div class="table-wrap">
-          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="last_activity_at" title="Latest report, stage update or closure (UTC)">Last activity (UTC)<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="last_activity_at" title="Latest report, stage update or closure in the workshop time zone">Last activity (<span id="last-activity-zone">UTC</span>)<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
@@ -578,8 +580,21 @@
       </div>
     </section>
     </main>
+  </div></div>
+<dialog id="app-settings" class="sheet" aria-labelledby="app-settings-title">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h3 id="app-settings-title">Settings</h3><button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('app-settings')">×</button></div>
+    <p class="sheet-sub">The time zone applies to the whole workshop, for everyone.</p>
+    <div class="settings-field">
+      <label for="settings-time-zone">Workshop time zone</label>
+      <input id="settings-time-zone" list="time-zone-options" autocomplete="off" placeholder="e.g. Asia/Bahrain" />
+      <datalist id="time-zone-options"></datalist>
+    </div>
+    <p class="muted">Search the list or enter an IANA name, such as Asia/Bahrain. Dates and times use this zone, including daylight saving time.</p>
+    <p id="settings-permission" class="muted" hidden>Only administrators can change this setting.</p><p class="form-error error" role="alert"></p>
+    <div class="sheet-foot"><button type="button" class="ghost" onclick="closeForm('app-settings')">Cancel</button><button type="button" id="settings-save" class="primary" onclick="saveSettings()">Save settings</button></div>
   </div>
-</div>
+</dialog>
 <script src="/app.js"></script>
 </body>
 </html>

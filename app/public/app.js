@@ -4,6 +4,8 @@ const $ = (s) => document.querySelector(s);
 // The shell lives in its own module (see public/shell.js for why). app.js stays a
 // classic script because the markup uses inline onclick handlers, which need
 // globals; the module is loaded once here and reached through window.shell.
+let timeKit;
+const timeReady = import('/time-zone.js').then((m) => { timeKit = m; return m; });
 const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const historyReady = import('/history.js').then((m) => { return m; });
@@ -81,12 +83,28 @@ function debounce(fn, ms = 150) {
 }
 
 // ---------------------------------------------------------------- helpers
+let zoneRefreshQueued = false;
 async function api(path, options = {}) {
   const res = await fetch('/api' + path, {
     headers: { 'content-type': 'application/json' },
     ...options,
   });
   if (res.status === 401) { showLogin(); throw new Error('Please sign in'); }
+  const zone = res.headers.get('x-workshop-time-zone');
+  if (zone && timeKit) {
+    const changed = timeKit.getDisplayZone() !== zone;
+    timeKit.setDisplayZone(zone);
+    const label = $('#last-activity-zone');
+    if (label) label.textContent = timeKit.getDisplayZone();
+    // A change in another session must not leave old dates under a new label.
+    if (changed && window.me && !$('#app').classList.contains('hidden')) {
+      reportReady.then((report) => report.workshopZoneChanged(timeKit.getDisplayZone()));
+      if (!zoneRefreshQueued) {
+        zoneRefreshQueued = true;
+        setTimeout(() => { zoneRefreshQueued = false; showPage(currentPage); }, 0);
+      }
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const error = new Error(data.error || 'Request failed');
@@ -182,7 +200,7 @@ function buildTabs(user) {
   }));
 }
 
-function showPage(key) {
+async function showPage(key) {
   currentPage = key;
   if (window.shell) window.shell.markCurrent(key);
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
@@ -192,7 +210,61 @@ function showPage(key) {
     history: loadHistory, report: loadReport,
     pm: loadPm, parts: loadParts, users: loadUsers,
   };
-  loaders[key]?.();
+  try { await syncTimeZone(); }
+  catch (error) {
+    if ($('#settings-status')) { $('#settings-status').textContent = `Settings unavailable: ${error.message}`; $('#settings-status').hidden = false; }
+    return;
+  }
+  if (currentPage === key) await loaders[key]?.();
+}
+
+// Time zone is installation-wide. Fetch before drawing a page so another
+// administrator's change is picked up on navigation, not just after sign-in.
+async function syncTimeZone() {
+  const [settings, time] = await Promise.all([api('/settings'), timeReady]);
+  time.setDisplayZone(settings.time_zone || 'UTC');
+  const label = $('#last-activity-zone');
+  if (label) label.textContent = time.getDisplayZone();
+  const status = $('#settings-status');
+  if (status) { status.textContent = ''; status.hidden = true; }
+  return settings;
+}
+
+let settingsLoad = 0;
+async function openSettings() {
+  openForm('app-settings');
+  const run = ++settingsLoad, input = $('#settings-time-zone'), admin = window.me?.role === 'admin';
+  input.readOnly = !admin;
+  input.disabled = true;
+  $('#settings-save').disabled = true;
+  $('#settings-save').hidden = !admin;
+  $('#settings-permission').hidden = admin;
+  input.value = timeKit?.getDisplayZone() || 'UTC';
+  const options = $('#time-zone-options');
+  if (!options.children.length) {
+    const zones = ['UTC', ...(Intl.supportedValuesOf?.('timeZone') || [])];
+    for (const zone of zones) { const option = document.createElement('option'); option.value = zone; options.append(option); }
+  }
+  try {
+    const settings = await syncTimeZone();
+    if (run !== settingsLoad) return;
+    input.value = settings.time_zone || 'UTC';
+    input.disabled = false;
+    $('#settings-save').disabled = false;
+    input.focus();
+  } catch (error) { if (run === settingsLoad) formError('app-settings', `Could not load settings: ${error.message}. Close and try again.`); }
+}
+
+async function saveSettings() {
+  const button = $('#settings-save');
+  button.disabled = true;
+  try {
+    const result = await api('/settings', { method: 'PUT', body: JSON.stringify({ time_zone: $('#settings-time-zone').value.trim() }) });
+    (await timeReady).setDisplayZone(result.time_zone);
+    formDone('app-settings');
+    await showPage(currentPage);
+  } catch (error) { formError('app-settings', error.message); }
+  finally { button.disabled = false; }
 }
 
 // -------------------------------------------------------------- equipment
@@ -388,11 +460,7 @@ async function pmDone(id) {
   } catch (e) { alert(e.message); }
 }
 
-function today() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+function today() { return timeKit?.todayInZone() || new Date().toISOString().slice(0, 10); }
 
 // ------------------------------------------------------------------ export
 // window.location rather than fetch: the server already sets

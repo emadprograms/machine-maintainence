@@ -2,6 +2,8 @@
 // remains authoritative about the latest stage, stock, photos and machine state.
 import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts, hasStagePartsDraft, groupStageParts, formatStagePrice } from './stage-parts.js';
 import { resetStageGallery, historyPhotos, existingPhotos, updateNewPhotos } from './stage-gallery.js';
+import { zoneDateTime, getDisplayZone } from './time-zone.js';
+const timeLabel = (stamp) => stamp ? `${zoneDateTime(stamp) || stamp} ${getDisplayZone()}` : 'Date not recorded';
 let refreshAfterUpdate = () => {}, rememberPeople = () => {};
 let updatingWork = null, updateJob = null, editingStage = null, latestStage = null;
 let updateRun = 0, updateLoad = 0, updateEditing = false, stateReady = false;
@@ -50,17 +52,17 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
 function timeline(updates) {
   const admin = window.me?.role === 'admin', job = updateJob;
   const report = `<article class="update-entry timeline-report"><div class="update-top"><strong>Problem reported</strong></div>
-    <small class="update-meta">${esc(job.created_at || 'Date not recorded')}${job.created_at ? ' UTC' : ''}${job.reported_by ? ` · Reported by ${esc(job.reported_by)}` : ''}</small>
+    <small class="update-meta">${esc(timeLabel(job.created_at))}${job.reported_by ? ` · Reported by ${esc(job.reported_by)}` : ''}</small>
     <p><strong>${esc(job.title)}</strong></p>${job.priority ? `<small>Priority: ${esc(job.priority)}</small>` : ''}${job.notes ? `<p>${esc(job.notes)}</p>` : ''}
     ${job.photo ? `<div class="stage-photo-grid"><button type="button" class="stage-thumbnail" onclick="previewFaultPhoto()" aria-label="Preview fault photo"><img src="/api/work-orders/${Number(job.id)}/photo" alt="" loading="lazy"><span>Fault photo</span></button></div>` : ''}</article>`;
   const stages = updates.map((u, i) => `<article class="update-entry"><div class="update-top"><div><strong>Stage ${Number(u.stage)}</strong>${i === updates.length - 1 ? '<span class="stage-latest">Latest</span>' : ''}</div>
       ${admin && i === updates.length - 1 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
-    <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} ${Number(u.hours) === 1 ? 'hour' : 'hours'}${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
+    <small class="update-meta">${esc(timeLabel(u.created_at))} · ${esc(u.author)} · ${Number(u.hours)} ${Number(u.hours) === 1 ? 'hour' : 'hours'}${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
     <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
     ${groupStageParts(u.parts).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${formatStagePrice(p.unit_price)} each</p>`).join('')}
     ${historyPhotos(u)}</article>`).join('');
   const closure = job.status === 'done' ? `<article class="update-entry timeline-closed"><div class="update-top"><strong>Job closed</strong></div>
-    <small class="update-meta">${esc(job.closed_at || 'Date not recorded')}${job.closed_at ? ' UTC' : ''}</small>
+    <small class="update-meta">${esc(timeLabel(job.closed_at))}</small>
     ${job.resolution ? `<p>${esc(job.resolution)}</p>` : ''}</article>` : '';
   return report + (stages || '<p class="hint">No updates yet.</p>') + closure;
 }

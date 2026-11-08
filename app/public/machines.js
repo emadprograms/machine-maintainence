@@ -96,9 +96,10 @@ function drawEquipment() {
       ${soft(e.category)}${soft(e.location)}
       ${statusCell(e)}
       <td class="cell-num">${Number(e.total_hours || 0)}</td>
+      <td class="cell-num">${Number(e.total_service_cost || 0).toFixed(2)}</td>
       ${actions(e)}
     </tr>`).join('')
-    || emptyRow(9, q
+    || emptyRow(10, q
       ? `Nothing in this filter matches "${q}". Clear the search to see the rest.`
       : view.empty);
   markTable('equipment-rows');
@@ -120,6 +121,7 @@ register('equipment-rows', {
   location: (machine) => machine.location,
   status: (machine) => STATUS_WORD[machine.status] || machine.status,
   total_hours: (machine) => Number(machine.total_hours || 0),
+  total_service_cost: (machine) => Number(machine.total_service_cost || 0),
 }, drawEquipment);
 
 export async function loadEquipment() {

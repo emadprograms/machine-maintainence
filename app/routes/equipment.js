@@ -13,6 +13,7 @@ import { send, readBody, route, id, readBytes } from '../http.js';
 import { all, get, run } from '../db.js';
 import { equipmentFilter } from '../filters.js';
 import { effectiveHours } from '../hours.js';
+import { hourlyRate } from '../settings.js';
 import { withStatus, SERVICE_STATES } from '../status.js';
 import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
 
@@ -27,8 +28,11 @@ export default {
     const f = equipmentFilter(req.query);
     const rows = withStatus(
       all(`SELECT e.*, (SELECT ROUND(COALESCE(SUM(${effectiveHours()}), 0), 6)
-        FROM work_orders w WHERE w.equipment_id = e.id) AS total_hours
-        FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params));
+        FROM work_orders w WHERE w.equipment_id = e.id) AS total_hours,
+        (SELECT ROUND(COALESCE(SUM(ROUND(COALESCE(${effectiveHours()}, 0) * ? +
+          (SELECT COALESCE(SUM(p.cost_total), 0) FROM work_order_parts p WHERE p.work_order_id = w.id), 2)), 0), 2)
+          FROM work_orders w WHERE w.equipment_id = e.id) AS total_service_cost
+        FROM equipment e ${f.sql} ORDER BY e.name`, hourlyRate(), ...f.params));
     // `status` is the latest reported state (down/active/retired); `service_status`
     // is what is stored. Filtering on the reported one happens after it is worked out —
     // which is why this is a JavaScript filter and not another WHERE clause. Before

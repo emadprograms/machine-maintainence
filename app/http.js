@@ -3,6 +3,7 @@
 // sentence rather than a stack trace.
 
 import { currentUser } from './who.js';
+import { timeZone } from './settings.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 export const send = (res, status, body) => {
@@ -70,6 +71,7 @@ export const route = (fn, opts = {}) => async (req, res) => {
     const user = currentUser(req);
     if (!user && !opts.public) return send(res, 401, { error: 'Please sign in' });
     req.user = user;
+    if (user) res.setHeader('X-Workshop-Time-Zone', timeZone());
     // Handlers may read req.body directly. Before phase 9 nothing assigned it,
     // so `req.body?.on` was silently always undefined — the bug this phase exists
     // to fix. Populating it here means the next handler cannot repeat that.

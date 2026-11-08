@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 // Database layer. The whole file is ~180 lines.
 // Node's built-in SQLite: no npm package, no native compile, real transactions.
 import { DatabaseSync } from 'node:sqlite';
+import { zoneDate } from './public/time-zone.js';
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, copyFileSync, rmSync,
 } from 'node:fs';
@@ -65,6 +66,8 @@ function adoptOldData() {
 adoptOldData();
 
 const db = new DatabaseSync(DB_PATH);
+// Evaluate a stored UTC timestamp in the workshop calendar (DST-aware).
+db.function('workshop_day', (stamp, zone) => zoneDate(stamp, zone));
 
 // WAL = writes go to a small side file and are committed atomically.
 // This is why we never rewrite the whole database on every request

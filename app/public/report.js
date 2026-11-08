@@ -7,12 +7,13 @@
 // computed in the browser where nothing tests it.
 
 import { register, rowsFor, markTable } from './tables.js';
+import { todayInZone } from './time-zone.js';
 
 const money = (n) => Number(n || 0).toFixed(2);
 
 /** "2026-11" — the shape an <input type="month"> and the server both use. */
 function thisMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return todayInZone().slice(0, 7);
 }
 
 function reportRow(m) {
@@ -28,6 +29,17 @@ function reportRow(m) {
 
 let reportMachines = [];
 let reportMonth = '';
+let defaultMonth = '';
+
+// Preserve an explicitly selected month, but move an untouched default when
+// the workshop zone changes across a month boundary.
+export function workshopZoneChanged(zone) {
+  const field = $('#report-month');
+  if (field && defaultMonth && field.value === defaultMonth) {
+    defaultMonth = todayInZone(zone).slice(0, 7);
+    field.value = defaultMonth;
+  }
+}
 
 function drawReport() {
   const rows = rowsFor('report-rows', reportMachines);
@@ -67,7 +79,8 @@ export function renderReportError(message) {
 
 export async function loadReport() {
   const month = $('#report-month');
-  if (month && !month.value) month.value = thisMonth();
+  if (month && !month.value) { month.value = thisMonth(); defaultMonth = month.value; }
+  else if (month && month.value !== defaultMonth) defaultMonth = '';
   try {
     const report = await api(`/report?month=${encodeURIComponent(month.value)}`);
     // The rate belongs to the installation, not to the month, so it is filled in
