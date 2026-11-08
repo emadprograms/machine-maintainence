@@ -9,9 +9,8 @@
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
 
 // ---- what a row shows ------------------------------------------------------
-// Status is not a field any more: status.js derives it from the work orders and
-// sends `status` plus `status_reason`. The screen explains rather than decides,
-// so a red badge always comes with the job that caused it.
+// status.js sends the latest reported operating state and an explanation. The
+// screen presents it; an admin's retirement decision takes precedence.
 
 const STATUS_WORD = { active: 'Running', down: 'Down', retired: 'Retired' };
 const STATUS_KIND = { active: 'green', down: 'red', retired: 'grey' };

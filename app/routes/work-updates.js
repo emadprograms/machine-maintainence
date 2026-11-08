@@ -3,11 +3,9 @@ import { send, readBytes, route, id } from '../http.js';
 import { all, get, run, transaction } from '../db.js';
 import { assigneeValue, hoursValue } from '../values.js';
 import { useStock } from '../part-usage.js';
-import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
-
-const MAX_PHOTOS = 5;
-// Five 2MB photos as base64 plus update text. readBytes drains oversized requests.
-const MAX_BODY = MAX_PHOTOS * Math.ceil(MAX_PHOTO_BYTES / 3) * 4 + 16000;
+import { recordMachineState } from '../status.js';
+import { readPhoto, removePhoto, photoType } from '../photos.js';
+import { MAX_STAGE_BODY, saveStagePhotos } from '../stage-photos.js';
 
 export default {
   'GET /api/work-orders/:id/updates': route(async (req, res) => {
@@ -23,7 +21,7 @@ export default {
   }),
 
   'POST /api/work-orders/:id/updates': route(async (req, res) => {
-    const raw = await readBytes(req, MAX_BODY);
+    const raw = await readBytes(req, MAX_STAGE_BODY);
     let body;
     try { body = JSON.parse(raw.toString('utf8')); } catch { return send(res, 400, { error: 'The request body is not valid JSON' }); }
     const job = get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id));
@@ -44,31 +42,24 @@ export default {
     if (body.machine_running !== undefined && body.machine_running !== null && typeof body.machine_running !== 'boolean')
       return send(res, 400, { error: 'Choose whether the machine is running, or leave it unchanged' });
     const running = body.machine_running == null ? null : (body.machine_running ? 1 : 0);
-    if (photos.length > MAX_PHOTOS) return send(res, 400, { error: 'Choose up to five photos per update' });
+    if (photos.length > 5) return send(res, 400, { error: 'Choose up to five photos per update' });
     const files = [];
+    let result;
     try {
-      for (const photo of photos) {
-        if (typeof photo !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(photo)) {
-          files.forEach(removePhoto); return send(res, 400, { error: 'Choose JPEG, PNG or WebP photos' });
-        }
-        const bytes = Buffer.from(photo.slice(photo.indexOf(',') + 1), 'base64');
-        if (bytes.length > MAX_PHOTO_BYTES) { files.forEach(removePhoto); return send(res, 413, { error: 'Each photo must be under 2 MB' }); }
-        const saved = savePhoto(bytes);
-        if (saved.error) { files.forEach(removePhoto); return send(res, 400, { error: saved.error }); }
-        files.push(saved.name);
-      }
-      const result = transaction(() => {
+      saveStagePhotos(photos, files);
+      result = transaction(() => {
         const stage = Number(get('SELECT COALESCE(MAX(stage), 0) + 1 AS n FROM work_order_updates WHERE work_order_id = ?', job.id).n);
-        const result = run('INSERT INTO work_order_updates (work_order_id, stage, message, hours, author, machine_running) VALUES (?,?,?,?,?,?)',
-          job.id, stage, body.message.trim(), hours.value, req.user.name, running);
+        const result = run('INSERT INTO work_order_updates (work_order_id, stage, message, hours, author, machine_running, prior_stops_machine) VALUES (?,?,?,?,?,?,?)',
+          job.id, stage, body.message.trim(), hours.value, req.user.name, running, job.stops_machine);
         useStock(job.id, result.lastInsertRowid, parts);
+        recordMachineState(job.equipment_id, job.id, result.lastInsertRowid, running, 'stage');
         for (const name of files) run('INSERT INTO work_update_photos (update_id, filename) VALUES (?,?)', result.lastInsertRowid, name);
         run("UPDATE work_orders SET status = 'in_progress', assigned_to = ?, stops_machine = COALESCE(?, stops_machine) WHERE id = ?",
           owner.value, running === null ? null : 1 - running, job.id);
         return { id: Number(result.lastInsertRowid), stage };
       });
-      send(res, 201, { ...result, status: 'in_progress', assigned_to: owner.value });
-    } catch (e) { files.forEach(removePhoto); throw e; }
+    } catch (e) { files.forEach(removePhoto); if (e.status === 413) return send(res, 413, { error: e.message }); throw e; }
+    send(res, 201, { ...result, status: 'in_progress', assigned_to: owner.value });
   }, { raw: true }),
 
   'GET /api/work-orders/:id/updates/:updateId/photos/:photoId': route(async (req, res) => {

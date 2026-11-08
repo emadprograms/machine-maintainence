@@ -1,0 +1,200 @@
+// Timeline, new stage and admin correction share one spacious dialog. The server
+// remains authoritative about the latest stage, stock, photos and machine state.
+import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts } from './stage-parts.js';
+let refreshAfterUpdate = () => {}, rememberPeople = () => {};
+let updatingWork = null, updateJob = null, editingStage = null, latestStage = null;
+let updateRun = 0, updateLoad = 0, updateEditing = false, stateReady = false;
+let stateTouched = false, currentRunning = false;
+
+function showToggle(running) {
+  $('#wa-running').checked = !!running;
+  $('#wa-running-label').textContent = running ? 'Running' : 'Out of service';
+}
+export function stageToggleChanged() { stateTouched = true; showToggle($('#wa-running').checked); }
+
+export async function openWorkUpdates(job, viewOnly = false, refresh = () => {}, onPeople = () => {}) {
+  if (!job) return;
+  refreshAfterUpdate = refresh; rememberPeople = onPeople;
+  updatingWork = job.id; updateJob = job; editingStage = null; latestStage = null;
+  ++updateRun; stateReady = false; stateTouched = false;
+  const editing = !viewOnly && job.status !== 'done';
+  updateEditing = editing;
+  $('#work-assign-title').textContent = editing ? (job.status === 'open' ? 'Start the job' : 'Add an update') : 'Work order updates';
+  $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
+  $('#wa-entry').hidden = !editing;
+  $('#wa-go').hidden = !editing;
+  $('#wa-go').textContent = 'Save update';
+  $('#wa-delete').hidden = true;
+  $('#wa-message').value = ''; $('#wa-hours').value = ''; $('#wa-photos').value = '';
+  $('#wa-existing-photos').innerHTML = '';
+  $('#wa-running-help').textContent = 'The state you record becomes the machine’s latest status.';
+  showToggle(false); $('#wa-running-label').textContent = 'Loading…';
+  resetStageParts();
+  if (editing) loadStageParts();
+  $('#wa-owner-field').hidden = !(editing && (job.status === 'open' || !job.assigned_to));
+  $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
+  $('#wa-owner').disabled = true;
+  openForm('work-assign');
+  return retryWorkUpdateLoading();
+}
+
+function timeline(updates, workId) {
+  const admin = window.me?.role === 'admin';
+  return updates.map((u, i) => `<div class="update-entry"><div class="update-top"><strong>Stage ${Number(u.stage)}</strong>
+      ${admin && i === updates.length - 1 ? `<button type="button" class="ghost small" onclick="editLatestStage(${Number(u.id)})">Edit latest stage</button>` : ''}</div>
+    <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
+    <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
+    ${(u.parts || []).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${Number(p.unit_price).toFixed(2)} each</p>`).join('')}
+    ${(u.photos || []).map((photo, n) => `<a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${n + 1}</a>`).join(' ')}</div>`).join('')
+    || '<p class="hint">No updates yet.</p>';
+}
+
+// Independent lookups prevent a failed history, people or machine request from
+// blanking the other controls. Saving waits for the current machine state.
+export async function retryWorkUpdateLoading() {
+  if (!updatingWork || !updateJob) return;
+  const run = updateRun, load = ++updateLoad, workId = updatingWork, job = updateJob;
+  const editing = updateEditing, choose = editing && !editingStage && (job.status === 'open' || !job.assigned_to);
+  const needsState = editing || window.me?.role === 'admin';
+  const selected = $('#wa-owner').value || (job.assigned_to ? String(job.assigned_to) : '');
+  let historyReady = false, peopleReady = !choose, machineReady = !needsState;
+  stateReady = !needsState;
+  const failures = [];
+  const current = () => run === updateRun && load === updateLoad;
+  const refresh = () => {
+    if (!current()) return;
+    const pending = !historyReady || !peopleReady || !machineReady;
+    $('#wa-load-status').textContent = failures.length ? failures.join(' ') : (pending ? 'Loading updates, people and machine state…' : '');
+    $('#wa-retry').hidden = failures.length === 0;
+    $('#wa-go').disabled = !(editing || editingStage) || pending || failures.length > 0;
+  };
+  $('#wa-go').disabled = true; $('#wa-retry').hidden = true;
+  $('#wa-running').disabled = needsState;
+  formError('work-assign', '');
+  if (job.status === 'open' && job.current_stage === null) $('#wa-history').innerHTML = '<p class="hint">No updates yet.</p>';
+  else $('#wa-history').textContent = 'Loading updates…';
+  if (choose) { $('#wa-owner').innerHTML = '<option value="">Loading people…</option>'; $('#wa-owner').disabled = true; }
+  refresh();
+  const history = api(`/work-orders/${workId}/updates`).then((updates) => {
+    if (!current()) return;
+    if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
+    latestStage = updates.at(-1) || null;
+    $('#wa-history').innerHTML = timeline(updates, workId);
+    if (!editingStage) $('#wa-stage-title').textContent = `Stage ${latestStage ? Number(latestStage.stage) + 1 : 1}`;
+    historyReady = true; refresh();
+  }).catch((e) => {
+    if (!current()) return;
+    $('#wa-history').textContent = '';
+    failures.push(e.status === 404 && e.nonJson
+      ? 'Updates are unavailable on this server. Restart the app after updating, then retry.'
+      : `Could not load updates: ${e.message}.`);
+    refresh();
+  });
+  const people = choose ? api('/users/assignable').then((users) => {
+    if (!current()) return;
+    rememberPeople(users);
+    $('#wa-owner').innerHTML = `<option value="">— choose somebody —</option>${users.map((u) =>
+      `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
+    if (selected && users.some((u) => String(u.id) === selected)) $('#wa-owner').value = selected;
+    $('#wa-owner').disabled = users.length === 0;
+    if (!users.length) failures.push('No accounts are available to assign. Ask an admin to add one.');
+    peopleReady = users.length > 0; refresh();
+  }).catch((e) => {
+    if (!current()) return;
+    $('#wa-owner').innerHTML = '<option value="">Could not load people</option>';
+    failures.push(`Could not load people: ${e.message}.`); refresh();
+  }) : Promise.resolve();
+  const machine = needsState ? api('/equipment').then((machines) => {
+    if (!current()) return;
+    const found = machines.find((m) => Number(m.id) === Number(job.equipment_id));
+    if (!found) throw new Error('Machine not found');
+    currentRunning = found.status === 'active';
+    if (!stateTouched) showToggle(currentRunning);
+    $('#wa-running').disabled = false;
+    stateReady = true; machineReady = true; refresh();
+  }).catch((e) => {
+    if (!current()) return;
+    if (!stateTouched) $('#wa-running-label').textContent = 'Unavailable';
+    failures.push(`Could not load machine state: ${e.message}.`); refresh();
+  }) : Promise.resolve();
+  await Promise.all([history, people, machine]);
+}
+
+export function editLatestStage(stageId) {
+  if (window.me?.role !== 'admin' || !latestStage || Number(stageId) !== Number(latestStage.id)) return;
+  if (editingStage) return; // don't replace an in-progress correction with the old values
+  if (!stateReady || !$('#wa-retry').hidden) return formError('work-assign', 'Reload the latest history and machine state before editing.');
+  if (!editingStage && ($('#wa-message').value.trim() || $('#wa-hours').value)
+      && !window.confirm('Discard the new update draft and edit the latest stage instead?')) return;
+  editingStage = latestStage;
+  stateTouched = true;
+  $('#work-assign-title').textContent = 'Edit latest stage';
+  $('#wa-stage-title').textContent = `Stage ${Number(editingStage.stage)}`;
+  $('#wa-entry').hidden = false; $('#wa-go').hidden = false; $('#wa-go').disabled = false;
+  $('#wa-go').textContent = 'Save changes'; $('#wa-delete').hidden = false;
+  $('#wa-owner-field').hidden = true;
+  $('#wa-message').value = editingStage.message; $('#wa-hours').value = String(editingStage.hours);
+  $('#wa-photos').value = '';
+  showToggle(editingStage.machine_running == null ? currentRunning : Boolean(editingStage.machine_running));
+  $('#wa-running-help').textContent = 'This is the state recorded during this stage. A newer report may determine the current state.';
+  $('#wa-existing-photos').innerHTML = (editingStage.photos || []).map((photo, i) =>
+    `<div class="stage-photo-row"><label><input type="checkbox" value="${Number(photo)}" checked /> Keep photo ${i + 1}</label><a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${updatingWork}/updates/${editingStage.id}/photos/${photo}">View</a></div>`).join('');
+  setStageParts(editingStage.parts); loadStageParts();
+  formError('work-assign', '');
+}
+
+function photoData(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read a photo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function startAssigned() {
+  if (!updatingWork || !updateJob || $('#wa-go').disabled) return;
+  const run = updateRun, workId = updatingWork, job = updateJob, stage = editingStage, refresh = refreshAfterUpdate;
+  const message = $('#wa-message').value.trim(), hours = $('#wa-hours').value, owner = $('#wa-owner').value;
+  const photos = Array.from($('#wa-photos').files || []);
+  const keep = stage ? Array.from(document.querySelectorAll('#wa-existing-photos input[type="checkbox"]:checked')).map((p) => Number(p.value)) : [];
+  if (!message) return formError('work-assign', 'Write an update for this stage.');
+  if (hours === '' || !Number.isFinite(Number(hours)) || Number(hours) < 0)
+    return formError('work-assign', 'Enter the time spent in hours.');
+  const choose = !stage && (job.status === 'open' || !job.assigned_to);
+  if (choose && !owner) return formError('work-assign', 'Choose who is doing this job.');
+  if (photos.length + keep.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024))
+    return formError('work-assign', 'Choose up to five photos, each under 2 MB.');
+  $('#wa-go').disabled = true;
+  try {
+    const body = { message, hours, photos: await Promise.all(photos.map(photoData)), machine_running: $('#wa-running').checked };
+    const parts = stagePartsForSave();
+    if (parts.length || stage) body.parts = parts;
+    if (choose) body.assigned_to = Number(owner);
+    if (stage) body.keep_photos = keep;
+    const result = await api(`/work-orders/${workId}/updates${stage ? `/${stage.id}` : ''}`,
+      { method: stage ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    if (result.warning) alert(result.warning);
+    if (updateRun === run) { updatingWork = null; updateJob = null; formDone('work-assign'); }
+    await refresh();
+  } catch (e) {
+    if (updateRun === run) { formError('work-assign', e.message); $('#wa-go').disabled = false; }
+  }
+}
+
+export async function deleteLatestStage() {
+  if (!editingStage || !updatingWork || window.me?.role !== 'admin' || $('#wa-go').disabled) return;
+  if (!window.confirm(`Permanently delete Stage ${editingStage.stage}? Its photos will be deleted and its parts returned to stock.`)) return;
+  const run = updateRun, workId = updatingWork, stageId = editingStage.id, refresh = refreshAfterUpdate;
+  $('#wa-go').disabled = true; $('#wa-delete').disabled = true;
+  try {
+    const result = await api(`/work-orders/${workId}/updates/${stageId}`, { method: 'DELETE' });
+    if (result.warning) alert(result.warning);
+    if (updateRun === run) { updatingWork = null; updateJob = null; formDone('work-assign'); }
+    await refresh();
+  } catch (e) {
+    if (updateRun === run) { formError('work-assign', e.message); $('#wa-go').disabled = false; }
+  } finally { $('#wa-delete').disabled = false; }
+}
+
+Object.assign(window, { editLatestStage, deleteLatestStage, stageToggleChanged });

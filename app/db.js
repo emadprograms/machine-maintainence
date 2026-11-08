@@ -245,6 +245,9 @@ if (!db.prepare('PRAGMA table_info(work_order_parts)').all().some((c) => c.name 
     COMMIT;`);
 }
 ensureColumn('work_order_updates', 'machine_running', 'INTEGER');
+ensureColumn('work_order_updates', 'prior_stops_machine', 'INTEGER');
+ensureColumn('work_order_updates', 'edited_by', 'TEXT');
+ensureColumn('work_order_updates', 'edited_at', 'TEXT');
 // Who reported the fault, as typed. Free text rather than a user id: the person
 // who finds the machine making a noise is often standing next to it, not signed
 // in — and "Ada on the floor" is still the only lead six hours later.
@@ -262,8 +265,48 @@ ensureColumn('work_orders', 'verified_by', 'TEXT');
 // Does this job stop the machine? Until 261106-ere the answer was inferred from
 // priority and status, which meant reporting a fault could take a running machine
 // out of service on the strength of a dropdown nobody thought about. The ticket
-// says it now; nothing else does.
+// stores this job's last answer; the chronological state reports below decide
+// the machine's overall state.
 ensureColumn('work_orders', 'stops_machine', 'INTEGER NOT NULL DEFAULT 0');
+// Preserve the old state on upgrade. A null event reserves a stage's original
+// position without reporting a state, so a later correction cannot jump ahead
+// of a newer report on another work order.
+const stateTableExists = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='machine_state_events'").get());
+const stateTableSql = `CREATE TABLE machine_state_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  equipment_id INTEGER NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+  work_order_id INTEGER REFERENCES work_orders(id) ON DELETE CASCADE,
+  update_id INTEGER REFERENCES work_order_updates(id) ON DELETE CASCADE,
+  running INTEGER CHECK (running IN (0, 1)),
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);`;
+const stateIndexesSql = `CREATE INDEX machine_state_events_latest ON machine_state_events(equipment_id, id DESC);
+  CREATE UNIQUE INDEX machine_state_events_stage ON machine_state_events(update_id) WHERE update_id IS NOT NULL;`;
+if (!stateTableExists) {
+  db.exec(`BEGIN;
+    ${stateTableSql}
+    ${stateIndexesSql}
+    INSERT INTO machine_state_events (equipment_id, work_order_id, update_id, running, source)
+      SELECT w.equipment_id, u.work_order_id, u.id, u.machine_running, 'stage'
+      FROM work_order_updates u JOIN work_orders w ON w.id = u.work_order_id ORDER BY u.id;
+    INSERT INTO machine_state_events (equipment_id, running, source)
+      SELECT e.id, CASE WHEN EXISTS (SELECT 1 FROM work_orders w WHERE w.equipment_id=e.id
+        AND w.status <> 'done' AND w.stops_machine=1) THEN 0 ELSE 1 END, 'migration' FROM equipment e;
+    COMMIT;`);
+} else if (db.prepare('PRAGMA table_info(machine_state_events)').all().find((c) => c.name === 'running').notnull) {
+  // Migrate a non-null event table without losing its chronological ids.
+  db.exec(`BEGIN;
+    ALTER TABLE machine_state_events RENAME TO old_machine_state_events;
+    DROP INDEX IF EXISTS machine_state_events_latest;
+    DROP INDEX IF EXISTS machine_state_events_stage;
+    ${stateTableSql}
+    INSERT INTO machine_state_events SELECT * FROM old_machine_state_events;
+    DROP TABLE old_machine_state_events;
+    ${stateIndexesSql}
+    COMMIT;`);
+}
+
 // A number to hang a conversation on: WO-2026-0001. The id is for the database,
 // this is for the whiteboard, the phone call with the vendor and the printed sheet.
 ensureColumn('work_orders', 'code', 'TEXT');

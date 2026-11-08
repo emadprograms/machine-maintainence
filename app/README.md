@@ -43,54 +43,59 @@ Check with `node --version`.
 
 | File | What it does | Lines |
 |---|---|---|
-| `server.js` | Starts up, decides which route a request is, serves the one page | 118 |
-| `routes/` | **One file per screen group** — see below | 40–135 each |
-| `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
+| `server.js` | Starts up, decides which route a request is, serves the one page | 120 |
+| `routes/` | **One file per screen group** — see below | 40–199 each |
+| `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 135 |
 | `values.js` | Turns what a browser sends into what the database may store | 85 |
-| `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 408 |
-| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
+| `who.js` | Who is asking: the session cookie, the user behind it | 35 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 451 |
+| `filters.js` | Every WHERE clause: search and filters, shared with the exports | 148 |
 | `hours.js` / `part-usage.js` | Shared live-hour calculation and atomic part consumption | 8 / 24 |
 | `report.js` | One month of work, added up | 98 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
-| `status.js` | What state a machine is in, from the work orders that say they stop it; also what "in service" means to a query | 90 |
+| `status.js` | Latest explicit machine-state report and the separate retirement rule | 85 |
 | `codes.js` | Work order numbers: one series per year, `WO-2026-0001` | 24 |
-| `photos.js` | Photographs — of a machine or of a fault: type sniffed from the bytes, size capped | 71 |
+| `photos.js` | Photographs — of a machine or of a fault: type sniffed from the bytes, size capped | 73 |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 596 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 299 |
+| `public/index.html` | The whole UI shell: every screen and form | 595 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 355 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 479 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 305 · 480 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 304 · 356 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `public/stage-parts.js` | Optional staged part picker and draft consumption | 85 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 606 behaviours | 3,342 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 386 |
+| `public/stage-parts.js` | Optional staged part picker and draft consumption | 92 |
+| `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 200 |
+| `stage-photos.js` | Stage photo validation and storage | 20 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 635 behaviours | 3,487 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 495 |
 | `scripts/stage-migration-test.js` | Tests upgrading existing stage hours and part costs | 51 |
-| `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
+| `scripts/machine-state-migration-test.js` | Tests the state-event migration and idempotence | 62 |
+| `scripts/photo-cleanup-test.js` | Tests failed writes and photo-cleanup errors | 40 |
+| `scripts/audit-offline.js` | Proves nothing reaches the internet | 152 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
 The route files, one per screen group:
 
 | File | Routes | Lines |
 |---|---|---|
-| `routes/auth.js` | login, logout, me | 52 |
+| `routes/auth.js` | login, logout, me | 50 |
 | `routes/record.js` | history, history.csv | 45 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 131 |
-| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 190 |
-| `routes/work-updates.js` | stage timeline, time, parts, machine state and photos | 82 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 130 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 199 |
+| `routes/work-updates.js` | stage timeline, time, parts, machine state and photos | 73 |
+| `routes/stage-admin.js` | admin-only latest-stage edit/delete and reconciliation | 114 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 132 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
-| `routes/admin.js` | users, assignable people, backup | 81 |
-| `routes/report.js` | the hourly rate, the month, report.csv | 56 |
+| `routes/admin.js` | users, assignable people, backup | 84 |
+| `routes/report.js` | the hourly rate, the month, report.csv | 55 |
 
-Total application code: **about 5,691 lines**, and about 3,931 of tests. No file is past the
+Total application code: **about 6,019 lines**, and about 4,287 of tests. No file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -211,17 +216,16 @@ stored `role` values keep the word *user*, because everything else already speak
   record holds: name, barcode, manufacturer, category, location, notes and a photograph.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
   those requests too, so the hidden button is not the protection.
-* **The ticket says whether the machine stops.** Nobody types *down* on the machine, and
-  nobody has to guess from a priority either: the report form asks *Does this stop the
-  machine?* — *No, it is still running* by default, *Yes, take it out of service* — and that
-  answer, on an unfinished job, is the whole rule. A high-priority fault on a machine that is
-  still making parts leaves it running; a job somebody is working on does not take it out of
-  service by itself; the answer can be changed again without closing the job. Until
-  261106-ere priority and status decided, so reporting a fault could take a running machine
-  out of service without anybody choosing to. The stored column still says only *active* or
-  *retired*; `status.js` derives the rest and the list names the job — by its number — that
-  is holding the machine down.
-* **Editing a work order opens a dialog with the whole record on it.** Problem, owner,
+* **The latest explicit answer says whether the machine is running.** The report form
+  defaults to the selected machine's currently recorded state, and the stage dialog has
+  a red *Out of service* / green *Running* switch. A later report or update supersedes an
+  older one, even on a different work order; closing a job does not by itself change the
+  machine's state. Saving an unrelated work-order edit does not create a new state report.
+  Retirement is a separate administrative state and takes precedence. On upgrade, the
+  previous displayed state is preserved as a migration baseline; the app cannot reconstruct
+  missing pre-upgrade state history. A correction to a stage changes that stage's historical
+  answer, not a newer report from another job.
+* **Editing a work order opens a dialog with the whole record on it.** Problem, assigned person,
   priority, who reported it, what was seen, whether it stops the machine, and the
   photograph — replace it or remove it. It used to be a row of inputs inside the table that
   could change four things and nothing else, with the answer to *does this stop the machine*
@@ -243,23 +247,27 @@ stored `role` values keep the word *user*, because everything else already speak
   are in service, and offers Retry when its lookup fails or the list is empty.
 * **A work order keeps its stage-by-stage time log.** Starting asks for a written
   Stage 1 update, time spent and optionally up to five photos (2 MB each). An in-progress
-  ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. A new
-  ticket with an empty history says “No updates yet”; real loading errors are shown
-  separately. If the server was not restarted after an update, the dialog asks for a
-  restart rather than mistaking an unavailable endpoint for an empty history. Each update
-  retains its author, UTC timestamp, duration and photos. It may also record spare parts
-  and their actual unit costs, and answer “Is the machine running now?” Parts are optional;
-  add one or more from the catalog and adjust the suggested price. Saving consumes stock
-  and adds the recorded costs to the work order atomically. An unanswered running question
-  leaves this job's setting unchanged; other stopping jobs can still keep the machine down.
-  The work order's Hours and Cost update as stages are saved, and the Machines table shows
-  total hours across all its jobs. Labour cost uses the configured hourly rate. View updates
-  remains available after closure, and reopening continues the same timeline. The closing
-  dialog offers the live hours for review; after a reviewed total, new stages add only the
-  time recorded since that review. This avoids double-counting and preserves legacy totals.
-  Existing part-use costs are captured at the catalog price on upgrade (zero if no price
-  was recorded); later catalog price changes do not rewrite recorded costs. Photos are kept
-  in the existing data/photos folder, so copy it with the database when moving or backing up.
+  ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. Empty history,
+  loading errors and a server needing restart are distinguished. Each stage keeps its author,
+  UTC timestamp, duration, photos, machine state and optional parts. Add as many parts as
+  needed (up to 50 lines); the actual unit cost starts with the catalog price and is editable.
+  Saving deducts stock and records costs atomically.
+* **An admin can correct or delete only the latest stage.** Open *View updates* and choose
+  *Edit latest stage*, including on a closed job. Correct its description, time, machine
+  state, photos or parts, or confirm *Delete stage* to permanently remove it and its photos.
+  Removed quantities return to stock and new quantities are deducted in one transaction;
+  insufficient stock rejects the correction without partial changes. Older stages are not
+  editable or deletable, and technicians cannot bypass this restriction through the API.
+  Deleting the only stage of an in-progress job returns that job to open. Photo files are
+  removed after the database commit; a storage failure is logged and the admin is warned to
+  remove the named leftover files manually. Backups made before deletion are not affected.
+* **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
+  total hours. Closing offers the live hours for review; after review, new stages add only
+  time recorded since that review. Editing/deleting a stage adjusts the reviewed total and
+  rebases it without going below zero or swallowing subsequent hours. Existing part-use costs
+  are captured at the catalog price on upgrade (zero if no price was recorded); later catalog
+  price changes do not rewrite them. Copy the data/photos folder with the database when moving
+  or backing up.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -483,10 +491,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 606 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 635 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`606 passed, 0 failed`.
+`635 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
@@ -524,6 +532,7 @@ native modules. You should see `OFFLINE-SAFE`.
   it. A technician can add a machine and report a job on it — that is how a fault gets
   written down — but the routes refuse a `PUT` from anyone else, so hiding the button is a
   courtesy, not the protection.
+* **Stage correction is admin-only and latest-only**, enforced by the server as well as the UI.
 * **A machine's state is not typeable.** `PUT /api/equipment/:id` accepts `active` or
   `retired` and answers 400 to `down`, pointing at the work order instead.
 * **An uploaded photograph is checked by its bytes.** JPEG/PNG/WebP is decided from the
@@ -538,9 +547,10 @@ native modules. You should see `OFFLINE-SAFE`.
 * No password reset by email (there is no email). Use `node reset-password.js` instead —
   see **If you lose the password** above.
 * A restored backup signs everybody out, because sessions are rows in the database.
-* **No audit log** — who changed what is not recorded. Deliberately out of scope so far;
-  it is the strongest candidate for the next milestone.
-* **Concurrent edits are last-write-wins** — one process, never tested with two browsers.
+* **No complete audit log** — stage edits record the latest editor and edit time, but a
+  comprehensive before-and-after history across all records is not provided.
+* **Concurrent edits are generally last-write-wins.** The server rechecks the latest-stage
+  restriction during the transaction, but there is no general edit-conflict resolution.
 
 ---
 

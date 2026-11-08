@@ -9,7 +9,7 @@
 // of independent widgets.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
-import { resetStageParts, loadStageParts, stagePartsForSave } from './stage-parts.js';
+import * as updateUI from './work-updates.js';
 
 // ------------------------------------------------------------ work orders
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
@@ -55,7 +55,7 @@ function drawWork() {
                  rel="noopener">photo</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
         <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
-          w.stops_machine ? ` ${badge('stops the machine', 'red')}` : ''}</td>
+          w.stops_machine ? ` ${badge('last noted out of service', 'red')}` : ''}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}${w.status === 'in_progress' && w.current_stage ? ` <span class="row-sub">Stage ${Number(w.current_stage)}</span>` : ''}</td>
         <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
@@ -142,9 +142,11 @@ export async function saveWork() {
     priority: $('#we-priority').value,
     reported_by: $('#we-reporter').value.trim() || null,
     notes: $('#we-notes').value.trim() || null,
-    stops_machine: $('#we-stops').value === '1',
   };
   if (canAssign) body.assigned_to = $('#we-owner').value || null;
+  const previous = workCache.find((w) => w.id === idToSave);
+  const stops = $('#we-stops').value === '1';
+  if (previous && stops !== Boolean(previous.stops_machine)) body.stops_machine = stops;
   try {
     await api(`/work-orders/${idToSave}`, { method: 'PATCH', body: JSON.stringify(body) });
     // The photograph last, the same shape as the report form: the record exists, so
@@ -163,6 +165,15 @@ export async function saveWork() {
 // A fresh form owns its two lookups; an older response must not overwrite it.
 let workFormRun = 0;
 let machineLoad = 0;
+let workMachines = [];
+
+// Reporting starts with the selected machine's current state, not an accidental
+// "running" default that could overturn a more recent stoppage.
+export function syncWorkMachineState() {
+  const machine = workMachines.find((m) => String(m.id) === $('#w-equipment').value);
+  if (machine) $('#w-stops').value = machine.status === 'down' ? '1' : '0';
+}
+window.syncWorkMachineState = syncWorkMachineState;
 
 export async function retryWorkMachines() {
   const formRun = workFormRun;
@@ -182,7 +193,9 @@ export async function retryWorkMachines() {
       $('#w-machine-retry').hidden = false;
       return;
     }
+    workMachines = machines;
     picker.innerHTML = machines.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    syncWorkMachineState();
     picker.disabled = false;
     $('#w-create').disabled = false;
     $('#w-machine-status').textContent = '';
@@ -256,152 +269,15 @@ export async function advance(id, status) {
   catch (e) { alert(e.message); }
 }
 
-let updatingWork = null;
-let updateJob = null;
-let updateRun = 0;
-let updateLoad = 0;
-let updateEditing = false;
-
-// A single dialog is both the full timeline and the next-stage editor. It remains
-// available in read-only mode after closing; no update overwrites an earlier one.
-export async function openWorkUpdates(idToUpdate, viewOnly = false) {
-  const job = workCache.find((w) => w.id === idToUpdate);
-  if (!job) return;
-  updatingWork = idToUpdate;
-  updateJob = job;
-  ++updateRun;
-  const editing = !viewOnly && job.status !== 'done';
-  updateEditing = editing;
-  $('#work-assign-title').textContent = editing ? (job.status === 'open' ? 'Start the job' : 'Add an update') : 'Work order updates';
-  $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
-  $('#wa-entry').hidden = !editing;
-  $('#wa-go').hidden = !editing;
-  $('#wa-message').value = '';
-  $('#wa-hours').value = '';
-  $('#wa-photos').value = '';
-  $('#wa-running').value = '';
-  resetStageParts();
-  if (editing) loadStageParts();
-  $('#wa-owner-field').hidden = !(editing && (job.status === 'open' || !job.assigned_to));
-  $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
-  $('#wa-owner').disabled = true;
-  openForm('work-assign');
-  return retryWorkUpdateLoading();
-}
-
-// The people and history requests are independent. A slow or failed history
-// request must not leave an otherwise available assignee picker blank.
-export async function retryWorkUpdateLoading() {
-  if (!updatingWork || !updateJob) return;
-  const run = updateRun, load = ++updateLoad, workId = updatingWork, job = updateJob;
-  const editing = updateEditing;
-  const choose = editing && (job.status === 'open' || !job.assigned_to);
-  const selected = $('#wa-owner').value || (job.assigned_to ? String(job.assigned_to) : '');
-  let historyReady = false, peopleReady = !choose;
-  const failures = [];
-  const current = () => run === updateRun && load === updateLoad;
-  const refresh = () => {
-    if (!current()) return;
-    const pending = !historyReady || !peopleReady;
-    $('#wa-load-status').textContent = failures.length ? failures.join(' ') : (pending ? 'Loading updates and people…' : '');
-    $('#wa-retry').hidden = failures.length === 0;
-    $('#wa-go').disabled = !editing || pending || failures.length > 0;
-  };
-  $('#wa-go').disabled = true;
-  $('#wa-retry').hidden = true;
-  formError('work-assign', '');
-  // The list already identifies a freshly opened ticket with no stages. Show
-  // that known empty state while checking the latest history in the background.
-  if (job.status === 'open' && job.current_stage === null)
-    $('#wa-history').innerHTML = '<p class="hint">No updates yet.</p>';
-  else $('#wa-history').textContent = 'Loading updates…';
-  if (choose) {
-    $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
-    $('#wa-owner').disabled = true;
-  }
-  refresh();
-  const history = api(`/work-orders/${workId}/updates`).then((updates) => {
-    if (!current()) return;
-    if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
-    $('#wa-history').innerHTML = updates.map((u) => `<div class="update-entry"><strong>Stage ${Number(u.stage)}</strong>
-      <small> · ${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours</small>
-      <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'stopped'} (this job)</small>`}
-      ${(u.parts || []).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${Number(p.unit_price).toFixed(2)} each</p>`).join('')}${u.photos.map((photo, i) => `<a class="link-photo" target="_blank" rel="noopener"
-        href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${i + 1}</a>`).join(' ')}</div>`).join('')
-      || '<p class="hint">No updates yet.</p>';
-    $('#wa-stage-title').textContent = `Stage ${updates.length ? Number(updates.at(-1).stage) + 1 : 1}`;
-    historyReady = true;
-    refresh();
-  }).catch((e) => {
-    if (!current()) return;
-    $('#wa-history').textContent = '';
-    failures.push(e.status === 404 && e.nonJson
-      ? 'Updates are unavailable on this server. Restart the app after updating, then retry.'
-      : `Could not load updates: ${e.message}.`);
-    refresh();
-  });
-  const people = choose ? api('/users/assignable').then((users) => {
-    if (!current()) return;
-    assignable = users;
-    $('#wa-owner').innerHTML = `<option value="">— choose somebody —</option>${users.map((u) =>
-      `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
-    if (selected && users.some((u) => String(u.id) === selected)) $('#wa-owner').value = selected;
-    $('#wa-owner').disabled = users.length === 0;
-    if (!users.length) failures.push('No accounts are available to assign. Ask an admin to add one.');
-    peopleReady = users.length > 0;
-    refresh();
-  }).catch((e) => {
-    if (!current()) return;
-    $('#wa-owner').innerHTML = '<option value="">Could not load people</option>';
-    failures.push(`Could not load people: ${e.message}.`);
-    refresh();
-  }) : Promise.resolve();
-  await Promise.all([history, people]);
-}
-
-function photoData(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Could not read a photo'));
-    reader.readAsDataURL(file);
-  });
-}
-
-export async function startAssigned() {
-  if (!updatingWork || !updateJob || $('#wa-go').disabled) return;
-  const run = updateRun, workId = updatingWork, job = updateJob;
-  const message = $('#wa-message').value.trim();
-  const hours = $('#wa-hours').value;
-  const owner = $('#wa-owner').value;
-  const photos = Array.from($('#wa-photos').files || []);
-  if (!message) return formError('work-assign', 'Write an update for this stage.');
-  if (hours === '' || !Number.isFinite(Number(hours)) || Number(hours) < 0)
-    return formError('work-assign', 'Enter the time spent in hours.');
-  const choose = job.status === 'open' || !job.assigned_to;
-  if (choose && !owner) return formError('work-assign', 'Choose who is doing this job.');
-  if (photos.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024))
-    return formError('work-assign', 'Choose up to five photos, each under 2 MB.');
-  $('#wa-go').disabled = true;
-  try {
-    const body = { message, hours, photos: await Promise.all(photos.map(photoData)) };
-    const parts = stagePartsForSave();
-    if (parts.length) body.parts = parts;
-    const running = $('#wa-running').value;
-    if (running) body.machine_running = running === 'yes';
-    if (choose) body.assigned_to = Number(owner);
-    await api(`/work-orders/${workId}/updates`, { method: 'POST', body: JSON.stringify(body) });
-    partChoices = []; // stock may have changed; the close picker must refresh
-    if (updateRun === run) {
-      updatingWork = null;
-      updateJob = null;
-      formDone('work-assign');
-    }
+// Keep the stage editor separate from the table and close dialog.
+export function openWorkUpdates(id, viewOnly = false) {
+  return updateUI.openWorkUpdates(workCache.find((w) => w.id === id), viewOnly, async () => {
+    partChoices = []; // stock may have changed
     await loadWork();
-  } catch (e) {
-    if (updateRun === run) { formError('work-assign', e.message); $('#wa-go').disabled = false; }
-  }
+  }, (users) => { assignable = users; });
 }
+export const retryWorkUpdateLoading = () => updateUI.retryWorkUpdateLoading();
+export const startAssigned = () => updateUI.startAssigned();
 
 // ---- closing a job -------------------------------------------------------
 let closingWork = null;
@@ -420,7 +296,7 @@ export async function openWorkClose(idToClose) {
   try { updates = await api(`/work-orders/${idToClose}/updates`); } catch { loaded = false; }
   const stageHours = Math.round(updates.reduce((sum, u) => sum + Number(u.hours), 0) * 1e6) / 1e6;
   const total = job.labour_hours == null ? (updates.length ? stageHours : null)
-    : Math.round((Number(job.labour_hours) + stageHours - Number(job.labour_stage_baseline || 0)) * 1e6) / 1e6;
+    : Math.max(0, Math.round((Number(job.labour_hours) + stageHours - Number(job.labour_stage_baseline || 0)) * 1e6) / 1e6);
   $('#wc-hours').value = (loaded ? total : (job.effective_hours ?? job.labour_hours)) ?? '';
   $('#wc-hours-hint').textContent = !loaded ? 'Could not load the latest stages. Review the final total before closing.'
     : updates.length ? `Stages total ${stageHours} hours. Review the final total before closing.` : '';

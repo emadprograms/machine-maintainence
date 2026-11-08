@@ -1,17 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v3.0
-milestone_name: The record
+milestone: v4.0
+milestone_name: Stage correction and machine state
 status: Awaiting next milestone
 last_updated: "2026-11-05T15:16:52.889Z"
 last_activity: 2026-11-06
-last_activity_desc: Milestone v3.0 completed
-state_head: 5b8efcd03c86601ea1feca8f8f62811dd7831bea
+last_activity_desc: Milestone v4.0 completed
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 current_phase: null
 ---
@@ -23,14 +22,14 @@ current_phase: null
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** A beginner can read the entire codebase in one sitting and add a field, a page or a maintenance schedule in minutes — while the database survives crashes, reboots and power cuts intact.
-**Current focus:** v1.0, v1.1, v2.0 and v3.0 are closed and archived. No milestone is in progress.
+**Current focus:** v1.0, v1.1, v2.0, v3.0 and v4.0 are complete. No milestone is in progress.
 
 ## Current Position
 
-Phase: Milestone v3.0 complete
+Phase: Milestone v4.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-07 — quick task 261106-erq: "Users" is "Admins & Technicians"
+Last activity: 2026-11-05 — v4.0 stage correction and machine state completed
 
 ## Quick Tasks Completed
 

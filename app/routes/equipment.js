@@ -3,9 +3,8 @@
 //
 // Two rules changed in 261106-eqs and they are worth stating at the top:
 //
-//   * The machine's *state* is not a field. `status` is computed from its work
-//     orders by status.js, and the column now holds only whether an admin
-//     withdrew it from service.
+//   * The machine's operating state is the latest explicit report or stage answer;
+//     the stored equipment column records only administrative retirement.
 //   * Changing what is recorded is an administrator's job. Reporting a fault is
 //     not — a fitter must be able to create a machine and open a job on it — but
 //     correcting the record, retiring it and attaching a photograph are admin-only.
@@ -30,8 +29,8 @@ export default {
       all(`SELECT e.*, (SELECT ROUND(COALESCE(SUM(${effectiveHours()}), 0), 6)
         FROM work_orders w WHERE w.equipment_id = e.id) AS total_hours
         FROM equipment e ${f.sql} ORDER BY e.name`, ...f.params));
-    // `status` is the derived state (down/active/retired); `service_status` is what is
-    // stored. Filtering on the derived one has to happen after it is worked out —
+    // `status` is the latest reported state (down/active/retired); `service_status`
+    // is what is stored. Filtering on the reported one happens after it is worked out —
     // which is why this is a JavaScript filter and not another WHERE clause. Before
     // 261106-eqv this parameter filtered the raw column, where 'down' no longer lives.
     const wanted = String(req.query.status || '');
@@ -63,7 +62,7 @@ export default {
     // it here means the old form cannot resurrect a stale badge either.
     if (b.status !== undefined && !SERVICE_STATES.includes(b.status)) {
       return send(res, 400, {
-        error: 'A machine is down because of its work orders. Close the job instead.',
+        error: 'Record the machine state in a work order report or update instead.',
       });
     }
     run(`UPDATE equipment SET name=?, asset_tag=?, category=?, location=?, status=?,

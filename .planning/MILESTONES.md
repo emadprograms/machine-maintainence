@@ -1,5 +1,15 @@
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
+## v4.0 Stage correction and machine state (Shipped: 2026-11-05)
+
+- A spacious, responsive stage editor with a current-state red/green switch, multiple
+  spare parts and editable actual costs defaulted from the catalog.
+- Latest explicit state reports win across jobs; retirement remains separate.
+- Admin-only correction/deletion of the latest stage, with transactional stock and cost
+  reconciliation, photo cleanup warnings and correctly rebased reviewed hours.
+- 635 smoke checks passed; migration, failure handling, offline audit and real Chromium
+  flows verified. Scope and details: `milestones/v4.0-WORK-ORDER-MILESTONE.md`.
+
 ## v3.0 The record (Shipped: 2026-11-06)
 
 **Phases completed:** 3 phases, 3 plans

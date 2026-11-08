@@ -1,28 +1,19 @@
-// What state a machine is in — computed from its work orders, never typed in.
-//
-// Until 261106-eqs `equipment.status` was a field on an edit form, which meant two
-// ways to be wrong at once: a machine whose job says "being replaced" could still
-// read *down* weeks later because nobody went back, and a machine with a live
-// high-priority fault read *running* because whoever reported it did not think to
-// edit a second screen. The screen a fitter looks at was wrong in both directions.
-//
-// So the rule lives here, in one place, and every screen asks it:
-//
-//   retired  an admin withdrew the machine from service. Not a repair, so it stays
-//            a manual decision, and it outranks everything — a retired machine is
-//            not "down", it has left the workshop.
-//   down     otherwise, if the machine has an unfinished work order that says it
-//            stops the machine. The ticket decides — not its priority, and not the
-//            fact that it exists. Until 261106-ere a high-priority job or one
-//            somebody had started was enough, so reporting a fault could take a
-//            running machine out of service on the strength of a dropdown nobody
-//            thought about, and a fitter had no way to record "this can wait until
-//            Friday, it is still making parts".
-//   active   otherwise.
-//
-// The stored column now records only the first of those. `down` is never written.
+// Latest explicit machine-state report wins, independently of work-order closure.
+// Retirement is a separate administrative decision and always takes precedence.
+// Legacy machines receive a baseline during migration so their state is preserved.
 
-import { all } from './db.js';
+import { all, run } from './db.js';
+
+// SQL expression for the same operating state, used by work-order lists.
+export const machineRunningSql = (equipmentId) => `COALESCE((SELECT running FROM machine_state_events
+  WHERE equipment_id = ${equipmentId} AND running IS NOT NULL ORDER BY id DESC LIMIT 1),
+  CASE WHEN EXISTS (SELECT 1 FROM work_orders sw WHERE sw.equipment_id = ${equipmentId}
+    AND sw.status <> 'done' AND sw.stops_machine = 1) THEN 0 ELSE 1 END)`;
+
+export function recordMachineState(equipmentId, jobId, updateId, running, source) {
+  run('INSERT INTO machine_state_events (equipment_id, work_order_id, update_id, running, source) VALUES (?,?,?,?,?)',
+    equipmentId, jobId, updateId, running === null ? null : (running ? 1 : 0), source);
+}
 
 /** The states an administrator may set. Everything else is a consequence. */
 export const SERVICE_STATES = ['active', 'retired'];
@@ -35,8 +26,7 @@ export const SERVICE_STATES = ['active', 'retired'];
 export const IN_SERVICE_SQL = "e.status <> 'retired'";
 export const RETIRED_SQL = "e.status = 'retired'";
 
-/** Every unfinished job that stops the machine, oldest first, so the reason shown is
- *  the one that has been holding it down longest. */
+/** Legacy fallback and count of unfinished jobs last noted as stopping a machine. */
 function openJobsByMachine() {
   const jobs = all(`
     SELECT w.id, w.code, w.equipment_id, w.title, w.priority, w.status
@@ -52,8 +42,7 @@ function openJobsByMachine() {
   return byMachine;
 }
 
-/** The job that decides the machine's state, or null if none does. The query above
- *  has already filtered to the jobs that do; this is the first of them. */
+/** A useful legacy reason when no explicit state event exists. */
 const decidingJob = (jobs) => jobs[0] ?? null;
 
 /**
@@ -63,21 +52,27 @@ const decidingJob = (jobs) => jobs[0] ?? null;
  */
 export function withStatus(machines) {
   const jobs = openJobsByMachine();
+  const events = new Map(all(`SELECT s.*, w.code, w.title FROM machine_state_events s
+    LEFT JOIN work_orders w ON w.id = s.work_order_id
+    WHERE s.running IS NOT NULL AND s.id = (SELECT MAX(n.id) FROM machine_state_events n WHERE n.equipment_id = s.equipment_id AND n.running IS NOT NULL)`)
+    .map((s) => [Number(s.equipment_id), s]));
   return machines.map((machine) => {
     const mine = jobs.get(Number(machine.id)) ?? [];
     const service = machine.status === 'retired' ? 'retired' : 'active';
     const culprit = decidingJob(mine);
+    const latest = events.get(Number(machine.id));
+    const running = latest ? Boolean(latest.running) : !culprit;
     if (service === 'retired') {
       return { ...machine, status: 'retired', service_status: 'retired',
         status_reason: 'Withdrawn from service', open_jobs: mine.length };
     }
     return {
       ...machine,
-      status: culprit ? 'down' : 'active',
+      status: running ? 'active' : 'down',
       service_status: service,
-      status_reason: culprit
-        ? `${culprit.code ? `${culprit.code} ` : ''}${culprit.title}`
-        : null,
+      status_reason: running ? null : latest?.title
+        ? `${latest.code ? `${latest.code} ` : ''}${latest.title}`
+        : culprit ? `${culprit.code ? `${culprit.code} ` : ''}${culprit.title}` : 'Last reported out of service',
       open_jobs: mine.length,
     };
   });

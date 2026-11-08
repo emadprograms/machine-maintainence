@@ -3,8 +3,9 @@
 A small, offline web app for keeping a maintenance record of industrial machines:
 what they are, what work has been reported against them, what is due next, what is in
 the spare-parts store — and, since v3.0, what the work is costing and how that is trending.
-A machine's state is not typed in: it follows its work orders, so the badge clears itself
-when the job is closed. Records and photographs are corrected by an administrator, and deleting a
+A machine's state follows the latest explicit work-order report or stage update; closing a
+job alone does not change it. Admins can correct or delete only the latest stage, including
+its photos, time and spare parts. Deleting a
 machine — which removes its work orders and everything else — asks you to type its name; anybody
 can add a machine and report a fault. A retired machine leaves the everyday list — the machine filter offers in service, down,
 retired or everything — stops being offered when new work is started, and stops generating
@@ -44,7 +45,7 @@ node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 ```
 
-The first starts its own server on a throwaway database and checks 606 behaviours; the
+The first starts its own server on a throwaway database and checks 635 behaviours; the
 second proves the app reaches nothing outside the machine. Both must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.
@@ -55,8 +56,8 @@ This repository began as a hackathon project: a React/TypeScript frontend, an Ex
 backend writing its whole database to disk on every request, a Netlify function, and
 some 55 MB of stock photographs in three copies. It was reviewed
 (`.planning/milestones/v1.0-CODE-REVIEW.md`), and replaced by the small application in
-`app/` across four milestones — v1.0 the core, v1.1 operable, v2.0 presentable,
-v3.0 the record.
+`app/` across five milestones — v1.0 the core, v1.1 operable, v2.0 presentable,
+v3.0 the record and v4.0 stage correction.
 
 The old application was removed from the working tree in November 2026. It survives in
 git history up to commit `4971ea3`, and upstream at

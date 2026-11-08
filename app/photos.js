@@ -50,7 +50,8 @@ export function savePhoto(bytes) {
   const kind = sniff(bytes);
   if (!kind) return { error: 'That file is not a JPEG, PNG or WebP image' };
   const name = freshName(kind.ext);
-  writeFileSync(join(DIR, name), bytes, { mode: 0o600 });
+  try { writeFileSync(join(DIR, name), bytes, { mode: 0o600 }); }
+  catch (error) { removePhoto(name); throw error; }
   return { name, type: kind.type };
 }
 
@@ -64,8 +65,9 @@ export function readPhoto(name) {
 
 export const photoType = typeOf;
 
-/** Delete a stored file. Missing is not an error: the row is what matters. */
+/** Delete a stored file. Missing is fine; other failures must not be silent. */
 export function removePhoto(name) {
-  if (!name || !/^[\w.-]+$/.test(name) || name.includes('..')) return;
-  try { rmSync(join(DIR, name), { force: true }); } catch { /* already gone */ }
+  if (!name || !/^[\w.-]+$/.test(name) || name.includes('..')) return false;
+  try { rmSync(join(DIR, name), { force: true }); return true; }
+  catch (error) { console.error(`Could not remove photo ${name}: ${error.message}`); return false; }
 }

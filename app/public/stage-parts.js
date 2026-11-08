@@ -73,6 +73,13 @@ export function addStagePart() {
   } catch (e) { formError('work-assign', e.message); }
 }
 
+// Existing stage lines are copied as a draft: nothing moves in stock until save.
+export function setStageParts(lines) {
+  draft = (lines || []).map((p) => ({ part_id: Number(p.part_id), qty: Number(p.qty),
+    unit_price: Number(p.unit_price), name: p.part_name }));
+  drawDraft();
+}
+
 export function removeStagePart(index) { draft.splice(index, 1); drawDraft(); }
 
 export function stagePartsForSave() {

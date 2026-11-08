@@ -1,8 +1,8 @@
 // Consume stock and record the actual cost inside the caller's transaction.
 // Each stage keeps its own price; the work-order total aggregates all uses.
-import { get, run } from './db.js';
+import { all, get, run } from './db.js';
 
-export function useStock(workId, updateId, lines) {
+export function useStock(workId, updateId, lines, originalNames = new Map()) {
   if (!Array.isArray(lines) || lines.length > 50) throw new Error('Choose up to 50 spare parts per update');
   for (const line of lines) {
     const numeric = (value) => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''));
@@ -19,6 +19,23 @@ export function useStock(workId, updateId, lines) {
         cost_total = COALESCE(cost_total, 0) + excluded.cost_total`, workId, partId, qty, qty * price);
     run('UPDATE parts SET qty = qty - ? WHERE id = ?', qty, partId);
     if (updateId) run('INSERT INTO work_update_parts (update_id, part_id, part_name, qty, unit_price) VALUES (?,?,?,?,?)',
-      updateId, partId, part.name, qty, price);
+      updateId, partId, originalNames.get(partId) || part.name, qty, price);
   }
+}
+
+// Reverse exactly what this stage consumed. Called only inside a transaction,
+// before replacing its parts or deleting it. Other stages and close-time uses stay.
+export function returnStageStock(workId, updateId) {
+  const lines = all('SELECT * FROM work_update_parts WHERE update_id = ? ORDER BY id', updateId);
+  for (const line of lines) {
+    const total = get('SELECT qty, cost_total FROM work_order_parts WHERE work_order_id = ? AND part_id = ?', workId, line.part_id);
+    if (!total || total.qty < line.qty || total.cost_total + 0.000001 < line.qty * line.unit_price)
+      throw new Error('Part usage is inconsistent; no stock was changed');
+    run('UPDATE parts SET qty = qty + ? WHERE id = ?', line.qty, line.part_id);
+    if (total.qty === line.qty) run('DELETE FROM work_order_parts WHERE work_order_id = ? AND part_id = ?', workId, line.part_id);
+    else run('UPDATE work_order_parts SET qty = qty - ?, cost_total = MAX(0, cost_total - ?) WHERE work_order_id = ? AND part_id = ?',
+      line.qty, line.qty * line.unit_price, workId, line.part_id);
+  }
+  run('DELETE FROM work_update_parts WHERE update_id = ?', updateId);
+  return new Map(lines.map((line) => [line.part_id, line.part_name]));
 }

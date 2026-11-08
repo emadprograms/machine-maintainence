@@ -220,7 +220,7 @@
           </div>
           <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
           <div class="form-grid form-grid-wide">
-            <label class="field"><span>Machine</span><select id="w-equipment" required></select>
+            <label class="field"><span>Machine</span><select id="w-equipment" onchange="syncWorkMachineState()" required></select>
               <span id="w-machine-status" class="hint" role="status"></span><button id="w-machine-retry" class="ghost small" type="button" onclick="retryWorkMachines()" hidden>Retry loading machines</button></label>
             <label class="field"><span>Problem <span class="required-mark" aria-hidden="true">*</span></span><input id="w-title" required placeholder="What is wrong?" /></label>
             <label class="field"><span>Assigned to</span><select id="w-owner"><option value="">— unassigned —</option></select></label>
@@ -335,20 +335,18 @@
           <p class="sheet-sub" id="work-assign-what"></p>
           <div id="wa-history" class="update-history" aria-live="polite"></div>
           <p id="wa-load-status" class="hint" role="status"></p><button id="wa-retry" class="ghost small" type="button" onclick="retryWorkUpdateLoading()" hidden>Retry loading</button>
-          <div id="wa-entry">
-            <h4 id="wa-stage-title">Stage 1</h4>
-            <div class="form-grid form-grid-wide">
-              <label id="wa-owner-field" class="field field-wide"><span>Assigned to</span><select id="wa-owner"></select></label>
-              <label class="field field-wide"><span>Update <span class="required-mark" aria-hidden="true">*</span></span><textarea id="wa-message" rows="3" maxlength="2000" required></textarea></label>
-              <label class="field"><span>Time spent (hours) <span class="required-mark" aria-hidden="true">*</span></span><input id="wa-hours" type="number" min="0" max="10000" step="any" required /></label>
-              <label class="field"><span>Photos (optional, up to 5, 2 MB each)</span><input id="wa-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple /></label>
-              <label class="field field-wide"><span>Is the machine running now? (optional)</span><select id="wa-running"><option value="">No change</option><option value="yes">Yes, running</option><option value="no">No, stopped</option></select><span class="hint">This updates this job’s effect on the machine; other stopping jobs still count.</span></label>
-              <div class="field field-wide"><span>Spare parts used (optional)</span><div class="parts-pick stage-parts-pick"><label><span>Spare part</span><select id="wa-part" onchange="selectStagePart()"></select></label><label><span>Quantity</span><input id="wa-part-qty" type="number" min="1" step="1" value="1" /></label><label><span>Actual unit cost</span><input id="wa-part-price" type="number" min="0" step="any" /></label><button class="ghost small" type="button" onclick="addStagePart()">Add part</button></div><span id="wa-part-status" class="hint" role="status"></span><button id="wa-part-retry" class="ghost small" type="button" onclick="loadStageParts()" hidden>Retry parts</button><ul id="wa-part-list" class="part-list"></ul><span class="hint">The selected part is included when you save. Add part lets you include more than one.</span></div>
+          <div id="wa-entry" class="stage-editor">
+            <div class="stage-heading"><div><span class="stage-kicker">WORK PROGRESS</span><h4 id="wa-stage-title">Stage 1</h4></div><span class="stage-required">* Required</span></div>
+            <div class="stage-fields"><label id="wa-owner-field" class="field field-wide"><span>Assigned to</span><select id="wa-owner"></select></label>
+              <label class="field field-wide"><span>What was done? <span class="required-mark" aria-hidden="true">*</span></span><textarea id="wa-message" rows="4" maxlength="2000" placeholder="Describe the work done in this stage" required></textarea></label>
+              <label class="field"><span>Time spent (hours) <span class="required-mark" aria-hidden="true">*</span></span><input id="wa-hours" type="number" min="0" max="10000" step="any" placeholder="e.g. 1.5" required /></label>
+              <div class="field"><span id="wa-running-question">Is the machine running now?</span><label class="machine-toggle"><input id="wa-running" type="checkbox" role="switch" aria-labelledby="wa-running-question wa-running-label" onchange="stageToggleChanged()" /><span class="toggle-track" aria-hidden="true"></span><strong id="wa-running-label" class="toggle-status">Out of service</strong></label><span id="wa-running-help" class="hint">The state you record becomes the machine’s latest status.</span></div>
+              <div class="stage-section field-wide"><div class="stage-section-head"><div><strong>Spare parts</strong><span class="hint">Optional · use as many parts as needed</span></div></div><div class="parts-pick stage-parts-pick"><label><span>Spare part</span><select id="wa-part" onchange="selectStagePart()"></select></label><label><span>Quantity</span><input id="wa-part-qty" type="number" min="1" step="1" value="1" /></label><label><span>Actual unit cost</span><input id="wa-part-price" type="number" min="0" step="any" /></label><button class="ghost small" type="button" onclick="addStagePart()">Add part</button></div><span id="wa-part-status" class="hint" role="status"></span><button id="wa-part-retry" class="ghost small" type="button" onclick="loadStageParts()" hidden>Retry parts</button><ul id="wa-part-list" class="part-list"></ul><span class="hint">The selected part is included when you save; use Add part to include more.</span></div>
+              <div class="stage-section field-wide"><strong>Photos</strong><span class="hint">Optional · up to 5 JPEG, PNG or WebP images, 2 MB each</span><div id="wa-existing-photos" class="stage-photos"></div><input id="wa-photos" type="file" aria-label="Add stage photos" accept="image/jpeg,image/png,image/webp" multiple /></div>
             </div>
           </div>
           <p class="form-error"></p>
-          <div class="sheet-foot"><button class="ghost" type="button" onclick="closeForm('work-assign')">Close</button>
-            <button class="primary" type="button" id="wa-go" onclick="startAssigned()">Save update</button></div>
+          <div class="sheet-foot stage-actions"><button class="ghost danger" type="button" id="wa-delete" onclick="deleteLatestStage()" hidden>Delete stage</button><span class="stage-action-spacer"></span><button class="ghost" type="button" onclick="closeForm('work-assign')">Close</button><button class="primary" type="button" id="wa-go" onclick="startAssigned()">Save update</button></div>
         </form>
       </dialog>
     </section>

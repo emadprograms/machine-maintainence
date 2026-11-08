@@ -1499,8 +1499,9 @@ ok('the dashboard counts the same machine as down',
   'the card and the list disagree about a machine');
 
 await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
-ok('closing that job brings the machine back to running',
-  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+ok('closing a job does not invent a newer machine-state report',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { stops_machine: false });
 
 const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
 const routineStarted = await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { message: 'Starting routine work', hours: 0.25, assigned_to: 1 } });
@@ -1524,8 +1525,9 @@ await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'a
 ok('restoring it does not hide the job that is still holding it down',
   (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
 await setJob(reopenedUrgent.id, { status: 'done', resolution: 'Shaft aligned' });
-ok('closing the last one that stops it returns the machine to service',
-  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+ok('closing the last job preserves the last explicitly reported machine state',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(reopenedUrgent.id, { stops_machine: false });
 await setJob(urgent.id, { status: 'done', resolution: 'Motor rewound' });
 
 // ---- a technician keeps the doors they need ------------------------------
@@ -2288,6 +2290,7 @@ ok('the timeline remembers the stage part and machine answer', liveHistory[0].ma
 const blocker = (await late('/api/work-orders', { method: 'POST', body: {
   equipment_id: liveMachine.id, title: 'Another stoppage', stops_machine: true,
 } })).data;
+ok('a newer reported stoppage takes the previously running machine out of service', (await liveEquipment()).status === 'down');
 await rateTech('/api/login', { method: 'POST', body: { email: 'rate@local', password: 'rate-password' } });
 const liveTwo = await rateTech(liveUrl, { method: 'POST', body: { message: 'Fitted the belt', hours: 1.5, machine_running: true,
   parts: [{ part_id: belt.id, qty: 2, unit_price: 6.25 }, { part_id: motor.id, qty: 1, unit_price: 50 }] } });
@@ -2296,7 +2299,7 @@ machineNow = await liveEquipment();
 ok('a technician can add hours and multiple actual-cost parts to the running total', liveTwo.status === 201
   && live.effective_hours === 3.5 && live.cost === 137.5 + 3.5 * rate
   && await partStock(motor.id) === 1 && await partStock(belt.id) === 3, JSON.stringify(live));
-ok('a second stopping job still keeps the machine down', machineNow.status === 'down' && machineNow.total_hours === 3.5);
+ok('a newer running answer overrides an older stopping job', machineNow.status === 'active' && machineNow.total_hours === 3.5);
 await late(`/api/work-orders/${blocker.id}`, { method: 'PATCH', body: { stops_machine: false } });
 ok('clearing the other stopping job makes the machine running again', (await liveEquipment()).status === 'active');
 await late(`/api/parts/${motor.id}`, { method: 'PUT', body: { unit_price: 999, name: 'Renamed motor' } });
@@ -2349,6 +2352,137 @@ await late(`/api/equipment/${liveMachine.id}`, { method: 'DELETE' });
 ok('deleting the machine cascades its stage-specific part records', (await late(liveUrl)).status === 404
   && (await late(`/api/parts/${motor.id}`, { method: 'DELETE' })).status === 200);
 await late(`/api/parts/${belt.id}`, { method: 'DELETE' });
+
+// Admin corrections operate only on the newest stage and reconcile every effect.
+const correctionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage correction machine' } })).data;
+const correctionJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: correctionMachine.id, title: 'Correction job', stops_machine: true,
+} })).data;
+const correctionMotor = (await late('/api/parts', { method: 'POST', body: { name: 'Correction motor', qty: 5, unit_price: 12 } })).data;
+const correctionBelt = (await late('/api/parts', { method: 'POST', body: { name: 'Correction belt', qty: 5, unit_price: 4 } })).data;
+const correctionUrl = `/api/work-orders/${correctionJob.id}/updates`;
+const correctionPost = (body) => late(correctionUrl, { method: 'POST', body });
+const correctionRow = async () => (await late('/api/work-orders')).data.find((w) => w.id === correctionJob.id);
+const correctionState = async () => (await late('/api/equipment')).data.find((m) => m.id === correctionMachine.id);
+const correctionOne = await correctionPost({ message: 'First repair', hours: 1, assigned_to: 1, machine_running: true,
+  photos: [stagePhoto], parts: [{ part_id: correctionMotor.id, qty: 2, unit_price: 5 }] });
+const correctionTwo = await correctionPost({ message: 'Second repair', hours: 2, machine_running: false,
+  photos: [stagePhoto, stagePhoto], parts: [{ part_id: correctionMotor.id, qty: 1, unit_price: 8 },
+    { part_id: correctionBelt.id, qty: 2, unit_price: 3 }] });
+const correctionOneUrl = `${correctionUrl}/${correctionOne.data.id}`;
+const correctionTwoUrl = `${correctionUrl}/${correctionTwo.data.id}`;
+const correctionHistory = (await late(correctionUrl)).data;
+const oldPhotos = correctionHistory[1].photos;
+const photoFileDb = new DatabaseSync(DB, { readOnly: true });
+const deletedPhotoFiles = oldPhotos.map((photo) => photoFileDb.prepare('SELECT filename FROM work_update_photos WHERE id = ?').get(photo).filename);
+photoFileDb.close();
+const newerJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: correctionMachine.id, title: 'Newer stoppage', stops_machine: true,
+} })).data;
+ok('a newer report immediately changes the overall machine state', (await correctionState()).status === 'down');
+ok('technicians cannot edit or delete even the latest stage',
+  (await rateTech(correctionTwoUrl, { method: 'PUT', body: { hours: 9 } })).status === 403
+  && (await rateTech(correctionTwoUrl, { method: 'DELETE' })).status === 403);
+ok('signed-out people cannot edit or delete stages',
+  (await makeClient()(correctionTwoUrl, { method: 'PUT', body: { hours: 9 } })).status === 401
+  && (await makeClient()(correctionTwoUrl, { method: 'DELETE' })).status === 401);
+const malformedEdit = await late(correctionTwoUrl, { method: 'PUT', rawBody: 'null' });
+const negativeEdit = await late(correctionTwoUrl, { method: 'PUT', body: { hours: -1 } });
+const invalidPhotoEdit = await late(correctionTwoUrl, { method: 'PUT', body: { photos: ['data:image/png;base64,dGV4dA=='] } });
+const duplicateKeep = await late(correctionTwoUrl, { method: 'PUT', body: { keep_photos: [oldPhotos[0], oldPhotos[0]] } });
+ok('invalid corrections are refused without altering the stage', malformedEdit.status === 400 && negativeEdit.status === 400
+  && invalidPhotoEdit.status === 400 && duplicateKeep.status === 400 && (await late(correctionUrl)).data[1].hours === 2);
+ok('admins cannot edit or delete an older stage',
+  (await late(correctionOneUrl, { method: 'PUT', body: { hours: 9 } })).status === 400
+  && (await late(correctionOneUrl, { method: 'DELETE' })).status === 400
+  && (await late(correctionUrl)).data.length === 2);
+ok('a stage cannot be edited through another work order',
+  (await late(`/api/work-orders/${newerJob.id}/updates/${correctionTwo.data.id}`, { method: 'DELETE' })).status === 400
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 200);
+await late(`/api/parts/${correctionMotor.id}`, { method: 'PUT', body: { name: 'Renamed correction motor', unit_price: 99 } });
+const revisedStage = await late(correctionTwoUrl, { method: 'PUT', body: {
+  message: 'Corrected repair', hours: 4, machine_running: true, keep_photos: [oldPhotos[0]], photos: [stagePhoto],
+  parts: [{ part_id: correctionMotor.id, qty: 2, unit_price: 7 }, { part_id: correctionBelt.id, qty: 1, unit_price: 4 }],
+} });
+let correctedHistory = (await late(correctionUrl)).data;
+let correctionCurrent = await correctionRow();
+ok('admin edits latest stage time, description and actual-cost parts', revisedStage.status === 200
+  && correctedHistory[1].message === 'Corrected repair' && correctedHistory[1].hours === 4
+  && correctedHistory[1].edited_by === 'Admin' && correctedHistory[1].parts[0].part_name === 'Correction motor'
+  && correctionCurrent.effective_hours === 5 && correctionCurrent.cost === 28 + 5 * rate, JSON.stringify(correctionCurrent));
+ok('editing parts adjusts stock by the difference, not the whole quantity twice',
+  await partStock(correctionMotor.id) === 1 && await partStock(correctionBelt.id) === 4);
+ok('editing keeps selected photos, removes unchecked ones, and adds a new photo',
+  correctedHistory[1].photos.length === 2 && correctedHistory[1].photos.includes(oldPhotos[0])
+  && !correctedHistory[1].photos.includes(oldPhotos[1]) && !existsSync(join(photosDir, deletedPhotoFiles[1]))
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 200
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[1]}`)).status === 404);
+ok('correcting an older state does not override a newer report on another work order',
+  correctedHistory[1].machine_running === 1 && (await correctionState()).status === 'down');
+const optionalEdit = await late(correctionTwoUrl, { method: 'PUT', body: { message: 'Only corrected text' } });
+correctedHistory = (await late(correctionUrl)).data;
+ok('a partial correction keeps existing time, status, parts and photos', optionalEdit.status === 200
+  && correctedHistory[1].hours === 4 && correctedHistory[1].machine_running === 1
+  && correctedHistory[1].parts.length === 2 && correctedHistory[1].photos.length === 2);
+const beforeCorrectionFailureFiles = readdirSync(photosDir).length;
+const correctionFailure = await late(correctionTwoUrl, { method: 'PUT', body: {
+  message: 'Must roll back', hours: 8, machine_running: false, keep_photos: [], photos: [stagePhoto],
+  parts: [{ part_id: correctionMotor.id, qty: 99, unit_price: 1 }],
+} });
+correctedHistory = (await late(correctionUrl)).data;
+ok('an insufficient-stock edit rolls back description, hours, state, parts and photos', correctionFailure.status === 400
+  && correctedHistory[1].message === 'Only corrected text' && correctedHistory[1].hours === 4
+  && correctedHistory[1].machine_running === 1 && correctedHistory[1].parts.length === 2
+  && correctedHistory[1].photos.length === 2 && await partStock(correctionMotor.id) === 1
+  && readdirSync(photosDir).length === beforeCorrectionFailureFiles && (await correctionState()).status === 'down');
+ok('an edit cannot keep another stage photo',
+  (await late(correctionTwoUrl, { method: 'PUT', body: { keep_photos: [correctionHistory[0].photos[0]] } })).status === 400);
+const removeLatest = await late(correctionTwoUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting the latest stage restores its stock, hours and cost without touching earlier stages', removeLatest.status === 200
+  && (await late(correctionUrl)).data.length === 1 && correctionCurrent.effective_hours === 1
+  && correctionCurrent.cost === 10 + rate && await partStock(correctionMotor.id) === 3 && await partStock(correctionBelt.id) === 5);
+ok('deleting a stage removes its photos and preserves a newer machine-state report',
+  (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 404
+  && !existsSync(join(photosDir, deletedPhotoFiles[0])) && (await correctionState()).status === 'down');
+await late(correctionOneUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting the only remaining stage returns an in-progress job to open and restores stock', correctionCurrent.status === 'open'
+  && correctionCurrent.effective_hours === null && await partStock(correctionMotor.id) === 5
+  && (await late(correctionUrl)).data.length === 0);
+const correctionAgain = await correctionPost({ message: 'Retried fix', hours: 1, machine_running: true });
+const correctionAgainUrl = `${correctionUrl}/${correctionAgain.data.id}`;
+ok('a later stage answer controls the whole machine despite an earlier stopping job',
+  correctionAgain.status === 201 && (await correctionState()).status === 'active');
+await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Fixed', labour_hours: 0.5 } });
+const editClosed = await late(correctionAgainUrl, { method: 'PUT', body: { hours: 2, machine_running: false } });
+ok('an admin may correct the latest stage after closure and its hours adjust the reviewed total', editClosed.status === 200
+  && (await correctionRow()).effective_hours === 1.5 && (await correctionState()).status === 'down');
+await late(correctionAgainUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting a reviewed stage cannot produce negative hours and keeps the closed job closed', correctionCurrent.status === 'done'
+  && correctionCurrent.effective_hours === 0 && (await correctionState()).status === 'down');
+await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+await correctionPost({ message: 'More work after correction', hours: 0.25, machine_running: true });
+ok('new time after a zero-clamped correction is not swallowed by the old baseline',
+  (await correctionRow()).effective_hours === 0.25 && (await correctionState()).status === 'active');
+const unchangedStage = await correctionPost({ message: 'Legacy client supplied no state', hours: 0.5 });
+ok('an unanswered stage leaves the last reported state unchanged', unchangedStage.status === 201 && (await correctionState()).status === 'active');
+const unchangedUrl = `${correctionUrl}/${unchangedStage.data.id}`;
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: false } });
+ok('correcting an unanswered latest stage updates its recorded state', (await correctionState()).status === 'down');
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: null } });
+ok('clearing that state reveals the preceding explicit answer', (await correctionState()).status === 'active');
+await late('/api/work-orders', { method: 'POST', body: { equipment_id: correctionMachine.id, title: 'Later stoppage', stops_machine: true } });
+const amendUnanswered = await late(unchangedUrl, { method: 'PUT', body: { machine_running: true } });
+ok('correcting a formerly unanswered stage does not override a newer report', amendUnanswered.status === 200 && (await correctionState()).status === 'down');
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: null } });
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: true } });
+await late(unchangedUrl, { method: 'DELETE' });
+ok('clearing, re-correcting and deleting that older answer keeps the newer report', (await correctionState()).status === 'down');
+await late(`/api/equipment/${correctionMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${correctionMotor.id}`, { method: 'DELETE' });
+await late(`/api/parts/${correctionBelt.id}`, { method: 'DELETE' });
 
 const reportMachine = (await late('/api/equipment', { method: 'POST', body: {
   name: 'Press (reporting)' } })).data;
@@ -2736,11 +2870,11 @@ ok('the row shows the number under the problem',
 // The badge itself, not the words "stops the machine": the inline editor's option
 // says the same three words, so a search for them passed with the row badge deleted.
 ok('and says so when a job is holding the machine down',
-  /badge\('stops the machine', 'red'\)/.test(workSrc)
+  /badge\('last noted out of service', 'red'\)/.test(workSrc)
   && /w\.stops_machine \?/.test(workSrc));
 ok('the answer can be changed from the edit dialog without closing the job',
   indexEq.includes('id="we-stops"')
-  && /stops_machine: \$\('#we-stops'\)\.value === '1'/.test(workSrc),
+  && /const stops = \$\('#we-stops'\)\.value === '1'/.test(workSrc) && /body\.stops_machine = stops/.test(workSrc),
   'the editor has no control for it, or the control is not saved');
 ok('the close dialog names the ticket by its number',
   /\$\{job\.code \? `\$\{job\.code\} · `/.test(workSrc));
@@ -2776,8 +2910,9 @@ const saveWorkFn = (workSrc.match(/export async function saveWork\(\) \{[\s\S]*?
 // rest as `field: value`, so the pattern allows either rather than demanding one style.
 const saveBody = (saveWorkFn.match(/const body = \{[\s\S]*?\n  \};/) || [''])[0];
 ok('one Save sends everything the dialog asked for',
-  ['title', 'priority', 'reported_by', 'notes', 'stops_machine']
-    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(saveBody)),
+  ['title', 'priority', 'reported_by', 'notes']
+    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(saveBody))
+    && /body\.stops_machine = stops/.test(saveWorkFn),
   saveBody ? `sent: ${saveBody.replace(/\s+/g, ' ').slice(0, 200)}` : 'no request body found');
 ok('and refuses an empty problem before it reaches the server',
   /formError\('work-edit'/.test(saveWorkFn));
@@ -3248,9 +3383,15 @@ rmSync(unitDb + '-shm', { force: true });
 
 // Run the actual browser module with a small DOM and API double as well as the
 // endpoint tests: a correct backend alone cannot prove the assignment prompt works.
+const stateMigrationTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'machine-state-migration-test.js')], { cwd: root, encoding: 'utf8' });
+ok('upgrading preserves each current machine state and does not repeat the baseline', stateMigrationTest.status === 0,
+  (stateMigrationTest.stderr || stateMigrationTest.stdout).slice(0, 500));
 const stageMigrationTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'stage-migration-test.js')], { cwd: root, encoding: 'utf8' });
 ok('existing stage hours and part costs migrate once without double-counting', stageMigrationTest.status === 0,
   (stageMigrationTest.stderr || stageMigrationTest.stdout).slice(0, 500));
+const photoCleanupTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'photo-cleanup-test.js')], { cwd: root, encoding: 'utf8' });
+ok('failed photo writes clean partial files and failed deletion is reported', photoCleanupTest.status === 0,
+  (photoCleanupTest.stderr || photoCleanupTest.stdout).slice(0, 500));
 const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
@@ -3261,6 +3402,10 @@ ok('final labour hours appear only in the close dialog',
 ok('the stage dialog asks for an update, time and optional photos',
   ['wa-message', 'wa-hours', 'wa-photos', 'wa-history'].every((id) => assignDialog.includes(`id="${id}"`))
   && assignDialog.includes('multiple'));
+ok('the stage dialog uses an accessible two-state machine switch',
+  /id="wa-running" type="checkbox" role="switch"/.test(assignDialog)
+  && !/No change/.test(assignDialog) && /toggle-track/.test(assignDialog)
+  && /input:checked \+ \.toggle-track/.test(uiCss));
 ok('the stage dialog explains loading failures and offers retry',
   assignDialog.includes('id="wa-load-status"') && assignDialog.includes('id="wa-retry"')
   && assignDialog.includes('onclick="retryWorkUpdateLoading()"') && appSrc13.includes('function retryWorkUpdateLoading()'));

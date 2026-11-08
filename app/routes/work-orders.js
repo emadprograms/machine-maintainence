@@ -7,23 +7,23 @@ import { send, readBody, readBytes, route, id, sendCsv } from '../http.js';
 import { hoursValue, assigneeValue, reporterValue, resolutionValue, verifiedValue,
   stopsValue } from '../values.js';
 import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
-import { all, get, run } from '../db.js';
+import { all, get, run, transaction } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
 import { hourlyRate } from '../settings.js';
 import { nextWorkOrderCode } from '../codes.js';
 import { effectiveHours } from '../hours.js';
+import { recordMachineState, machineRunningSql } from '../status.js';
 
 export default {
   // ---- work orders
-  // The owner's name is resolved here, with no filter on `active`: a person who
-  // has left still has to render on the jobs they owned (WO-02).
   'GET /api/work-orders': route(async (req, res) => {
     const f = workOrderFilter(req.query);
     send(res, 200, all(`
       SELECT w.*, e.name AS equipment_name, u.name AS assignee_name,
              (SELECT MAX(stage) FROM work_order_updates WHERE work_order_id = w.id) AS current_stage,
              ${effectiveHours()} AS effective_hours,
+             CASE WHEN e.status = 'retired' THEN 0 ELSE ${machineRunningSql('e.id')} END AS machine_running,
              -- Parts use the cost recorded when used; hours include live stages.
              ROUND(COALESCE(${effectiveHours()}, 0) * ?
                    + (SELECT COALESCE(SUM(wop.cost_total), 0)
@@ -54,13 +54,18 @@ export default {
     // The number is the server's to give: a client that could choose one could
     // also choose somebody else's, and two jobs would share a number on the phone.
     const stamp = nowStamp();
-    const r = run(`INSERT INTO work_orders
-                     (equipment_id, title, notes, priority, assigned_to, labour_hours,
-                      reported_by, stops_machine, code)
-                   VALUES (?,?,?,?,?,?,?,?,?)`,
-      id(b.equipment_id), b.title.trim(), notes, b.priority || 'medium', owner.value,
-      hours.missing ? null : hours.value, reporter.missing ? null : reporter.value,
-      stopsValue(b.stops_machine), nextWorkOrderCode(stamp));
+    const r = transaction(() => {
+      const result = run(`INSERT INTO work_orders
+                       (equipment_id, title, notes, priority, assigned_to, labour_hours,
+                        reported_by, stops_machine, code)
+                     VALUES (?,?,?,?,?,?,?,?,?)`,
+        id(b.equipment_id), b.title.trim(), notes, b.priority || 'medium', owner.value,
+        hours.missing ? null : hours.value, reporter.missing ? null : reporter.value,
+        stopsValue(b.stops_machine), nextWorkOrderCode(stamp));
+      if (b.stops_machine !== undefined)
+        recordMachineState(id(b.equipment_id), result.lastInsertRowid, null, !stopsValue(b.stops_machine), 'report');
+      return result;
+    });
     send(res, 201, get('SELECT * FROM work_orders WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -110,17 +115,21 @@ export default {
     if (status === 'done' && before.status !== 'done' && !done) {
       return send(res, 400, { error: 'Say what was done before closing the job' });
     }
-    run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
-         labour_hours=?, labour_stage_baseline=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
-      b.title === undefined ? before.title : String(b.title).trim(),
-      status, b.priority ?? before.priority, notes,
-      status === 'done' ? (before.closed_at ?? nowStamp()) : null,
-      owner.value, hours.missing ? before.labour_hours : hours.value,
-      hours.missing ? before.labour_stage_baseline : get('SELECT COALESCE(SUM(hours), 0) AS total FROM work_order_updates WHERE work_order_id = ?', before.id).total,
-      reporter.missing ? before.reported_by : reporter.value,
-      done, verifier.missing ? before.verified_by : verifier.value,
-      b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine),
-      id(req.params.id));
+    transaction(() => {
+      run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
+           labour_hours=?, labour_stage_baseline=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
+        b.title === undefined ? before.title : String(b.title).trim(),
+        status, b.priority ?? before.priority, notes,
+        status === 'done' ? (before.closed_at ?? nowStamp()) : null,
+        owner.value, hours.missing ? before.labour_hours : hours.value,
+        hours.missing ? before.labour_stage_baseline : get('SELECT COALESCE(SUM(hours), 0) AS total FROM work_order_updates WHERE work_order_id = ?', before.id).total,
+        reporter.missing ? before.reported_by : reporter.value,
+        done, verifier.missing ? before.verified_by : verifier.value,
+        b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine),
+        id(req.params.id));
+      if (b.stops_machine !== undefined)
+        recordMachineState(before.equipment_id, before.id, null, !stopsValue(b.stops_machine), 'correction');
+    });
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 

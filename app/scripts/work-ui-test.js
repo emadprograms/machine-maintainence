@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const elements = new Map();
 const el = (selector) => {
   if (!elements.has(selector)) {
-    const element = { value: '', disabled: false, hidden: true, files: [], _html: '', _text: '' };
+    const element = { value: '', checked: false, disabled: false, hidden: true, files: [], _html: '', _text: '' };
     Object.defineProperty(element, 'textContent', {
       get() { return this._text; },
       set(value) { this._text = String(value); this._html = String(value); },
@@ -23,31 +23,39 @@ const el = (selector) => {
   }
   return elements.get(selector);
 };
-globalThis.window = { addEventListener() {} };
-globalThis.document = { addEventListener() {}, getElementById() { return null; } };
+globalThis.window = { addEventListener() {}, me: { role: 'admin' }, confirm() { return true; } };
+let keptPhotos = [];
+globalThis.document = { addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return keptPhotos.map((value) => ({ value })); } };
 globalThis.$ = el;
 globalThis.esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;');
 globalThis.strong = globalThis.soft = globalThis.badge = () => '';
 globalThis.emptyRow = () => '';
 globalThis.searchTerm = () => '';
 globalThis.debounce = (f) => f;
-const opened = [], closed = [], errors = [], requests = [];
+const opened = [], closed = [], errors = [], requests = [], alerts = [];
+let stageWarning = false;
 globalThis.openForm = (id) => opened.push(id);
 globalThis.formDone = (id) => closed.push(id);
 globalThis.formError = (id, message) => errors.push([id, message]);
-globalThis.alert = (message) => { throw new Error(`Unexpected alert: ${message}`); };
+globalThis.alert = (message) => { if (!stageWarning) throw new Error(`Unexpected alert: ${message}`); alerts.push(message); };
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
 const spareParts = [{ id: 5, name: '<Motor>', qty: 3, unit_price: 100 }, { id: 6, name: 'Belt', qty: 8, unit_price: 12 }];
-let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null, current_stage: null }];
+let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', equipment_id: 1, title: 'Leak', status: 'open', priority: 'medium', assigned_to: null, current_stage: null }];
 let updates = [];
-let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false, failParts = false;
+let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false, failParts = false, failState = false;
+let machineState = 'active', waitState = null;
 let waitPeople = null, waitMachines = null, waitUpdates = null, updateError = null;
 globalThis.api = async (path, options = {}) => {
   requests.push({ path, options });
   if (path === '/equipment?service=active') {
     if (waitMachines) return waitMachines;
     if (failMachines) throw new Error('Machines unavailable');
-    return noMachines ? [] : [{ id: 1, name: 'Press' }, { id: 2, name: 'Conveyor' }];
+    return noMachines ? [] : [{ id: 1, name: 'Press', status: 'down' }, { id: 2, name: 'Conveyor', status: 'active' }];
+  }
+  if (path === '/equipment') {
+    if (waitState) return waitState;
+    if (failState) throw new Error('State unavailable');
+    return [{ id: 1, name: 'Press', status: machineState }];
   }
   if (path === '/parts') {
     if (failParts) throw new Error('Parts unavailable');
@@ -75,6 +83,15 @@ globalThis.api = async (path, options = {}) => {
     Object.assign(jobs[0], { status: 'in_progress', current_stage: updates.length, assigned_to: body.assigned_to || jobs[0].assigned_to });
     return { id: updates.length };
   }
+  if (/^\/work-orders\/42\/updates\/\d+$/.test(path) && options.method === 'PUT') {
+    const stage = updates.find((u) => u.id === Number(path.split('/').at(-1)));
+    Object.assign(stage, JSON.parse(options.body));
+    return { ok: true, warning: stageWarning ? 'Photo cleanup failed' : null };
+  }
+  if (/^\/work-orders\/42\/updates\/\d+$/.test(path) && options.method === 'DELETE') {
+    const index = updates.findIndex((u) => u.id === Number(path.split('/').at(-1)));
+    updates.splice(index, 1); return { ok: true, warning: stageWarning ? 'Photo cleanup failed' : null };
+  }
   if (path === '/work-orders/42' && options.method === 'PATCH') {
     Object.assign(jobs[0], JSON.parse(options.body));
     return jobs[0];
@@ -83,6 +100,7 @@ globalThis.api = async (path, options = {}) => {
 };
 const work = await import('../public/work.js');
 const stageParts = await import('../public/stage-parts.js');
+const updateUI = await import('../public/work-updates.js');
 await work.loadWork();
 await work.openNewWork();
 assert.equal(opened.at(-1), 'work-form');
@@ -91,8 +109,11 @@ assert.equal(el('#w-owner').disabled, false);
 assert.match(el('#w-equipment').innerHTML, /Press/);
 assert.match(el('#w-equipment').innerHTML, /Conveyor/);
 assert.equal(el('#w-equipment').value, '1');
+assert.equal(el('#w-stops').value, '1'); // preselect this machine's reported state
 assert.equal(el('#w-create').disabled, false);
 el('#w-equipment').value = '2';
+work.syncWorkMachineState();
+assert.equal(el('#w-stops').value, '0');
 el('#w-title').value = '   ';
 const beforeBlank = requests.length;
 await work.addWorkOrder();
@@ -128,6 +149,8 @@ assert.equal(el('#wa-retry').hidden, true);
 assert.equal(el('#wa-go').disabled, false);
 assert.equal(opened.at(-1), 'work-assign');
 assert.equal(el('#wa-stage-title').textContent, 'Stage 1');
+assert.equal(el('#wa-running').checked, true);
+assert.equal(el('#wa-running-label').textContent, 'Running');
 // A concurrent stage can make the list snapshot stale; the verified response
 // replaces the provisional empty state before Save is enabled.
 let releaseConcurrent;
@@ -164,7 +187,8 @@ assert.match(el('#wa-part-list').innerHTML, /&lt;Motor>/);
 el('#wa-part').value = '6';
 stageParts.selectStagePart();
 el('#wa-part-qty').value = '2';
-el('#wa-running').value = 'no';
+el('#wa-running').checked = false;
+updateUI.stageToggleChanged();
 await work.startAssigned();
 const stage1 = JSON.parse(requests.findLast((r) => r.path.endsWith('/updates') && r.options.method === 'POST').options.body);
 assert.deepEqual(stage1, { message: 'Started inspection', hours: '0.5', photos: [], assigned_to: 2, machine_running: false,
@@ -174,7 +198,7 @@ await work.openWorkUpdates(42);
 assert.equal(el('#wa-stage-title').textContent, 'Stage 2');
 assert.match(el('#wa-history').innerHTML, /Started inspection/);
 assert.match(el('#wa-history').innerHTML, /&lt;Motor>/);
-assert.match(el('#wa-history').innerHTML, /stopped/);
+assert.match(el('#wa-history').innerHTML, /out of service/);
 el('#wa-message').value = 'Replaced bearing';
 el('#wa-hours').value = '1.25';
 await work.startAssigned();
@@ -370,6 +394,91 @@ releaseOldMachines([{ id: 9, name: 'Stale' }]);
 await oldForm;
 assert.equal(el('#w-equipment').value, '2');
 assert.doesNotMatch(el('#w-equipment').innerHTML, /Stale/);
+// Saving unrelated work-order edits must not silently create a new state report.
+jobs[0].stops_machine = 1;
+await work.loadWork();
+work.editWork(42);
+await work.saveWork();
+let workPatch = JSON.parse(requests.findLast((r) => r.path === '/work-orders/42' && r.options.method === 'PATCH').options.body);
+assert.equal('stops_machine' in workPatch, false);
+work.editWork(42);
+el('#we-stops').value = '0';
+await work.saveWork();
+workPatch = JSON.parse(requests.findLast((r) => r.path === '/work-orders/42' && r.options.method === 'PATCH').options.body);
+assert.equal(workPatch.stops_machine, false);
+
+// Machine state loads independently, defaults to the latest report, and a
+// failed lookup never enables a save with a guessed state.
+machineState = 'down';
+let releaseState;
+waitState = new Promise((resolve) => { releaseState = resolve; });
+const loadingState = work.openWorkUpdates(42);
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(el('#wa-go').disabled, true);
+assert.equal(el('#wa-running').disabled, true);
+assert.equal(el('#wa-running-label').textContent, 'Loading…');
+releaseState([{ id: 1, name: 'Press', status: 'down' }]);
+await loadingState;
+waitState = null;
+assert.equal(el('#wa-running').checked, false);
+await work.openWorkUpdates(42);
+assert.equal(el('#wa-running').checked, false);
+assert.equal(el('#wa-running-label').textContent, 'Out of service');
+el('#wa-running').checked = true;
+updateUI.stageToggleChanged();
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-running').checked, true); // retry keeps the user's choice
+failState = true;
+await work.openWorkUpdates(42);
+assert.equal(el('#wa-go').disabled, true);
+assert.match(el('#wa-load-status').textContent, /state unavailable/i);
+assert.equal(el('#wa-running-label').textContent, 'Unavailable');
+failState = false;
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-go').disabled, false);
+assert.equal(el('#wa-running').checked, false);
+// Only admins see the latest-stage edit action; drafts keep original parts.
+updates = [{ id: 51, stage: 1, message: 'First', hours: 1, author: 'Admin', created_at: '2026-01-01', photos: [], parts: [] },
+  { id: 52, stage: 2, message: 'Latest', hours: 2, author: 'Admin', created_at: '2026-01-01', photos: [3], machine_running: 0,
+    parts: [{ part_id: 5, part_name: '<Motor>', qty: 2, unit_price: 75 }] }];
+await work.openWorkUpdates(42, true);
+assert.match(el('#wa-history').innerHTML, /editLatestStage\(52\)/);
+assert.doesNotMatch(el('#wa-history').innerHTML, /editLatestStage\(51\)/);
+updateUI.editLatestStage(51);
+assert.equal(el('#wa-entry').hidden, true);
+updateUI.editLatestStage(52);
+assert.equal(el('#wa-entry').hidden, false);
+assert.equal(el('#wa-message').value, 'Latest');
+assert.equal(el('#wa-hours').value, '2');
+assert.match(el('#wa-part-list').innerHTML, /&lt;Motor>/);
+assert.match(el('#wa-existing-photos').innerHTML, /photo 1/i);
+assert.equal(el('#wa-running').checked, false);
+assert.equal(el('#wa-delete').hidden, false);
+keptPhotos = ['3'];
+el('#wa-hours').value = '3';
+stageWarning = true;
+await updateUI.startAssigned();
+assert.equal(alerts.at(-1), 'Photo cleanup failed');
+const edited = JSON.parse(requests.findLast((r) => r.options.method === 'PUT' && r.path.endsWith('/updates/52')).options.body);
+assert.equal(edited.hours, '3');
+assert.deepEqual(edited.keep_photos, [3]);
+assert.deepEqual(edited.parts, [{ part_id: 5, qty: 2, unit_price: 75 }]);
+assert.equal(edited.machine_running, false);
+await work.openWorkUpdates(42, true);
+updateUI.editLatestStage(52);
+await updateUI.deleteLatestStage();
+assert.equal(alerts.filter((a) => a === 'Photo cleanup failed').length, 2);
+stageWarning = false;
+assert.equal(requests.findLast((r) => r.options.method === 'DELETE').path, '/work-orders/42/updates/52');
+assert.equal(updates.length, 1);
+window.me.role = 'tech';
+await work.openWorkUpdates(42, true);
+assert.doesNotMatch(el('#wa-history').innerHTML, /editLatestStage/);
+updateUI.editLatestStage(51);
+assert.equal(el('#wa-entry').hidden, true);
+window.me.role = 'admin';
+keptPhotos = [];
+
 // Closure uses the freshly loaded stages, not a stale work-list total.
 jobs[0].labour_hours = 10;
 jobs[0].labour_stage_baseline = 2;
