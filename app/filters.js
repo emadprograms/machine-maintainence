@@ -68,9 +68,18 @@ export function equipmentFilter(query = {}) {
 
 // ------------------------------------------------------------------- parts
 export function partsFilter(query = {}) {
-  if (query.low) return { sql: 'WHERE p.qty <= p.reorder_level', params: [] };
-  if (query.q) return { sql: `WHERE (p.name LIKE ? ESCAPE '\\' OR p.reference LIKE ? ESCAPE '\\')`, params: [likeParam(query.q), likeParam(query.q)] };
-  return { sql: '', params: [] };
+  // The three used to be alternatives: asking for low stock and a search at the same
+  // time silently dropped the search, so typing a name to narrow the order list gave
+  // you every part in the workshop. They are clauses now, and they add up.
+  const where = [];
+  const params = [];
+  if (query.low) where.push('p.qty <= p.reorder_level');
+  if (query.out) where.push('p.qty <= 0');
+  if (query.q) {
+    where.push(`(p.name LIKE ? ESCAPE '\\' OR p.reference LIKE ? ESCAPE '\\')`);
+    params.push(likeParam(query.q), likeParam(query.q));
+  }
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
 // ----------------------------------------------------------------- history

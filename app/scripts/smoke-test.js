@@ -261,6 +261,40 @@ ok('reorder level is stored per part',
 const otherLevel = await c('/api/parts', { method: 'POST', body: { name: 'Same qty, other level', qty: 2, reorder_level: 0 } });
 ok('two parts at the same qty carry different levels',
   otherLevel.data.qty === atLevel.data.qty && otherLevel.data.reorder_level !== atLevel.data.reorder_level);
+// ---- the stock filter, which used to be three alternatives ------------------
+// `low` and `q` were separate early returns, so asking for low stock while typing a
+// name dropped the search: the order list showed every part in the workshop.
+const lowPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter low', qty: 1, reorder_level: 5 } });
+const fullPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter full', qty: 9, reorder_level: 5 } });
+const outPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter out', qty: 0, reorder_level: 5 } });
+const namesOf = (rows) => rows.map((p) => p.name);
+const lowRows = await c('/api/parts?low=1');
+ok('the low-stock filter returns the parts at or below their own level',
+  namesOf(lowRows.data).includes('Filter low') && namesOf(lowRows.data).includes('Filter out')
+  && !namesOf(lowRows.data).includes('Filter full'),
+  namesOf(lowRows.data).join(', '));
+const outRows = await c('/api/parts?out=1');
+ok('out of stock is its own answer, not a synonym for low',
+  namesOf(outRows.data).includes('Filter out') && !namesOf(outRows.data).includes('Filter low'),
+  namesOf(outRows.data).join(', '));
+const lowSearched = await c('/api/parts?low=1&q=Filter%20low');
+ok('and a filter and a search narrow each other instead of replacing each other',
+  namesOf(lowSearched.data).join() === 'Filter low',
+  namesOf(lowSearched.data).join(', '));
+// Its own text client: the shared one is created further down the file, and reaching
+// forward for it would read as undefined rather than as a test.
+const stockCsv = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const outCsv = await stockCsv('/api/export/parts.csv?out=1');
+ok('the file the download produces is the list the filter would show',
+  outCsv.text.includes('Filter out') && !outCsv.text.includes('Filter low'),
+  outCsv.text.split('\r\n').slice(0, 3).join(' / '));
+await c(`/api/parts/${lowPart.data.id}`, { method: 'DELETE' });
+await c(`/api/parts/${fullPart.data.id}`, { method: 'DELETE' });
+await c(`/api/parts/${outPart.data.id}`, { method: 'DELETE' });
+
 ok('reorder level is inclusive at the boundary (qty == level is low)',
   atLevel.data.qty <= atLevel.data.reorder_level && !(otherLevel.data.qty <= otherLevel.data.reorder_level));
 ok('negative reorder level rejected',
@@ -751,7 +785,8 @@ ok('every filtered list can also be written to a file',
     .every((h) => exportHandlers.includes(h)),
   exportHandlers.join(', '));
 ok('both exports read a filter that is on the page',
-  html.includes('id="wo-status-filter"') && html.includes('id="low-stock-filter"'));
+  html.includes('id="wo-status-filter"') && html.includes('id="part-filter"')
+  && !html.includes('low-stock-filter'));
 
 // A login form shows the server's message and nothing else. With no wait to
 // count, no cooldown machinery should be left behind — dead timer code is how a
@@ -774,6 +809,9 @@ const uiCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
 ok('the page loads its stylesheet from the app itself, not the internet',
   /<link rel="stylesheet" href="\/app\.css" \/>/.test(html));
 const appSrc13 = readFileSync(join(root, 'public', 'app.js'), 'utf8');
+// The spare parts screen moved out of app.js when app.js crossed the split signal
+// for the third time. These checks follow the code to its own file.
+const partsSrc = readFileSync(join(root, 'public', 'parts.js'), 'utf8');
 
 // Every screen opens with a header: name, purpose, and its action.
 const screenBodies = [...html.matchAll(/<section data-page="([\w-]+)"[^>]*>([\s\S]*?)<\/section>/g)];
@@ -900,7 +938,7 @@ ok('deleting a machine names it and says what happens',
   && clientSrc.includes('its photograph')
   && /This cannot be undone\./.test(html),
   'the destructive dialog no longer says what it destroys');
-ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(appSrc13));
+ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(partsSrc));
 
 console.log('\nPhase 12 — the dashboard');
 
@@ -2671,7 +2709,7 @@ ok('and a menu names the row it belongs to, for anyone not reading the screen',
 ok('the items a menu holds are real buttons, and a destructive one is marked',
   /<button type="button"/.test(tablesSrc) && /danger \? ' class="danger"'/.test(tablesSrc)
   && /menuItem\('Delete machine',[\s\S]{0,90}?\{ danger: true \}\)/.test(appEq)
-  && /menuItem\('Delete part',[\s\S]{0,90}?\{ danger: true \}\)/.test(appSrc13),
+  && /menuItem\('Delete part',[\s\S]{0,90}?\{ danger: true \}\)/.test(partsSrc),
   'an item that is not a button, or a delete that looks like the rest');
 
 // Two columns where the alphabet is the wrong order. "high, low, medium" is not a
@@ -2719,6 +2757,54 @@ ok('marking a schedule done from Due soon does not depend on another table',
   && /picker \? picker\.value : today\(\)/.test(appSrc13),
   'the date is read from a field that only exists on one screen');
 
+// ---- every list has a filter, and none of them is a checkbox --------------
+// The machines screen had one; spare parts had a checkbox that could only say one
+// thing; maintenance and users had nothing at all. A filter on this page is a named
+// <select> with an answer that means "all" and a label a screen reader can read.
+const FILTERS = {
+  'eq-filter': 'All machines',
+  'wo-status-filter': 'Any status',
+  'part-filter': 'All parts',
+  'pm-filter': 'All schedules',
+  'user-filter': 'All accounts',
+};
+const missingFilters = Object.entries(FILTERS).filter(([id, all]) => {
+  const at = indexEq.indexOf(`id="${id}"`);
+  if (at < 0) return true;
+  const open = indexEq.lastIndexOf('<select', at);
+  const body = indexEq.slice(open, indexEq.indexOf('</select>', at));
+  return !/aria-label="/.test(body) || !new RegExp(`>${all}</option>`).test(body)
+    || !/<option value="[a-z_]*" selected>/.test(body);
+});
+ok('every list says what would narrow it, and each opens on everything',
+  missingFilters.length === 0, missingFilters.map(([id]) => id).join(', '));
+ok('the spare parts checkbox is gone, not hidden',
+  !indexEq.includes('low-stock-filter') && !clientSrc.includes('low-stock-filter')
+  && !/type="checkbox"[^>]*id="part-filter"/.test(indexEq),
+  'the checkbox is still there, or still read by the code');
+// The screen and its CSV must ask the same question, or the file is a different list
+// from the one on screen — the bug the shared workQuery()/historyQuery() prevented.
+const partsFile = partsSrc.match(/export function downloadParts[\s\S]*?\n}/)?.[0] || '';
+ok('the parts file asks the same question as the parts table',
+  /partQuery\(\)/.test(partsFile)
+  && /api\/export\/parts\.csv\$\{partQuery\(\)\}/.test(partsFile),
+  partsFile ? 'the download builds its own query' : 'downloadParts() is missing');
+// Maintenance and users filter a list already in memory. Reading the select and then
+// fetching again would be a round trip for a question the page can answer.
+const pmDraw = (appSrc13.match(/function drawPm\(\) \{[\s\S]*?\n}/) || [''])[0];
+const userDraw = (appSrc13.match(/function drawUsers\(\) \{[\s\S]*?\n}/) || [''])[0];
+// Both comparisons, not just the word `days_left`: "overdue" returning true for
+// everything is exactly the mutation a looser assertion missed.
+ok('the maintenance and user filters redraw, they do not refetch',
+  /#pm-filter/.test(pmDraw) && !/\bapi\(/.test(pmDraw)
+  && /if \(filter === 'overdue'\) return p\.days_left < 0;/.test(pmDraw)
+  && /if \(filter === 'week'\) return p\.days_left <= 7;/.test(pmDraw)
+  && /#user-filter/.test(userDraw) && !/\bapi\(/.test(userDraw)
+  && /if \(filter === 'active'\) return u\.active;/.test(userDraw)
+  && /if \(filter === 'disabled'\) return !u\.active;/.test(userDraw)
+  && /if \(filter === 'admin'\) return u\.role === 'admin';/.test(userDraw),
+  'a filter that asks the server for a list it already has, or one whose branches do not say what they mean');
+
 // ---- editing a spare part is a dialog too ---------------------------------
 // It used to turn the row it belonged to into five inputs — which meant the parts
 // table could be edited one cell at a time but the supplier could not be edited at
@@ -2731,13 +2817,13 @@ ok('editing a spare part opens a dialog that carries the whole record',
   partDialog ? 'a field is missing' : 'part-edit is gone');
 ok('and the supplier is one of them, which the row editor never offered',
   partDialog.includes('id="pe-supplier"')
-  && /supplier: \$\('#pe-supplier'\)\.value\.trim\(\) \|\| null/.test(appSrc13),
+  && /supplier: \$\('#pe-supplier'\)\.value\.trim\(\) \|\| null/.test(partsSrc),
   'a part can still be created with a supplier it can never correct');
 ok('the parts table is a table again, with Edit in its menu',
-  !/id="edit-name-\$\{/.test(appSrc13) && !/editingPart/.test(appSrc13)
-  && /menuItem\('Edit part', `editPart\(\$\{p\.id\}\)`\)/.test(appSrc13),
+  !/id="edit-name-\$\{/.test(partsSrc) && !/editingPart/.test(partsSrc)
+  && /menuItem\('Edit part', `editPart\(\$\{p\.id\}\)`\)/.test(partsSrc),
   'a row still draws inputs, or Edit does not open anything');
-const editPartFn = (appSrc13.match(/function editPart\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
+const editPartFn = (partsSrc.match(/export function editPart\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
 ok('the dialog is filled from the row that was clicked, not from a second request',
   /partsCache\.find/.test(editPartFn) && !/await api\(/.test(editPartFn)
   && /\$\('#pe-name'\)\.value = part\.name/.test(editPartFn)
@@ -2750,7 +2836,7 @@ ok('the dialog is filled before it is shown',
   editPartFn.indexOf("openForm('part-edit')") > editPartFn.indexOf('#pe-name')
   && editPartFn.indexOf("openForm('part-edit')") > 0,
   'opened before it was filled, or never opened');
-const savePartFn = (appSrc13.match(/async function savePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
+const savePartFn = (partsSrc.match(/export async function savePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
 ok('one Save sends every field, so clearing one really clears it',
   ['name', 'reference', 'supplier', 'qty', 'unit_price', 'reorder_level']
     .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(savePartFn))

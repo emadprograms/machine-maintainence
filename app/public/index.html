@@ -207,8 +207,8 @@
         <div class="card-toolbar">
           <input id="wo-search" type="search" placeholder="Search problem, notes or machine"
                  oninput="searchWork()" />
-          <select id="wo-status-filter" onchange="loadWork()">
-            <option value="">Any status</option>
+          <select id="wo-status-filter" onchange="loadWork()" aria-label="Which work orders to show">
+            <option value="" selected>Any status</option>
             <option value="open">Open</option>
             <option value="in_progress">In progress</option>
             <option value="done">Done</option>
@@ -383,8 +383,13 @@
       </div>
       <div class="card">
         <div class="card-toolbar">
-          <label class="check"><input type="checkbox" id="low-stock-filter" onchange="loadParts()" />
-            Only parts at or below the reorder level</label>
+          <input id="part-search" type="search" placeholder="Search name or reference"
+                 oninput="searchParts()" />
+          <select id="part-filter" onchange="loadParts()" aria-label="Which parts to show">
+            <option value="all" selected>All parts</option>
+            <option value="low">At or below the reorder level</option>
+            <option value="out">Out of stock</option>
+          </select>
           <button class="ghost small" onclick="downloadParts()">Download CSV</button>
         </div>
         <div class="table-wrap">
@@ -454,6 +459,13 @@
         <button class="primary" onclick="openForm('pm-form')">New schedule</button>
       </div>
       <div class="card">
+        <div class="card-toolbar">
+          <select id="pm-filter" onchange="drawPm()" aria-label="Which schedules to show">
+            <option value="all" selected>All schedules</option>
+            <option value="week">Due within 7 days</option>
+            <option value="overdue">Overdue</option>
+          </select>
+        </div>
         <div class="table-wrap">
           <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="last_done">Last done<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Next due<span class="sort-mark" aria-hidden="true"></span></button></th><th>Mark done on</th><th></th></tr></thead>
             <tbody id="pm-rows"></tbody></table>
@@ -492,6 +504,14 @@
         <button class="primary" onclick="openForm('users-form')">New user</button>
       </div>
       <div class="card">
+        <div class="card-toolbar">
+          <select id="user-filter" onchange="drawUsers()" aria-label="Which accounts to show">
+            <option value="all" selected>All accounts</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+            <option value="admin">Administrators</option>
+          </select>
+        </div>
         <div class="table-wrap">
           <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="email">Email<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="role">Role<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="active">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="users-rows"></tbody></table>

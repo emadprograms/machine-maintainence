@@ -60,13 +60,14 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 575 |
+| `public/index.html` | The whole UI shell: every screen and form | 595 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 288 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 566 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 188 · 103 · 101 · 304 · 268 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 469 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 188 · 103 · 101 · 304 · 268 · 155 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 523 behaviours | 2,986 |
+| `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 531 behaviours | 3,072 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -144,6 +145,15 @@ photograph pushed that page past 600 lines.
   manufacturer, category, location and state — one column each, in that order. The empty
   table spans exactly the columns its header names, and the suite checks that rather than
   trusting anyone to count.
+* **Every list has a named filter, and each one opens on everything.** Machines
+  (all / in service / down / retired), work orders (any status / open / in progress /
+  done), spare parts (all / at or below the reorder level / out of stock), maintenance
+  (all / due within 7 days / overdue), users (all / active / disabled / administrators),
+  due soon (within N days) and the report (a month). Spare parts had a **checkbox** that
+  could only ever say one thing, and maintenance and users had no filter at all. Every
+  filter carries an `aria-label`, every one states its "everything" answer as selected,
+  and the CSV download next to a list builds its query from the same function as the
+  table — so the file is the list you are looking at, never a different one.
 * **Every table sorts by any heading that holds a value.** Machines, work orders,
   history, one machine's history, spare parts, maintenance, due soon, users and the
   report all behave the same way: one click on a heading orders that column ascending,
@@ -436,10 +446,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 523 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 531 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`523 passed, 0 failed`.
+`531 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

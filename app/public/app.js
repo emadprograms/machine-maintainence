@@ -9,6 +9,7 @@ const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return 
 const historyReady = import('/history.js').then((m) => { return m; });
 const reportReady = import('/report.js').then((m) => { return m; });
 const machinesReady = import('/machines.js').then((m) => { return m; });
+const partsReady = import('/parts.js').then((m) => { return m; });
 // The shared table kit — one sorting rule and one three-dot menu for every table in
 // the app. app.js is a classic script, so it reaches the module here; every loader
 // that draws a table waits for it, and the redraw a heading click causes can only
@@ -204,6 +205,15 @@ function openEquipmentDelete(id) { (machinesReady).then((m) => m.openEquipmentDe
 function checkDeletePhrase() { (machinesReady).then((m) => m.checkDeletePhrase()); }
 function confirmEquipmentDelete() { (machinesReady).then((m) => m.confirmEquipmentDelete()); }
 
+// The Spare parts screen lives in its own module (see parts.js), for the same reason
+// and with the same shape: these are the names the markup already calls.
+async function loadParts() { return (await partsReady).loadParts(); }
+async function addPart() { return (await partsReady).addPart(); }
+function editPart(idToEdit) { partsReady.then((m) => m.editPart(idToEdit)); }
+function savePart() { partsReady.then((m) => m.savePart()); }
+async function removePart(idToRemove) { return (await partsReady).removePart(idToRemove); }
+function downloadParts() { partsReady.then((m) => m.downloadParts()); }
+
 // ------------------------------------------------------------ work orders
 // The Work orders screen lives in its own module (see work.js). These are the
 // names the markup and the rendered rows already use, so nothing above changes.
@@ -217,132 +227,6 @@ function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
 function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
-
-// ------------------------------------------------------------------ parts
-// The list as last loaded. Editing reads the whole record from here rather than
-// asking for it again — the row that drew the button already has it.
-let partsCache = [];
-
-/** A price, always with two decimals so a column lines up. */
-function money(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toFixed(2) : String(v);
-}
-
-// The badge rule lives in one place so the UI and the tests cannot disagree:
-// out of stock, at-or-below the part's own reorder level, or healthy.
-function stockCell(p) {
-  const cell = (inner) => `<td class="cell-num">${inner}</td>`;
-  if (p.qty <= 0) return cell(badge('out', 'red'));
-  if (p.qty <= p.reorder_level) return cell(badge(p.qty, 'amber'));
-  return cell(esc(p.qty));
-}
-
-async function loadParts() {
-  await tablesReady;
-  const low = $('#low-stock-filter')?.checked;
-  partsCache = await api(`/parts${low ? '?low=1' : ''}`);
-  drawParts();
-}
-
-/** The table, drawn from `partsCache`, in whatever order a heading has asked for. */
-function drawParts() {
-  const low = $('#low-stock-filter')?.checked;
-  const rows = kit.rowsFor('parts-rows', partsCache);
-  $('#parts-rows').innerHTML = rows.map((p) => `<tr>
-        ${strong(p.name)}${soft(p.reference)}
-        ${stockCell(p)}
-        <td class="cell-num cell-muted">${p.unit_price == null ? 'Not set' : esc(money(p.unit_price))}</td>
-        <td class="cell-num cell-muted">${esc(p.reorder_level)}</td>
-        ${kit.rowMenu(p.name, [
-          kit.menuItem('Edit part', `editPart(${p.id})`),
-          kit.menuItem('Delete part', `removePart(${p.id})`, { danger: true }),
-        ])}
-      </tr>`).join('')
-    || emptyRow(6, low
-      ? 'Every part is above its reorder level. Nothing to order.'
-      : 'No spare parts yet. Add the ones you keep on the shelf.');
-  kit.markTable('parts-rows');
-}
-
-tablesReady.then((t) => t.register('parts-rows', {
-  name: (p) => p.name,
-  reference: (p) => p.reference,
-  qty: (p) => p.qty,
-  unit_price: (p) => p.unit_price,
-  reorder_level: (p) => p.reorder_level,
-}, drawParts));
-
-/** Open the editor filled with what the row already says. Nothing is fetched: the
- *  part is in the list that drew the button, the same way a machine is. */
-function editPart(idToEdit) {
-  const part = partsCache.find((p) => p.id === idToEdit);
-  if (!part) return;
-  $('#pe-id').value = String(part.id);
-  $('#pe-name').value = part.name || '';
-  $('#pe-ref').value = part.reference || '';
-  $('#pe-supplier').value = part.supplier || '';
-  $('#pe-qty').value = String(part.qty ?? 0);
-  $('#pe-price').value = part.unit_price == null ? '' : String(part.unit_price);
-  $('#pe-reorder').value = String(part.reorder_level ?? 0);
-  // What the row was showing, said in words: a quantity and a price on their own
-  // do not tell anyone whether this part is the one flagged as low.
-  const low = Number(part.qty) <= Number(part.reorder_level);
-  $('#part-edit-title').textContent = `Edit ${part.name}`;
-  $('#part-edit-what').textContent = `${part.qty} in stock`
-    + `${part.supplier ? ` from ${part.supplier}` : ''}`
-    + `${low ? ' — at or below the reorder level, so it is flagged on the list.' : '.'}`;
-  openForm('part-edit');
-}
-
-/** Save the whole record. Every field is sent, so clearing the supplier or the
- *  price really clears it — the route keeps whatever it is not told. */
-async function savePart() {
-  const partId = Number($('#pe-id').value);
-  const name = $('#pe-name').value.trim();
-  if (!name) return formError('part-edit', 'A part needs a name.');
-  try {
-    await api(`/parts/${partId}`, { method: 'PUT', body: JSON.stringify({
-      name,
-      reference: $('#pe-ref').value.trim() || null,
-      supplier: $('#pe-supplier').value.trim() || null,
-      qty: $('#pe-qty').value,
-      unit_price: $('#pe-price').value,
-      reorder_level: $('#pe-reorder').value,
-    })});
-    formDone('part-edit');
-    loadParts();
-  } catch (e) { formError('part-edit', e.message); }
-}
-
-async function removePart(idToRemove) {
-  // Look the name up by id rather than interpolating it into the onclick — a part
-  // called O'Brien or one containing a quote must not break the button.
-  const part = partsCache.find((p) => p.id === idToRemove);
-  const label = part ? part.name : 'this part';
-  if (!confirm(`Delete "${label}" from the spare parts list?\n\nIts stock count and price go with it. This cannot be undone.`)) return;
-  try {
-    await api(`/parts/${idToRemove}`, { method: 'DELETE' });
-    loadParts();
-  } catch (e) { alert(e.message); }
-}
-
-async function addPart() {
-  const name = $('#p-name').value.trim();
-  if (!name) return formError('parts-form', 'A part needs a name.');
-  try {
-    await api('/parts', { method: 'POST', body: JSON.stringify({
-      name, reference: $('#p-ref').value, qty: $('#p-qty').value,
-      unit_price: $('#p-price').value, reorder_level: $('#p-reorder').value,
-      supplier: $('#p-supplier').value,
-    })});
-    ['#p-name', '#p-ref', '#p-price', '#p-supplier'].forEach((s) => { $(s).value = ''; });
-    $('#p-qty').value = '0';
-    $('#p-reorder').value = '5';
-    formDone('parts-form');
-    loadParts();
-  } catch (e) { formError('parts-form', e.message); }
-}
 
 // ----------------------------------------------------- preventive maint.
 function dueKind(days) {
@@ -421,7 +305,16 @@ async function loadPm() {
 }
 
 function drawPm() {
-  const rows = kit.rowsFor('pm-rows', pmCache);
+  // Filtered here rather than on the server: the whole list is a few dozen rows and
+  // is already in memory, so a filter change costs nothing but a redraw — the same
+  // reason a heading click does not refetch.
+  const filter = $('#pm-filter')?.value || 'all';
+  const shown = pmCache.filter((p) => {
+    if (filter === 'overdue') return p.days_left < 0;
+    if (filter === 'week') return p.days_left <= 7;
+    return true;
+  });
+  const rows = kit.rowsFor('pm-rows', shown);
   $('#pm-rows').innerHTML = rows.map((p) => `
     <tr>
       ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
@@ -434,7 +327,11 @@ function drawPm() {
         kit.menuItem('Mark done on that day', `pmDone(${p.id})`),
       ])}
     </tr>`).join('')
-    || emptyRow(7, 'No repeating maintenance yet. Add a schedule and it will show up here.');
+    || emptyRow(7, filter === 'overdue'
+      ? 'Nothing is overdue. Every schedule is inside its interval.'
+      : filter === 'week'
+        ? 'Nothing is due in the next 7 days.'
+        : 'No repeating maintenance yet. Add a schedule and it will show up here.');
   kit.markTable('pm-rows');
 }
 
@@ -494,11 +391,6 @@ async function downloadWorkOrders() {
   window.location = `/api/export/work-orders.csv${(await workReady).workQuery()}`;
 }
 
-function downloadParts() {
-  const low = $('#low-stock-filter')?.checked;
-  window.location = `/api/export/parts.csv${low ? '?low=1' : ''}`;
-}
-
 // ----------------------------------------------------------------- backup
 async function doBackup() {
   try {
@@ -518,7 +410,16 @@ async function loadUsers() {
 }
 
 function drawUsers() {
-  const rows = kit.rowsFor('users-rows', usersCache);
+  // Four answers to one question: who can sign in. The list is already in memory, so
+  // this is a redraw, not a request.
+  const filter = $('#user-filter')?.value || 'all';
+  const shown = usersCache.filter((u) => {
+    if (filter === 'active') return u.active;
+    if (filter === 'disabled') return !u.active;
+    if (filter === 'admin') return u.role === 'admin';
+    return true;
+  });
+  const rows = kit.rowsFor('users-rows', shown);
   $('#users-rows').innerHTML = rows.map((u) => `
     <tr>
       ${strong(u.name)}<td class="cell-muted">${esc(u.email)}</td>
@@ -529,7 +430,9 @@ function drawUsers() {
           `toggleUser(${u.id}, ${u.active ? 0 : 1})`),
       ])}
     </tr>`).join('')
-    || emptyRow(5, 'Only your account exists. Create the rest with "New user".');
+    || emptyRow(5, filter === 'all'
+      ? 'Only your account exists. Create the rest with "New user".'
+      : 'No account matches this filter.');
   kit.markTable('users-rows');
 }
 
