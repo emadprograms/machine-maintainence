@@ -14,6 +14,7 @@ import { hourlyRate } from '../settings.js';
 import { nextWorkOrderCode } from '../codes.js';
 import { effectiveHours } from '../hours.js';
 import { recordMachineState, machineRunningSql } from '../status.js';
+import { reportLocked, lockedReportFields, reportLockMessage } from '../work-lock.js';
 
 export default {
   // ---- work orders
@@ -73,6 +74,7 @@ export default {
     const b = await readBody(req);
     const before = get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Work order not found' });
+    if (lockedReportFields(b) && reportLocked(before.id)) return send(res, 409, { error: reportLockMessage });
     if (b.title !== undefined && (typeof b.title !== 'string' || !b.title.trim())) {
       return send(res, 400, { error: 'Problem cannot be empty' });
     }
@@ -133,16 +135,12 @@ export default {
     send(res, 200, get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id)));
   }),
 
-  // ---- the photograph of the fault. Same bytes-in/bytes-out contract as a
-  // machine's photograph, and one deliberate difference: **any signed-in person
-  // may attach and remove one.** A technician is exactly who finds the fault and
-  // photographs it, so an admin-only route would be a route nobody who needs it
-  // can use; and a blurred photograph left in the record is worse than a deleted
-  // one. The record itself stays admin-only to change.
+  // Fault photos may be changed by any signed-in person until a stage exists.
   'POST /api/work-orders/:id/photo': route(async (req, res) => {
+    const bytes = await readBytes(req, MAX_PHOTO_BYTES);
     const before = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Work order not found' });
-    const bytes = await readBytes(req, MAX_PHOTO_BYTES);
+    if (reportLocked(id(req.params.id))) return send(res, 409, { error: reportLockMessage });
     const saved = savePhoto(bytes);
     if (saved.error) return send(res, 400, { error: saved.error });
     run('UPDATE work_orders SET photo = ? WHERE id = ?', saved.name, id(req.params.id));
@@ -166,6 +164,7 @@ export default {
   'DELETE /api/work-orders/:id/photo': route(async (req, res) => {
     const row = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
     if (!row) return send(res, 404, { error: 'Work order not found' });
+    if (reportLocked(id(req.params.id))) return send(res, 409, { error: reportLockMessage });
     if (!row.photo) return send(res, 200, { photo: null });
     run('UPDATE work_orders SET photo = NULL WHERE id = ?', id(req.params.id));
     removePhoto(row.photo);

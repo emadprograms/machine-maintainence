@@ -444,6 +444,15 @@ assert.doesNotMatch(el('#w-equipment').innerHTML, /Stale/);
 // Saving unrelated work-order edits must not silently create a new state report.
 jobs[0].stops_machine = 1;
 await work.loadWork();
+assert.doesNotMatch(el('#work-rows').innerHTML, /editWork\(42\)/);
+assert.match(el('#work-rows').innerHTML, /printWork\(42\)/);
+const openedBeforeLockedEdit = opened.length;
+work.editWork(42);
+assert.equal(opened.length, openedBeforeLockedEdit);
+const previousStage = jobs[0].current_stage;
+jobs[0].current_stage = null;
+await work.loadWork();
+assert.match(el('#work-rows').innerHTML, /editWork\(42\)/);
 work.editWork(42);
 await work.saveWork();
 let workPatch = JSON.parse(requests.findLast((r) => r.path === '/work-orders/42' && r.options.method === 'PATCH').options.body);
@@ -453,6 +462,8 @@ el('#we-stops').value = '0';
 await work.saveWork();
 workPatch = JSON.parse(requests.findLast((r) => r.path === '/work-orders/42' && r.options.method === 'PATCH').options.body);
 assert.equal(workPatch.stops_machine, false);
+jobs[0].current_stage = previousStage;
+await work.loadWork();
 
 // Machine state loads independently, defaults to the latest report, and a
 // failed lookup never enables a save with a guessed state.
@@ -533,6 +544,8 @@ assert.equal(el('#wa-cancel').textContent, 'Close');
 assert.equal(el('#wa-history-panel').open, true);
 assert.match(el('#wa-history').innerHTML, /editLatestStage\(52\)/);
 assert.match(el('#wa-history').innerHTML, /aria-label="Edit latest stage"/);
+assert.match(el('#wa-history').innerHTML, /previewStagePhoto\(52, 3, 1\)/);
+assert.match(el('#wa-history').innerHTML, /<img[^>]*src="\/api\/work-orders\/42\/updates\/52\/photos\/3"/);
 assert.match(el('#wa-history').innerHTML, /stage-edit-action[\s\S]*<svg/);
 assert.ok(el('#wa-history').innerHTML.indexOf('Stage 2') < el('#wa-history').innerHTML.indexOf('Stage 1'));
 assert.doesNotMatch(el('#wa-history').innerHTML, /editLatestStage\(51\)/);

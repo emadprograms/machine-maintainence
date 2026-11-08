@@ -1,6 +1,7 @@
 // Timeline, new stage and admin correction share one spacious dialog. The server
 // remains authoritative about the latest stage, stock, photos and machine state.
 import { resetStageParts, loadStageParts, stagePartsForSave, setStageParts, hasStagePartsDraft, groupStageParts, formatStagePrice } from './stage-parts.js';
+import { resetStageGallery, historyPhotos, existingPhotos, updateNewPhotos } from './stage-gallery.js';
 let refreshAfterUpdate = () => {}, rememberPeople = () => {};
 let updatingWork = null, updateJob = null, editingStage = null, latestStage = null;
 let updateRun = 0, updateLoad = 0, updateEditing = false, stateReady = false;
@@ -16,9 +17,11 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   if (!job) return;
   refreshAfterUpdate = refresh; rememberPeople = onPeople;
   updatingWork = job.id; updateJob = job; editingStage = null; latestStage = null;
+  resetStageGallery(job.id);
   ++updateRun; stateReady = false; stateTouched = false;
   const editing = !viewOnly && job.status !== 'done';
   updateEditing = editing;
+  $('#work-assign').classList?.toggle('stage-view-only', viewOnly);
   $('#work-assign-title').textContent = editing ? (job.status === 'open' ? 'Start the job' : 'Add an update') : 'Work order updates';
   $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wa-entry').hidden = !editing;
@@ -43,14 +46,14 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   return retryWorkUpdateLoading();
 }
 
-function timeline(updates, workId) {
+function timeline(updates) {
   const admin = window.me?.role === 'admin';
-  return [...updates].reverse().map((u, i) => `<div class="update-entry"><div class="update-top"><strong>Stage ${Number(u.stage)}</strong>
+  return [...updates].reverse().map((u, i) => `<article class="update-entry"><div class="update-top"><div><strong>Stage ${Number(u.stage)}</strong>${i === 0 ? '<span class="stage-latest">Latest</span>' : ''}</div>
       ${admin && i === 0 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
-    <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
+    <small class="update-meta">${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} ${Number(u.hours) === 1 ? 'hour' : 'hours'}${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
     <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
     ${groupStageParts(u.parts).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${formatStagePrice(p.unit_price)} each</p>`).join('')}
-    ${(u.photos || []).map((photo, n) => `<a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${n + 1}</a>`).join(' ')}</div>`).join('')
+    ${historyPhotos(u)}</article>`).join('')
     || '<p class="hint">No updates yet.</p>';
 }
 
@@ -85,7 +88,7 @@ export async function retryWorkUpdateLoading() {
     if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
     latestStage = updates.at(-1) || null;
     $('#wa-history-count').textContent = updates.length ? `${updates.length} ${updates.length === 1 ? 'update' : 'updates'}` : 'No updates yet';
-    $('#wa-history').innerHTML = timeline(updates, workId);
+    $('#wa-history').innerHTML = timeline(updates);
     if (!editingStage) $('#wa-stage-title').textContent = `Stage ${latestStage ? Number(latestStage.stage) + 1 : 1}`;
     historyReady = true; refresh();
   }).catch((e) => {
@@ -148,8 +151,7 @@ export function editLatestStage(stageId) {
   $('#wa-photos').value = '';
   showToggle(editingStage.machine_running == null ? currentRunning : Boolean(editingStage.machine_running));
   $('#wa-running-help').textContent = 'This is the state recorded during this stage. A newer report may determine the current state.';
-  $('#wa-existing-photos').innerHTML = (editingStage.photos || []).map((photo, i) =>
-    `<div class="stage-photo-row"><label><input type="checkbox" value="${Number(photo)}" checked onchange="stagePhotoSelectionChanged()" /> Keep photo ${i + 1}</label><a class="link-photo" target="_blank" rel="noopener" href="/api/work-orders/${updatingWork}/updates/${editingStage.id}/photos/${photo}">View</a></div>`).join('');
+  $('#wa-existing-photos').innerHTML = existingPhotos(editingStage);
   resetStageParts(); setStageParts(editingStage.parts); loadStageParts(); stagePhotoSelectionChanged();
   $('#wa-message').focus?.({ preventScroll: true }); $('#wa-scroll').scrollTop = 0;
   formError('work-assign', '');
@@ -160,7 +162,8 @@ export function stagePhotoSelectionChanged() {
   const kept = document.querySelectorAll('#wa-existing-photos input[type="checkbox"]:checked').length;
   const count = files.length + kept;
   $('#wa-photos-summary').textContent = count ? `${count} ${count === 1 ? 'photo' : 'photos'} selected` : 'Optional · Attach up to 5 photos';
-  $('#wa-photo-selection').textContent = files.map((file) => file.name).join(', ');
+  updateNewPhotos(files);
+  $('#wa-photo-selection').textContent = files.length > 5 ? 'Only up to five photos can be added.' : '';
 }
 
 function photoData(file) {

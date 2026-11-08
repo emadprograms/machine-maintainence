@@ -229,6 +229,9 @@ async function openNewWork() { return (await workReady).openNewWork(); }
 async function retryWorkMachines() { return (await workReady).retryWorkMachines(); }
 async function addWorkOrder() { return (await workReady).addWorkOrder(); }
 function advance(id, status) { (workReady).then((m) => m.advance(id, status)); }
+function printWork(id) {
+  if (!window.open(`/print-job.html?id=${Number(id)}`, '_blank')) alert('Allow pop-ups to print this job.');
+}
 function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
 function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }

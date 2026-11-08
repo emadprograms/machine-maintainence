@@ -1,0 +1,53 @@
+/* Stage details: keep the status with the time it describes, not in a detached card. */
+.stage-details-row { align-items: start; gap: 16px; }
+.stage-time { flex: 0 1 160px; width: 160px; }
+.stage-machine { flex: 1 1 250px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; min-width: 0; padding: 0; border: 0; background: none; }
+.stage-machine-copy { display: contents; }
+.stage-machine-copy strong { order: 0; font-size: 13px; }
+.stage-machine-copy .hint { order: 2; margin: 1px 0 0; font-size: 11px; }
+.stage-machine .machine-toggle { order: 1; min-height: 38px; }
+.stage-owner { flex: 1 1 180px; }
+
+/* A single, aligned table surface. Draft rows and the input row are distinct. */
+.stage-extra-content { padding-left: 0; }
+.stage-parts-table-wrap { border-color: #dce4ed; border-radius: 10px; }
+.stage-parts-table th { background: #f8fafc; color: #637185; padding: 10px 12px; font-size: 11px; }
+.stage-parts-table td { padding: 10px 12px; background: white; }
+.stage-parts-table tbody tr:hover td { background: #fff; }
+.stage-parts-table .stage-part-entry td, .stage-parts-table .stage-part-entry:hover td { background: #f5f9fd; border-top: 1px solid #dce4ed; }
+.stage-parts-table select, .stage-parts-table input { height: 38px; border-color: #d9e1ea; }
+.stage-add-part { background: #e1efff; color: #075dae; }
+.stage-parts-hint { color: #687586; max-width: 60ch; }
+
+/* A scan-friendly timeline, newest first. View mode scrolls with the dialog. */
+.stage-history-panel { background: #f5f7fa; }
+.update-history { display: grid; gap: 10px; max-height: 360px; padding: 0 0 14px; }
+.stage-view-only .update-history { max-height: none; overflow: visible; }
+.update-entry { border: 1px solid #e0e7ef; border-radius: 10px; background: #fff; padding: 15px 16px; }
+.update-entry .update-top { margin: -4px 0 2px; }
+.stage-latest { display: inline-block; margin-left: 8px; border-radius: 99px; background: #e8f2ff; color: #2364a5; font-size: 10px; font-weight: 700; padding: 3px 7px; vertical-align: 1px; }
+.update-entry .update-meta { line-height: 1.45; }
+.update-entry > p:not(.hint) { margin: 11px 0; line-height: 1.5; }
+.update-entry > .hint { margin: 5px 0; }
+.stage-photo-grid, .stage-photos { display: flex; flex-wrap: wrap; gap: 10px; }
+.stage-photo-grid:not(:empty) { margin-top: 12px; }
+.stage-photo-card { display: grid; align-content: start; gap: 7px; max-width: 130px; }
+.stage-photo-card label { font-size: 12px; white-space: nowrap; }
+.stage-thumbnail { position: relative; display: grid; width: 112px; padding: 0; border: 1px solid #d8e2ed; border-radius: 8px; overflow: hidden; background: #f6f8fb; color: #365477; text-align: left; cursor: pointer; }
+.stage-thumbnail img { width: 100%; height: 72px; display: block; object-fit: cover; }
+.stage-thumbnail span { display: block; width: 100%; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.stage-thumbnail:hover { border-color: #4c86c5; }
+#stage-photo-viewer { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); border: 0; border-radius: 14px; padding: 0; overflow: hidden; background: white; box-shadow: 0 24px 60px #10182855; }
+#stage-photo-viewer::backdrop { background: #101828b8; }
+.photo-viewer-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 12px 18px; }
+.photo-viewer-head h3 { font-size: 16px; margin: 0; }
+#stage-photo-image { display: block; width: 100%; max-height: calc(100dvh - 145px); object-fit: contain; background: #f3f5f8; }
+#stage-photo-caption { color: #687586; font-size: 12px; margin: 0; padding: 10px 18px 14px; }
+@media (max-width: 600px) {
+  .stage-details-row { gap: 14px; }
+  .stage-time { flex: 1 1 125px; }
+  .stage-machine { flex: 1 1 190px; gap: 0; }
+  .stage-owner { flex-basis: 100%; }
+  .stage-thumbnail { width: 76px; }
+  .stage-thumbnail img { height: 58px; }
+}

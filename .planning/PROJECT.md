@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A small, offline, Windows-based web app for tracking industrial machines, work orders, recurring preventive maintenance and spare parts. It is a rebuild of the useful parts of `Ilop08/SIAI` (reviewed in `CODE_REVIEW.md`) using a deliberately small stack: Node's built-in HTTP server and built-in SQLite, plain JavaScript, and one HTML page. It targets a restricted network with only Windows machines and no internet access.
+A small, offline, Windows-based web app for tracking industrial machines, work orders, recurring preventive maintenance and spare parts. It is a rebuild of the useful parts of `Ilop08/SIAI` (reviewed in `CODE_REVIEW.md`) using a deliberately small stack: Node's built-in HTTP server and built-in SQLite, plain JavaScript, an app page and a local print page. It targets a restricted network with only Windows machines and no internet access.
 
 ## Core Value
 
@@ -65,18 +65,18 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
 - **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
   code plus ~370 lines of test code. All eleven requirements validated; archived under
   `.planning/milestones/v1.0-*`.
-- **Codebase:** `app/` — about 6,139 lines of application code and 4,448 of tests.
+- **Codebase:** `app/` — about 6,355 lines of application code and 4,637 of tests.
   Server routes are split by screen; shared modules include `hours.js` for live and
   reviewed labour totals and `part-usage.js` for atomic, actual-cost stock consumption.
   Stage history, photos and part usage are kept alongside work orders. See `app/README.md`
   for the current file map and migration behaviour.
-- **Test suite:** **644 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Test suite:** **669 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
   month's costs adding up, live stage hours and actual part costs, and the machine-state
   matrix: the latest explicit report sets machine state, while retired outranks both. It also
-  verifies latest-stage-only admin corrections, stock/photo cleanup, historical ordering,
-  migration and reviewed-hour rebasing. Since 261106-eqz it also proves that signing
+  verifies latest-stage-only admin corrections, report locking, photo previews, print
+  snapshots, stock/photo cleanup, historical ordering, migration and reviewed-hour rebasing. Since 261106-eqz it also proves that signing
   out revokes the session server-side (a captured cookie stops working), that the history
   export honours its filter, and that every endpoint in `routes/` is named somewhere in the
   suite — a coverage floor read from the source, not a hand-written list. Offline audit

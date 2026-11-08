@@ -66,7 +66,8 @@ function drawWork() {
           `advance(${w.id}, '${NEXT_STATUS[w.status]}')`),
           ...(w.status === 'in_progress' ? [menuItem('Add update', `openWorkUpdates(${w.id})`)] : []),
           menuItem('View updates', `openWorkUpdates(${w.id}, true)`),
-          menuItem('Edit', `editWork(${w.id})`),
+          menuItem('Print job', `printWork(${w.id})`),
+          ...(w.current_stage == null ? [menuItem('Edit', `editWork(${w.id})`)] : []),
         ])}
       </tr>`).join('')
     || emptyRow(8, searchTerm('#wo-search')
@@ -104,7 +105,7 @@ let canAssign = false;
 
 export function editWork(idToEdit) {
   const job = workCache.find((w) => w.id === idToEdit);
-  if (!job) return;
+  if (!job || job.current_stage != null) return;
   editingJob = idToEdit;
   canAssign = assignable.length > 0;
   $('#we-id').value = idToEdit;

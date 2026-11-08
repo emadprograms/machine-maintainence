@@ -1,5 +1,15 @@
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
+## v5.0 Work-order experience and print (Shipped: 2026-11-05)
+
+- Refined the parts editor, moved machine status beside time, and introduced a timeline
+  with in-app previews for existing and newly selected stage photos.
+- Locked original work-order fields and fault photos after a stage is recorded, without
+  blocking stage corrections or closure.
+- Added a local, authenticated print view with all job details, stage photos, parts and
+  totals; the browser can print it or save as PDF. 669 smoke checks and real multi-page
+  Chromium/PDF flows passed. Details: `milestones/v5.0-WORK-ORDER-EXPERIENCE.md`.
+
 ## v4.0 Stage correction and machine state (Shipped: 2026-11-05)
 
 - A spacious, responsive stage editor with a current-state red/green switch, multiple

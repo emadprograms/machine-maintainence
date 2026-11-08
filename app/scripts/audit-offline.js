@@ -24,8 +24,12 @@ const ok = (name, cond, detail = '') => {
 
 // ------------------------------------------------------- 1. static scan
 // Only the files that actually ship to the browser and run on the server.
-const SHIPPED = ['server.js', 'db.js', 'auth.js',
-  'public/index.html', 'public/app.css', 'public/app.js'];
+// Include every server route and browser module, including standalone print pages.
+const sources = (dir) => readdirSync(join(root, dir), { withFileTypes: true }).flatMap((entry) => {
+  const relative = join(dir, entry.name);
+  return entry.isDirectory() ? sources(relative) : /\.(?:js|css|html)$/.test(entry.name) ? [relative] : [];
+});
+const SHIPPED = [...readdirSync(root).filter((f) => f.endsWith('.js')), ...sources('routes'), ...sources('public')];
 
 console.log('\nStatic scan of shipped files');
 for (const rel of SHIPPED) {

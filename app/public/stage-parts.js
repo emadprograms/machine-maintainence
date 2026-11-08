@@ -49,7 +49,7 @@ export async function loadStageParts() {
     const parts = await api('/parts');
     if (run !== generation) return;
     choices = parts;
-    $('#wa-part').innerHTML = '<option value="">— no part selected —</option>' + parts.map((p) =>
+    $('#wa-part').innerHTML = '<option value="">Choose a spare part</option>' + parts.map((p) =>
       `<option value="${p.id}">${esc(p.name)} — ${Number(p.qty)} in stock</option>`).join('');
     $('#wa-part').disabled = parts.length === 0;
     $('#wa-part-status').textContent = parts.length ? '' : 'No spare parts in the catalog. You can save without one.';

@@ -207,8 +207,9 @@ const clearStarted = await c(`/api/work-orders/${preassigned.data.id}`, { method
 ok('an in-progress job cannot be unassigned', clearStarted.status === 400);
 const afterClear = (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id);
 ok('refusing to unassign preserves the assignee and status', afterClear.assigned_to === 1 && afterClear.status === 'in_progress');
-ok('an in-progress job can still be edited without clearing its assignee',
-  (await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { notes: 'checking' } })).data.assigned_to === 1);
+ok('an in-progress report cannot be rewritten',
+  (await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { notes: 'checking' } })).status === 409
+  && (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id).assigned_to === 1);
 const badStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 999999 } });
 ok('starting with an invalid assignee is refused', badStart.status === 400);
 ok('status advances open -> in_progress',
@@ -428,24 +429,23 @@ ok('a disabled owner is still named on the job',
 await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
 await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: true } });
 
-// WO-03: editing.
-// Capture the status first — this order was moved to `done` back in phase 3, so
-// hardcoding 'open' here asserts yesterday's fixture rather than today's behaviour.
-const statusBeforeEdit = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).status;
-const retitled = await c(`/api/work-orders/${wo.data.id}`,
+// WO-03: reports remain editable until the first stage starts.
+const editableJob = (await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Editable before work' } })).data;
+const statusBeforeEdit = (await c('/api/work-orders')).data.find((w) => w.id === editableJob.id).status;
+const retitled = await c(`/api/work-orders/${editableJob.id}`,
   { method: 'PATCH', body: { title: 'Retitled job' } });
 ok('work order title can be edited', retitled.status === 200 && retitled.data.title === 'Retitled job');
 ok('editing the title leaves the status alone', retitled.data.status === statusBeforeEdit,
   `was=${statusBeforeEdit} now=${retitled.data.status}`);
 ok('an empty title is refused',
-  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { title: '   ' } })).status === 400);
+  (await c(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { title: '   ' } })).status === 400);
 ok('a notes-only edit does not blank the title',
-  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { notes: 'checked' } }))
+  (await c(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { notes: 'checked' } }))
     .data.title === 'Retitled job');
 
 // WO-04: widening the writable surface must not widen the old boundaries.
-ok('technician can edit a work order',
-  (await tech(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { notes: 'tech edit' } })).status === 200);
+ok('technician can edit a work order before work starts',
+  (await tech(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { notes: 'tech edit' } })).status === 200);
 ok('technician still cannot create users',
   (await tech('/api/users', { method: 'POST', body: {
     name: 'Sneaky2', email: 's2@local', password: 'longenough1', role: 'admin' } })).status === 403);
@@ -909,7 +909,7 @@ ok('the machine editor is a dialog too, and it is not a creating form',
 // added later cannot ship without a way to close it.
 const dialogCount = (html.match(/<dialog id="[\w-]+"/g) || []).length;
 ok('every dialog can be closed without JavaScript',
-  (html.match(/<button class="icon-btn" type="button" aria-label="Close"/g) || []).length === dialogCount,
+  (html.match(/<button class="icon-btn" type="(?:button|submit)" aria-label="Close"/g) || []).length === dialogCount,
   `${dialogCount} dialogs`);
 ok('a create action is behind a button, not on the page',
   /onclick="openForm\('/.test(html) && /function openForm/.test(appSrc13));
@@ -1508,7 +1508,7 @@ const routineStarted = await c(`/api/work-orders/${routine.id}/updates`, { metho
 ok('routine job really started before checking the machine', routineStarted.data.status === 'in_progress');
 ok('a job somebody is working on does not stop the machine either, unless it says so',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
-await setJob(routine.id, { stops_machine: true });
+await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { message: 'Machine stopped', hours: 0, machine_running: false } });
 ok('and then it does, and the reason names the job',
   (await statusOf(fixable.data.id)) === 'down'
   && /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
@@ -2397,6 +2397,69 @@ await late(`${groupedUrl}/${preciseGroup.data.id}`, { method: 'DELETE' });
 await late(`/api/equipment/${groupedMachine.id}`, { method: 'DELETE' });
 await late(`/api/parts/${groupedPart.id}`, { method: 'DELETE' });
 await late(`/api/parts/${groupedOther.id}`, { method: 'DELETE' });
+
+// Report locking and a complete, authenticated print snapshot.
+const printMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Print pump', asset_tag: '101220054', category: 'Pump', location: 'Bay 3', manufacturer: 'ACME' } })).data;
+const printPart = (await late('/api/parts', { method: 'POST', body: { name: 'Print bearing', reference: 'BR-1', qty: 5, unit_price: 9 } })).data;
+const printJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: printMachine.id, title: 'Original fault', notes: 'Original notes', reported_by: 'Alice', assigned_to: 1, stops_machine: true } })).data;
+const printUrl = `/api/work-orders/${printJob.id}`;
+ok('original report can be edited before its first stage', (await late(printUrl, { method: 'PATCH', body: { title: 'Corrected fault' } })).data.title === 'Corrected fault');
+const unreportedPrint = (await late(`/api/work-orders/${editableJob.id}/print`)).data;
+ok('an unreported machine state is not misrepresented as running in print', unreportedPrint.job.last_reported_running === null);
+ok('fault photo can be added before work starts', (await late(`${printUrl}/photo`, { method: 'POST', contentType: 'image/png', rawBody: pngBytes })).status === 200);
+const printStage = await late(`${printUrl}/updates`, { method: 'POST', body: { message: 'Replaced bearing', hours: 2, machine_running: true, photos: [stagePhoto], parts: [{ part_id: printPart.id, qty: 2, unit_price: 8.005 }] } });
+const lockedBefore = (await late('/api/work-orders')).data.find((w) => w.id === printJob.id);
+for (const change of [{ title: 'Different problem' }, { priority: 'high' }, { notes: 'Changed notes' }, { reported_by: 'Bob' }, { stops_machine: true }]) {
+  const refused = await late(printUrl, { method: 'PATCH', body: change });
+  ok(`stage locks original report field ${Object.keys(change)[0]}`, refused.status === 409 && /cannot be edited/i.test(refused.data.error || ''));
+}
+const mixed = await late(printUrl, { method: 'PATCH', body: { title: 'Changed', status: 'done', resolution: 'Must not close' } });
+const lockedAfter = (await late('/api/work-orders')).data.find((w) => w.id === printJob.id);
+ok('a mixed report edit and closure is rejected atomically', mixed.status === 409 && lockedAfter.title === lockedBefore.title && lockedAfter.status === 'in_progress' && lockedAfter.resolution === lockedBefore.resolution);
+const filesBeforeLock = photoCount();
+ok('original fault photo cannot be replaced or removed after work starts',
+  (await late(`${printUrl}/photo`, { method: 'POST', contentType: 'image/png', rawBody: pngBytes })).status === 409
+  && (await late(`${printUrl}/photo`, { method: 'DELETE' })).status === 409
+  && (await late(`${printUrl}/photo`)).bytes.equals(pngBytes) && photoCount() === filesBeforeLock);
+ok('report lock applies to technicians as well', (await rateTech(printUrl, { method: 'PATCH', body: { title: 'No' } })).status === 409);
+const snapshot = await late(`${printUrl}/print`);
+ok('print snapshot has the original report, machine, stage parts and photo identifiers', snapshot.status === 200
+  && snapshot.data.job.title === 'Corrected fault' && snapshot.data.job.notes === 'Original notes'
+  && snapshot.data.job.reported_by === 'Alice' && snapshot.data.job.barcode === '101220054'
+  && snapshot.data.job.equipment_location === 'Bay 3' && !!snapshot.data.job.photo
+  && snapshot.data.updates.length === 1 && snapshot.data.updates[0].message === 'Replaced bearing'
+  && snapshot.data.updates[0].photos.length === 1 && snapshot.data.updates[0].parts[0].unit_price === 8.005
+  && snapshot.data.parts[0].qty === 2 && Math.abs(snapshot.data.parts[0].cost_total - 16.01) < 1e-8);
+ok('print snapshot uses reviewed live hours and the same total as the job list', snapshot.data.job.effective_hours === lockedAfter.effective_hours
+  && snapshot.data.job.total_cost === lockedAfter.cost
+  && Math.abs(snapshot.data.job.parts_cost + snapshot.data.job.effective_hours * snapshot.data.rate - lockedAfter.cost) < 0.011);
+ok('print snapshot is available to technicians, but not anonymous visitors, and unknown jobs are 404',
+  (await rateTech(`${printUrl}/print`)).status === 200 && (await makeClient()(`${printUrl}/print`)).status === 401
+  && (await late('/api/work-orders/99999999/print')).status === 404);
+ok('latest stage remains correctable after report lock',
+  (await late(`${printUrl}/updates/${printStage.data.id}`, { method: 'PUT', body: { message: 'Corrected stage' } })).status === 200);
+const lockedClose = await late(printUrl, { method: 'PATCH', body: { status: 'done', resolution: 'Bearing replaced', labour_hours: 3, verified_by: 'Inspector' } });
+const closedPrint = await late(`${printUrl}/print`);
+ok('closure and reviewed totals stay available, including in print', lockedClose.status === 200
+  && closedPrint.data.job.resolution === 'Bearing replaced' && closedPrint.data.job.verified_by === 'Inspector' && closedPrint.data.job.effective_hours === 3);
+ok('closed report remains locked while its stage exists', (await late(printUrl, { method: 'PATCH', body: { notes: 'No' } })).status === 409);
+await late(printUrl, { method: 'PATCH', body: { status: 'open' } });
+ok('reopening does not unlock the report', (await late(printUrl, { method: 'PATCH', body: { title: 'No' } })).status === 409);
+await late(`${printUrl}/updates/${printStage.data.id}`, { method: 'DELETE' });
+ok('permanently removing every stage restores report editing', (await late(printUrl, { method: 'PATCH', body: { notes: 'Editable again' } })).status === 200);
+await late(`/api/equipment/${printMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${printPart.id}`, { method: 'DELETE' });
+const precisionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Print precision' } })).data;
+const precisionPart = (await late('/api/parts', { method: 'POST', body: { name: 'Fractional cost', qty: 1 } })).data;
+const precisionJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: precisionMachine.id, title: 'Precise cost', assigned_to: 1 } })).data;
+await late(`/api/work-orders/${precisionJob.id}/updates`, { method: 'POST', body: { message: 'Precise cost', hours: 0, parts: [{ part_id: precisionPart.id, qty: 1, unit_price: 1.005 }] } });
+const precisionPrint = (await late(`/api/work-orders/${precisionJob.id}/print`)).data;
+const precisionList = (await late('/api/work-orders')).data.find((w) => w.id === precisionJob.id);
+ok('print rounds half-cent costs the same way as the work-order list', precisionPrint.job.parts_cost === 1.005
+  && precisionPrint.job.total_cost === precisionList.cost && precisionPrint.job.parts_cost_display === precisionList.cost
+  && precisionPrint.parts[0].display_cost === precisionList.cost, JSON.stringify(precisionPrint));
+await late(`/api/equipment/${precisionMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${precisionPart.id}`, { method: 'DELETE' });
 
 // Admin corrections operate only on the newest stage and reconcile every effect.
 const correctionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage correction machine' } })).data;
@@ -3437,6 +3500,12 @@ ok('existing stage hours and part costs migrate once without double-counting', s
 const photoCleanupTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'photo-cleanup-test.js')], { cwd: root, encoding: 'utf8' });
 ok('failed photo writes clean partial files and failed deletion is reported', photoCleanupTest.status === 0,
   (photoCleanupTest.stderr || photoCleanupTest.stdout).slice(0, 500));
+const galleryTest = spawnSync(process.execPath, [join(root, 'scripts', 'stage-gallery-test.js')], { cwd: root, encoding: 'utf8' });
+ok('stage photo thumbnails, previews and object URL cleanup work', galleryTest.status === 0,
+  (galleryTest.stderr || galleryTest.stdout).slice(0, 500));
+const printUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'print-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('print page handles escaping, missing images, failures and the print action', printUiTest.status === 0,
+  (printUiTest.stderr || printUiTest.stdout).slice(0, 500));
 const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
@@ -3460,6 +3529,17 @@ ok('the stage form provides a labelled parts table and clear disclosure arrows',
   && /<th scope="col">Quantity/.test(assignDialog) && /<th scope="col">Actual unit cost/.test(assignDialog)
   && /aria-label="Add selected part"/.test(assignDialog) && (assignDialog.match(/class="disclosure-chevron"/g) || []).length === 3
   && /<path d="m6 9 6 6 6-6"/.test(assignDialog));
+const stageLayout = readFileSync(join(root, 'public', 'stage-experience.css'), 'utf8');
+const printMarkup = readFileSync(join(root, 'public', 'print-job.html'), 'utf8');
+const printCss = readFileSync(join(root, 'public', 'print-job.css'), 'utf8');
+ok('machine status is alongside time in the stage details row',
+  /stage-details-row[\s\S]*id="wa-hours"[\s\S]*class="stage-machine"[\s\S]*id="wa-running"[\s\S]*id="wa-owner-field"/.test(assignDialog));
+ok('the stage timeline and photo preview have dedicated responsive styles',
+  stageLayout.includes('.stage-view-only .update-history') && stageLayout.includes('.stage-thumbnail')
+  && html.includes('id="stage-photo-viewer"') && html.includes('id="wa-new-photos"'));
+ok('the row menu offers a print action and the standalone page is print-ready',
+  workSrc.includes("menuItem('Print job'") && appSrc13.includes('function printWork(')
+  && printMarkup.includes('Save as PDF') && printCss.includes('@media print'));
 ok('the stage form scrolls independently of its visible actions and errors',
   assignDialog.includes('id="wa-scroll" class="stage-scroll"') && assignDialog.includes('class="stage-footer"')
   && /class="stage-footer"><p class="form-error" role="alert"/.test(assignDialog)

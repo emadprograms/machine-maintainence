@@ -1,28 +1,18 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v3.0 — The record",
+  "milestone": "v5.0 \u2014 Work-order experience and print",
   "phases": [
     {
-      "number": "14",
-      "name": "The record",
-      "status": "complete"
-    },
-    {
-      "number": "15",
-      "name": "Find it",
-      "status": "complete"
-    },
-    {
-      "number": "16",
-      "name": "What it cost",
+      "number": "v5",
+      "name": "Work-order experience and print",
       "status": "complete"
     }
   ],
   "next": {
     "command": "/gsd-new-milestone",
     "label": "Start the next milestone",
-    "reason": "v3.0 is complete and archived"
+    "reason": "v5.0 is complete and archived"
   },
   "updated_at": "2026-11-05T15:16:52.902Z"
 }

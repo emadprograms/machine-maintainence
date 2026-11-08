@@ -17,6 +17,7 @@ import authRoutes from './routes/auth.js';
 import recordRoutes from './routes/record.js';
 import equipmentRoutes from './routes/equipment.js';
 import workOrderRoutes from './routes/work-orders.js';
+import jobPrintRoutes from './routes/job-print.js';
 import workUpdateRoutes from './routes/work-updates.js';
 import stageAdminRoutes from './routes/stage-admin.js';
 import partsRoutes from './routes/parts.js';
@@ -53,6 +54,7 @@ const api = {
   ...recordRoutes,
   ...equipmentRoutes,
   ...workOrderRoutes,
+  ...jobPrintRoutes,
   ...workUpdateRoutes,
   ...stageAdminRoutes,
   ...partsRoutes,

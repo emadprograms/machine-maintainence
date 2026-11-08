@@ -7,6 +7,7 @@
 - ✅ **v2.0 Dashboard** — Phases 11–13 (shipped 2026-11-05)
 - ✅ **v3.0 The record** — Phases 14–16 (shipped 2026-11-06)
 - ✅ **v4.0 Stage correction and machine state** — autonomous milestone (shipped 2026-11-05)
+- ✅ **v5.0 Work-order experience and print** — autonomous milestone (shipped 2026-11-05)
 
 ## Phases
 

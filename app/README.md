@@ -43,14 +43,14 @@ Check with `node --version`.
 
 | File | What it does | Lines |
 |---|---|---|
-| `server.js` | Starts up, decides which route a request is, serves the one page | 120 |
-| `routes/` | **One file per screen group** — see below | 40–199 each |
+| `server.js` | Starts up, decides which route a request is, serves the UI pages | 122 |
+| `routes/` | **One file per screen group** — see below | 30–199 each |
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 135 |
 | `values.js` | Turns what a browser sends into what the database may store | 85 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 35 |
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 453 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 148 |
-| `hours.js` / `part-usage.js` | Shared live-hour calculation and atomic part consumption | 8 / 24 |
+| `hours.js` / `part-usage.js` | Shared live-hour calculation and atomic part consumption | 8 / 45 |
 | `report.js` | One month of work, added up | 98 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
@@ -62,21 +62,25 @@ Check with `node --version`.
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 594 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 403 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 479 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 304 · 356 |
+| `public/app.css` | The main stylesheet — was a `<style>` block until the page reached 600 lines | 403 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 482 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 304 · 357 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
 | `public/stage-parts.js` | Optional staged part picker and draft consumption | 136 |
-| `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 223 |
+| `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 226 |
+| `public/stage-gallery.js` / `stage-experience.css` | Stage timeline, responsive editor styling and in-app photo previews | — |
+| `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
+| `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 644 behaviours | 3,545 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 598 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 669 behaviours | 3,625 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
+| `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
 | `scripts/stage-migration-test.js` | Tests upgrading existing stage hours and part costs | 51 |
 | `scripts/machine-state-migration-test.js` | Tests the state-event migration and idempotence | 62 |
 | `scripts/photo-cleanup-test.js` | Tests failed writes and photo-cleanup errors | 40 |
-| `scripts/audit-offline.js` | Proves nothing reaches the internet | 152 |
+| `scripts/audit-offline.js` | Proves nothing reaches the internet | 156 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
 The route files, one per screen group:
@@ -86,7 +90,8 @@ The route files, one per screen group:
 | `routes/auth.js` | login, logout, me | 50 |
 | `routes/record.js` | history, history.csv | 45 |
 | `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 130 |
-| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 199 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 198 |
+| `routes/job-print.js` | authenticated, complete one-job print snapshot | 33 |
 | `routes/work-updates.js` | stage timeline, time, parts, machine state and photos | 73 |
 | `routes/stage-admin.js` | admin-only latest-stage edit/delete and reconciliation | 114 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 132 |
@@ -95,7 +100,7 @@ The route files, one per screen group:
 | `routes/admin.js` | users, assignable people, backup | 84 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 55 |
 
-Total application code: **about 6,139 lines**, and about 4,448 of tests. No file is past the
+Total application code: **about 6,355 lines**, and about 4,637 of tests. No application file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -225,7 +230,7 @@ stored `role` values keep the word *user*, because everything else already speak
   previous displayed state is preserved as a migration baseline; the app cannot reconstruct
   missing pre-upgrade state history. A correction to a stage changes that stage's historical
   answer, not a newer report from another job.
-* **Editing a work order opens a dialog with the whole record on it.** Problem, assigned person,
+* **Before work starts, editing a work order opens a dialog with the whole record on it.** Problem, assigned person,
   priority, who reported it, what was seen, whether it stops the machine, and the
   photograph — replace it or remove it. It used to be a row of inputs inside the table that
   could change four things and nothing else, with the answer to *does this stop the machine*
@@ -233,15 +238,18 @@ stored `role` values keep the word *user*, because everything else already speak
   second request, and one Save writes everything. There is **one** *Assigned to* field: with the list
   of people it is a choice, without it the same control shows the one true answer, is disabled
   and says why — and the save leaves ownership out entirely, because sending nothing must
-  never mean *unassign*.
+  never mean *unassign*. Once a stage exists, the original report and its fault photo are
+  locked in the UI and API; add a stage to document further work instead. If all stages are
+  permanently deleted, the report becomes editable again. Closing, reopening and correcting
+  the latest stage still work.
 * **A work order needs a problem, but assignment is optional at creation.** Select a
   person in *Assigned to* or leave it blank; either way it starts as open. Starting an
   unassigned job asks who should do it; starting any job requires a Stage 1 update.
   The start dialog shows the existing assignee, if any, and allows choosing a different
   person. People and updates load independently, with an explanation and Retry if either
   lookup fails. The server saves the first stage, assignment and status together and prevents clearing
-  the assignee while a job is in progress. Existing unassigned in-progress jobs can still be
-  edited; they must be assigned if reopened and started again. Both administrators and
+  the assignee while a job is in progress. Existing unassigned in-progress jobs can be
+  assigned during a stage update; they must be assigned if reopened and started again. Both administrators and
   technicians can use the limited names list.
   The machine picker loads independently of the assignee list, shows when no machines
   are in service, and offers Retry when its lookup fails or the list is empty.
@@ -256,8 +264,9 @@ stored `role` values keep the word *user*, because everything else already speak
   all columns. Saving deducts stock and records costs atomically. In the update dialog, *Previous
   updates* opens the timeline, while *Spare parts* and *Photos* expand when needed; their
   summaries show selected items even when collapsed. The action bar and validation errors
-  remain visible while the form scrolls. History shows the newest stage first; in *View
-  updates* it opens automatically.
+  remain visible while the form scrolls. History shows cards with the newest stage first;
+  thumbnails open a larger preview, and both existing and newly selected photos can be
+  previewed during stage correction. In *View updates* history opens automatically.
 * **An admin can correct or delete only the latest stage.** Open *View updates*, then use the
   pencil beside the latest stage, including on a closed job. Correct its description, time, machine
   state, photos or parts, or confirm *Delete stage* to permanently remove it and its photos.
@@ -267,6 +276,10 @@ stored `role` values keep the word *user*, because everything else already speak
   Deleting the only stage of an in-progress job returns that job to open. Photo files are
   removed after the database commit; a storage failure is logged and the admin is warned to
   remove the named leftover files manually. Backups made before deletion are not affected.
+* **Print or save a complete work order as a PDF.** Choose *Print job* from its three-dot
+  menu. A fresh local print view includes the original report, machine details, closure,
+  totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
+  dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
 * **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
   total hours. Closing offers the live hours for review; after review, new stages add only
   time recorded since that review. Editing/deleting a stage adjusts the reviewed total and
@@ -497,10 +510,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 644 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 669 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`644 passed, 0 failed`.
+`669 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:
