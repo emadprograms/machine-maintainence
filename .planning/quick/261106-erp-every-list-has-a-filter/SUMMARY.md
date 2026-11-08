@@ -4,7 +4,7 @@ slug: every-list-has-a-filter
 date: 2026-11-07
 status: complete
 kind: quick
-commit: pending
+commit: df570d9
 files_modified: [app/public/index.html, app/public/app.js, app/public/parts.js, app/filters.js, app/scripts/smoke-test.js, app/README.md, README.md, .planning/PROJECT.md, .planning/STATE.md]
 ---
 
