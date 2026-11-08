@@ -62,13 +62,13 @@ Check with `node --version`.
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 594 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 295 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 474 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 461 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 479 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 468 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 588 behaviours | 3,245 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 266 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 589 behaviours | 3,247 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 323 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -240,7 +240,10 @@ stored `role` values keep the word *user*, because everything else already speak
   are in service, and offers Retry when its lookup fails or the list is empty.
 * **A work order keeps its stage-by-stage time log.** Starting asks for a written
   Stage 1 update, time spent and optionally up to five photos (2 MB each). An in-progress
-  ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. Each update
+  ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. A new
+  ticket with an empty history says “No updates yet”; real loading errors are shown
+  separately. If the server was not restarted after an update, the dialog asks for a
+  restart rather than mistaking an unavailable endpoint for an empty history. Each update
   retains its author, UTC timestamp, duration and photos; View updates remains available
   after closure. Reopening continues the same timeline. Stage durations are not added to
   labour cost directly: the close dialog proposes their total as final labour hours, which
@@ -470,10 +473,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 588 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 589 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`588 passed, 0 failed`.
+`589 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

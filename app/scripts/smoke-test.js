@@ -2196,6 +2196,8 @@ const stageMachine = (await late('/api/equipment', { method: 'POST', body: { nam
 const stageJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: stageMachine.id, title: 'Stage test' } })).data;
 const stageUrl = `/api/work-orders/${stageJob.id}/updates`;
 const stagePost = (body) => late(stageUrl, { method: 'POST', body });
+const emptyStages = await late(stageUrl);
+ok('a new ticket returns a successful empty update list', emptyStages.status === 200 && Array.isArray(emptyStages.data) && emptyStages.data.length === 0);
 const rawStageStart = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 1 } });
 ok('a direct status patch cannot skip the first stage', rawStageStart.status === 400 && /stage/i.test(rawStageStart.data.error || ''));
 ok('a stage without a description cannot start a ticket', (await stagePost({ message: '  ', hours: 1, assigned_to: 1 })).status === 400);

@@ -4,11 +4,16 @@ import assert from 'node:assert/strict';
 const elements = new Map();
 const el = (selector) => {
   if (!elements.has(selector)) {
-    const element = { value: '', textContent: '', disabled: false, hidden: true, files: [], _html: '' };
+    const element = { value: '', disabled: false, hidden: true, files: [], _html: '', _text: '' };
+    Object.defineProperty(element, 'textContent', {
+      get() { return this._text; },
+      set(value) { this._text = String(value); this._html = String(value); },
+    });
     Object.defineProperty(element, 'innerHTML', {
       get() { return this._html; },
       set(html) {
         this._html = html;
+        this._text = html.replace(/<[^>]*>/g, '');
         if (['#w-equipment', '#w-owner', '#wa-owner'].includes(selector)) {
           this.value = html.match(/<option value="([^"]*)"/)?.[1] ?? '';
         }
@@ -32,10 +37,10 @@ globalThis.formDone = (id) => closed.push(id);
 globalThis.formError = (id, message) => errors.push([id, message]);
 globalThis.alert = (message) => { throw new Error(`Unexpected alert: ${message}`); };
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
-let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null }];
+let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null, current_stage: null }];
 let updates = [];
-let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false;
-let waitPeople = null, waitMachines = null, waitUpdates = null;
+let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false;
+let waitPeople = null, waitMachines = null, waitUpdates = null, updateError = null;
 globalThis.api = async (path, options = {}) => {
   requests.push({ path, options });
   if (path === '/equipment?service=active') {
@@ -52,14 +57,15 @@ globalThis.api = async (path, options = {}) => {
   if (path === '/work-orders' && options.method === 'POST') return { id: 99 };
   if (path === '/work-orders/42/updates' && !options.method) {
     if (waitUpdates) return waitUpdates;
-    if (failUpdates) throw new Error('History unavailable');
+    if (failUpdates) throw updateError || new Error('History unavailable');
+    if (invalidUpdates) return {};
     return updates;
   }
   if (path === '/work-orders/42/updates' && options.method === 'POST') {
     const body = JSON.parse(options.body);
     updates.push({ id: updates.length + 1, stage: updates.length + 1, message: body.message,
       hours: Number(body.hours), author: 'Admin', created_at: '2026-01-01 12:00:00', photos: [] });
-    Object.assign(jobs[0], { status: 'in_progress', assigned_to: body.assigned_to || jobs[0].assigned_to });
+    Object.assign(jobs[0], { status: 'in_progress', current_stage: updates.length, assigned_to: body.assigned_to || jobs[0].assigned_to });
     return { id: updates.length };
   }
   if (path === '/work-orders/42' && options.method === 'PATCH') {
@@ -97,8 +103,37 @@ el('#w-title').value = 'Unassigned fault';
 el('#w-owner').value = '';
 await work.addWorkOrder();
 assert.equal(JSON.parse(requests.findLast((r) => r.path === '/work-orders' && r.options.method === 'POST').options.body).assigned_to, null);
-await work.advance(42, 'in_progress');
+// For a freshly open ticket, show the known empty state even while the
+// history request is pending; still verify the server before allowing a save.
+let releaseEmpty;
+waitUpdates = new Promise((resolve) => { releaseEmpty = resolve; });
+const emptyLoad = work.advance(42, 'in_progress');
+await new Promise((resolve) => setImmediate(resolve));
+assert.match(el('#wa-history').textContent, /No updates yet/);
+assert.equal(el('#wa-go').disabled, true);
+releaseEmpty([]);
+await emptyLoad;
+waitUpdates = null;
+assert.match(el('#wa-history').textContent, /No updates yet/);
+assert.equal(el('#wa-load-status').textContent, '');
+assert.equal(el('#wa-retry').hidden, true);
+assert.equal(el('#wa-go').disabled, false);
 assert.equal(opened.at(-1), 'work-assign');
+assert.equal(el('#wa-stage-title').textContent, 'Stage 1');
+// A concurrent stage can make the list snapshot stale; the verified response
+// replaces the provisional empty state before Save is enabled.
+let releaseConcurrent;
+waitUpdates = new Promise((resolve) => { releaseConcurrent = resolve; });
+const concurrentLoad = work.advance(42, 'in_progress');
+await new Promise((resolve) => setImmediate(resolve));
+assert.match(el('#wa-history').textContent, /No updates yet/);
+assert.equal(el('#wa-go').disabled, true);
+releaseConcurrent([{ id: 99, stage: 1, message: 'Added elsewhere', hours: 1, author: 'Admin', created_at: '2026-01-01', photos: [] }]);
+await concurrentLoad;
+waitUpdates = null;
+assert.match(el('#wa-history').textContent, /Added elsewhere/);
+assert.equal(el('#wa-stage-title').textContent, 'Stage 2');
+await work.advance(42, 'in_progress');
 assert.equal(el('#wa-stage-title').textContent, 'Stage 1');
 assert.equal(el('#wa-owner-field').hidden, false);
 assert.equal(el('#wa-owner').disabled, false);
@@ -165,12 +200,34 @@ assert.equal(el('#wa-owner').disabled, false);
 assert.match(el('#wa-owner').innerHTML, /Admin/);
 assert.equal(el('#wa-go').disabled, true);
 assert.match(el('#wa-load-status').textContent, /could not load updates.*history unavailable/i);
+assert.doesNotMatch(el('#wa-history').textContent, /No updates yet/); // a failure is not an empty result
 assert.equal(el('#wa-retry').hidden, false);
 el('#wa-owner').value = '2';
 failUpdates = false;
 await work.retryWorkUpdateLoading();
 assert.equal(el('#wa-go').disabled, false);
 assert.equal(el('#wa-owner').value, '2');
+// A stale server can serve new HTML but not yet know the updates route. A plain
+// 404 means restart, unlike the API's JSON 404 for a genuinely deleted ticket.
+updateError = Object.assign(new Error('Request failed'), { status: 404, nonJson: true });
+failUpdates = true;
+await work.advance(42, 'in_progress');
+assert.match(el('#wa-load-status').textContent, /restart the app after updating/i);
+assert.equal(el('#wa-go').disabled, true);
+assert.doesNotMatch(el('#wa-history').textContent, /No updates yet/);
+updateError = Object.assign(new Error('Work order not found'), { status: 404, nonJson: false });
+await work.retryWorkUpdateLoading();
+assert.match(el('#wa-load-status').textContent, /work order not found/i);
+assert.doesNotMatch(el('#wa-load-status').textContent, /restart/i);
+failUpdates = false;
+updateError = null;
+invalidUpdates = true;
+await work.retryWorkUpdateLoading();
+assert.match(el('#wa-load-status').textContent, /invalid updates list/i);
+assert.equal(el('#wa-go').disabled, true);
+invalidUpdates = false;
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-go').disabled, false);
 noPeople = true;
 await work.advance(42, 'in_progress');
 assert.equal(el('#wa-owner').disabled, true);

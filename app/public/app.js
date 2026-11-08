@@ -88,7 +88,12 @@ async function api(path, options = {}) {
   });
   if (res.status === 401) { showLogin(); throw new Error('Please sign in'); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) {
+    const error = new Error(data.error || 'Request failed');
+    error.status = res.status;
+    error.nonJson = !data.error && !/application\/json/i.test(res.headers.get('content-type') || '');
+    throw error;
+  }
   return data;
 }
 /**

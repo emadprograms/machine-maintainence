@@ -306,7 +306,11 @@ export async function retryWorkUpdateLoading() {
   $('#wa-go').disabled = true;
   $('#wa-retry').hidden = true;
   formError('work-assign', '');
-  $('#wa-history').textContent = 'Loading updates…';
+  // The list already identifies a freshly opened ticket with no stages. Show
+  // that known empty state while checking the latest history in the background.
+  if (job.status === 'open' && job.current_stage === null)
+    $('#wa-history').innerHTML = '<p class="hint">No updates yet.</p>';
+  else $('#wa-history').textContent = 'Loading updates…';
   if (choose) {
     $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
     $('#wa-owner').disabled = true;
@@ -314,6 +318,7 @@ export async function retryWorkUpdateLoading() {
   refresh();
   const history = api(`/work-orders/${workId}/updates`).then((updates) => {
     if (!current()) return;
+    if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
     $('#wa-history').innerHTML = updates.map((u) => `<div class="update-entry"><strong>Stage ${Number(u.stage)}</strong>
       <small> · ${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours</small>
       <p>${esc(u.message)}</p>${u.photos.map((photo, i) => `<a class="link-photo" target="_blank" rel="noopener"
@@ -325,7 +330,9 @@ export async function retryWorkUpdateLoading() {
   }).catch((e) => {
     if (!current()) return;
     $('#wa-history').textContent = '';
-    failures.push(`Could not load updates: ${e.message}.`);
+    failures.push(e.status === 404 && e.nonJson
+      ? 'Updates are unavailable on this server. Restart the app after updating, then retry.'
+      : `Could not load updates: ${e.message}.`);
     refresh();
   });
   const people = choose ? api('/users/assignable').then((users) => {
