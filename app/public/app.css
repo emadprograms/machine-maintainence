@@ -287,3 +287,9 @@ th.sorted .sort-btn { color: var(--ink); }
    ended up with two Assigned-to fields, one of them empty. This makes the attribute mean
    what it says, wherever it is used. */
   [hidden] { display: none !important; }
+
+/* Each stage remains readable after the ticket is closed. */
+.update-history { max-height: 240px; overflow-y: auto; }
+.update-entry { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.update-entry p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0; }
+.update-entry small { color: var(--soft); }

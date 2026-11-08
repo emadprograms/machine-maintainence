@@ -43,12 +43,12 @@ Check with `node --version`.
 
 | File | What it does | Lines |
 |---|---|---|
-| `server.js` | Starts up, decides which route a request is, serves the one page | 116 |
+| `server.js` | Starts up, decides which route a request is, serves the one page | 118 |
 | `routes/` | **One file per screen group** — see below | 40–135 each |
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
 | `values.js` | Turns what a browser sends into what the database may store | 85 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 363 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 380 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
 | `report.js` | One month of work, added up | 97 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
@@ -60,15 +60,15 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 595 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 289 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 472 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 379 |
+| `public/index.html` | The whole UI shell: every screen and form | 593 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 295 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 473 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 412 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 559 behaviours | 3,162 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 161 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 586 behaviours | 3,234 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 176 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -78,8 +78,9 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 45 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 124 |
-| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 183 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 128 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 187 |
+| `routes/work-updates.js` | stage timeline, time logs and stage photographs | 71 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
@@ -218,7 +219,7 @@ stored `role` values keep the word *user*, because everything else already speak
   *retired*; `status.js` derives the rest and the list names the job — by its number — that
   is holding the machine down.
 * **Editing a work order opens a dialog with the whole record on it.** Problem, owner,
-  priority, hours, who reported it, what was seen, whether it stops the machine, and the
+  priority, who reported it, what was seen, whether it stops the machine, and the
   photograph — replace it or remove it. It used to be a row of inputs inside the table that
   could change four things and nothing else, with the answer to *does this stop the machine*
   squeezed into a cell. The dialog is filled from the row that was clicked rather than from a
@@ -228,13 +229,22 @@ stored `role` values keep the word *user*, because everything else already speak
   never mean *unassign*.
 * **A work order needs a problem, but assignment is optional at creation.** Select a
   person in *Assigned to* or leave it blank; either way it starts as open. Starting an
-  unassigned job asks who should do it, and assigns and starts it in one request. An
-  assigned job starts directly. The server enforces the rule and prevents clearing the
-  assignee while a job is in progress. Existing unassigned in-progress jobs can still be
+  unassigned job asks who should do it; starting any job requires a Stage 1 update.
+  The server saves the first stage, assignment and status together and prevents clearing
+  the assignee while a job is in progress. Existing unassigned in-progress jobs can still be
   edited; they must be assigned if reopened and started again. Both administrators and
   technicians can use the limited names list.
   The machine picker loads independently of the assignee list, shows when no machines
   are in service, and offers Retry when its lookup fails or the list is empty.
+* **A work order keeps its stage-by-stage time log.** Starting asks for a written
+  Stage 1 update, time spent and optionally up to five photos (2 MB each). An in-progress
+  ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. Each update
+  retains its author, UTC timestamp, duration and photos; View updates remains available
+  after closure. Reopening continues the same timeline. Stage durations are not added to
+  labour cost directly: the close dialog proposes their total as final labour hours, which
+  can be reviewed and changed. If a previous final total exists it is preserved and the
+  stage sum is shown separately for review. Photos are kept in the existing data/photos
+  folder, so copy that folder with the database when moving or backing up the installation.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -458,10 +468,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 559 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 586 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`559 passed, 0 failed`.
+`586 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

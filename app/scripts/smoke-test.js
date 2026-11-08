@@ -201,8 +201,8 @@ const startStillOpen = (await c('/api/work-orders')).data.find((w) => w.id === w
 ok('a refused start leaves the job open and unassigned', startStillOpen.status === 'open' && startStillOpen.assigned_to === null);
 const preassigned = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Assigned at creation', assigned_to: 1 } });
 ok('a job can be created already assigned but remains open', preassigned.status === 201 && preassigned.data.assigned_to === 1 && preassigned.data.status === 'open');
-const preStart = await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
-ok('an already assigned job starts without another assignment', preStart.status === 200 && preStart.data.status === 'in_progress' && preStart.data.assigned_to === 1);
+const preStart = await c(`/api/work-orders/${preassigned.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25 } });
+ok('an already assigned job starts without another assignment', preStart.status === 201 && preStart.data.status === 'in_progress' && preStart.data.assigned_to === 1);
 const clearStarted = await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
 ok('an in-progress job cannot be unassigned', clearStarted.status === 400);
 const afterClear = (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id);
@@ -212,7 +212,7 @@ ok('an in-progress job can still be edited without clearing its assignee',
 const badStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 999999 } });
 ok('starting with an invalid assignee is refused', badStart.status === 400);
 ok('status advances open -> in_progress',
-  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 1 } }))
+  (await c(`/api/work-orders/${wo.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25, assigned_to: 1 } }))
     .data.status === 'in_progress');
 ok('starting with an assignment saves both together',
   (await c('/api/work-orders')).data.some((w) => w.id === wo.data.id && w.status === 'in_progress' && w.assigned_to === 1));
@@ -362,12 +362,12 @@ const techCreatedJob = await tech('/api/work-orders', { method: 'POST', body: {
   equipment_id: m1.data.id, title: 'Technician assigned job', assigned_to: created.data.id,
 } });
 ok('technicians can create assigned work orders', techCreatedJob.status === 201 && techCreatedJob.data.assigned_to === created.data.id);
-const techStart = await tech(`/api/work-orders/${techCreatedJob.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
-ok('technicians can start assigned work orders', techStart.status === 200 && techStart.data.status === 'in_progress');
+const techStart = await tech(`/api/work-orders/${techCreatedJob.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25 } });
+ok('technicians can start assigned work orders', techStart.status === 201 && techStart.data.status === 'in_progress');
 const techOpenJob = await tech('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Technician unassigned job' } });
-const techAssignStart = await tech(`/api/work-orders/${techOpenJob.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: created.data.id } });
+const techAssignStart = await tech(`/api/work-orders/${techOpenJob.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25, assigned_to: created.data.id } });
 ok('technicians can assign and start an unassigned job in one request',
-  techAssignStart.status === 200 && techAssignStart.data.assigned_to === created.data.id && techAssignStart.data.status === 'in_progress');
+  techAssignStart.status === 201 && techAssignStart.data.assigned_to === created.data.id && techAssignStart.data.status === 'in_progress');
 
 ok('technician cannot create users',
   (await tech('/api/users', { method: 'POST', body: {
@@ -1495,7 +1495,7 @@ ok('closing that job brings the machine back to running',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 
 const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
-const routineStarted = await setJob(routine.id, { status: 'in_progress', assigned_to: 1 });
+const routineStarted = await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { message: 'Starting routine work', hours: 0.25, assigned_to: 1 } });
 ok('routine job really started before checking the machine', routineStarted.data.status === 'in_progress');
 ok('a job somebody is working on does not stop the machine either, unless it says so',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
@@ -2182,6 +2182,72 @@ ok('the end of the suite can still sign in and be answered', lateIn.status === 2
 const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const pngBytes = Buffer.concat([PNG_HEAD, Buffer.alloc(64, 3)]);
 
+// Stages must survive the whole lifecycle, including a restart, and photos belong
+// to their own stage rather than replacing the ticket's original fault photo.
+const stageMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage test machine' } })).data;
+const stageJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: stageMachine.id, title: 'Stage test' } })).data;
+const stageUrl = `/api/work-orders/${stageJob.id}/updates`;
+const stagePost = (body) => late(stageUrl, { method: 'POST', body });
+const rawStageStart = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 1 } });
+ok('a direct status patch cannot skip the first stage', rawStageStart.status === 400 && /stage/i.test(rawStageStart.data.error || ''));
+ok('a stage without a description cannot start a ticket', (await stagePost({ message: '  ', hours: 1, assigned_to: 1 })).status === 400);
+ok('a stage requires a person', (await stagePost({ message: 'Inspecting', hours: 1 })).status === 400);
+ok('a stage requires time spent', (await stagePost({ message: 'Inspecting', assigned_to: 1 })).status === 400);
+ok('negative stage time is rejected', (await stagePost({ message: 'Inspecting', hours: -1, assigned_to: 1 })).status === 400);
+ok('invalid stage photos are rejected without starting the job',
+  (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: ['data:image/png;base64,dGV4dA=='] })).status === 400
+  && (await late('/api/work-orders')).data.find((w) => w.id === stageJob.id).status === 'open');
+ok('a signed-out person cannot see the update history', (await makeClient()(stageUrl)).status === 401);
+const stagePhoto = `data:image/png;base64,${pngBytes.toString('base64')}`;
+ok('updates reject more than five photos', (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: Array(6).fill(stagePhoto) })).status === 400);
+ok('updates reject unknown assignees', (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 999999 })).status === 400);
+ok('updates reject overly long descriptions', (await stagePost({ message: 'x'.repeat(2001), hours: 1, assigned_to: 1 })).status === 400);
+const filesBeforeBadStage = readdirSync(photosDir).length;
+const mixedBadStage = await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: [stagePhoto, 'data:image/png;base64,dGV4dA=='] });
+ok('a failed multi-photo update cleans up already saved photos', mixedBadStage.status === 400 && readdirSync(photosDir).length === filesBeforeBadStage);
+
+const stageOne = await stagePost({ message: '  Inspected the bearing  ', hours: 0.5, assigned_to: 1, photos: [stagePhoto, stagePhoto] });
+ok('stage one atomically assigns and starts the job', stageOne.status === 201 && stageOne.data.stage === 1 && stageOne.data.assigned_to === 1);
+const stageTwo = await stagePost({ message: 'Replaced the bearing', hours: 1.25 });
+ok('another update adds stage two while the job stays in progress', stageTwo.status === 201 && stageTwo.data.stage === 2 && stageTwo.data.status === 'in_progress');
+let stages = (await late(stageUrl)).data;
+ok('the ordered timeline retains descriptions, time, author and timestamps', stages.length === 2
+  && stages[0].stage === 1 && stages[0].message === 'Inspected the bearing' && stages[0].hours === 0.5
+  && stages[0].author === 'Admin' && !!stages[0].created_at && stages[1].stage === 2 && stages[1].hours === 1.25);
+ok('a stage can carry multiple photos', stages[0].photos.length === 2 && stages[1].photos.length === 0);
+const stagePhotoUrl = `${stageUrl}/${stages[0].id}/photos/${stages[0].photos[0]}`;
+const stagePhotoResult = await late(stagePhotoUrl);
+ok('a stage photo can be opened', stagePhotoResult.status === 200 && stagePhotoResult.bytes.equals(pngBytes));
+ok('a stage photo cannot be read through a different ticket',
+  (await late(`/api/work-orders/${stageJob.id + 9999}/updates/${stages[0].id}/photos/${stages[0].photos[0]}`)).status === 404);
+const stageDb = new DatabaseSync(DB, { readOnly: true });
+const stagePhotoFiles = stageDb.prepare('SELECT filename FROM work_update_photos WHERE update_id = ?').all(stages[0].id).map((p) => p.filename);
+stageDb.close();
+srv.child.kill('SIGKILL');
+await srv.exited;
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server restarts after stage updates', await waitForServer());
+stages = (await late(stageUrl)).data;
+ok('stage history and its photos survive a restart', stages.length === 2 && stages[0].photos.length === 2 && (await late(stagePhotoUrl)).bytes.equals(pngBytes));
+const stageClosed = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Bearing replaced', labour_hours: 1.75 } });
+ok('closing records the final total without deleting stages', stageClosed.status === 200 && stageClosed.data.labour_hours === 1.75 && (await late(stageUrl)).data.length === 2);
+ok('a closed ticket refuses new updates', (await stagePost({ message: 'Too late', hours: 1 })).status === 400);
+await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+const reopenedStage = await stagePost({ message: 'Follow-up', hours: 0.25 });
+ok('a reopened ticket continues the timeline rather than replacing it', reopenedStage.status === 201 && reopenedStage.data.stage === 3);
+const parallelStages = await Promise.all([
+  stagePost({ message: 'Parallel A', hours: 0.5 }), stagePost({ message: 'Parallel B', hours: 0.75 }),
+]);
+ok('concurrent updates get distinct consecutive stage numbers', parallelStages.every((r) => r.status === 201)
+  && parallelStages.map((r) => r.data.stage).sort().join(',') === '4,5');
+ok('all stage descriptions remain available after reopening', (await late(stageUrl)).data.length === 5);
+
+await late(`/api/equipment/${stageMachine.id}`, { method: 'DELETE' });
+ok('deleting a machine also removes its stage records and image files',
+  (await late(stageUrl)).status === 404 && stagePhotoFiles.length === 2
+  && stagePhotoFiles.every((f) => !existsSync(join(photosDir, f))));
+
+
 const reportMachine = (await late('/api/equipment', { method: 'POST', body: {
   name: 'Press (reporting)' } })).data;
 
@@ -2586,7 +2652,7 @@ ok('the history shows the number beside the job',
 const editDialog = (indexEq.match(/<dialog id="work-edit"[\s\S]*?<\/dialog>/) || [''])[0];
 ok('editing a work order opens a dialog that carries the whole record',
   editDialog.includes('<h3 id="work-edit-title">')
-  && ['we-id', 'we-title', 'we-owner', 'we-priority', 'we-stops', 'we-hours',
+  && ['we-id', 'we-title', 'we-owner', 'we-priority', 'we-stops',
     'we-reporter', 'we-notes', 'we-photo', 'we-photo-clear', 'we-photo-now']
     .every((wanted) => editDialog.includes(`id="${wanted}"`)),
   editDialog ? 'a field is missing' : 'work-edit is gone');
@@ -2608,7 +2674,7 @@ const saveWorkFn = (workSrc.match(/export async function saveWork\(\) \{[\s\S]*?
 // rest as `field: value`, so the pattern allows either rather than demanding one style.
 const saveBody = (saveWorkFn.match(/const body = \{[\s\S]*?\n  \};/) || [''])[0];
 ok('one Save sends everything the dialog asked for',
-  ['title', 'priority', 'labour_hours', 'reported_by', 'notes', 'stops_machine']
+  ['title', 'priority', 'reported_by', 'notes', 'stops_machine']
     .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(saveBody)),
   saveBody ? `sent: ${saveBody.replace(/\s+/g, ' ').slice(0, 200)}` : 'no request body found');
 ok('and refuses an empty problem before it reaches the server',
@@ -3084,6 +3150,12 @@ const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-t
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
 const assignDialog = (html.match(/<dialog id="work-assign"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('final labour hours appear only in the close dialog',
+  !workForm.includes('id="w-hours"') && !editDialog.includes('id="we-hours"')
+  && indexEq.includes('id="wc-hours"') && !createWorkFn.includes('labour_hours') && !saveWorkFn.includes('labour_hours'));
+ok('the stage dialog asks for an update, time and optional photos',
+  ['wa-message', 'wa-hours', 'wa-photos', 'wa-history'].every((id) => assignDialog.includes(`id="${id}"`))
+  && assignDialog.includes('multiple'));
 ok('the work-order forms expose the assignment controls and wire up the actions',
   workForm.includes('id="w-owner"') && workForm.includes('id="w-title" required')
   && html.includes('onclick="openNewWork()"') && appSrc13.includes('openNewWork()')

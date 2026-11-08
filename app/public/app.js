@@ -229,6 +229,7 @@ function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
 function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
+function openWorkUpdates(id, viewOnly = false) { (workReady).then((m) => m.openWorkUpdates(id, viewOnly)); }
 function startAssigned() { (workReady).then((m) => m.startAssigned()); }
 
 // ----------------------------------------------------- preventive maint.

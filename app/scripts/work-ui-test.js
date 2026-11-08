@@ -33,6 +33,7 @@ globalThis.formError = (id, message) => errors.push([id, message]);
 globalThis.alert = (message) => { throw new Error(`Unexpected alert: ${message}`); };
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
 let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null }];
+let updates = [];
 let failPeople = false, failMachines = false, noMachines = false;
 let waitPeople = null, waitMachines = null;
 globalThis.api = async (path, options = {}) => {
@@ -49,6 +50,14 @@ globalThis.api = async (path, options = {}) => {
   }
   if (path.startsWith('/work-orders?') || (path === '/work-orders' && !options.method)) return jobs;
   if (path === '/work-orders' && options.method === 'POST') return { id: 99 };
+  if (path === '/work-orders/42/updates' && !options.method) return updates;
+  if (path === '/work-orders/42/updates' && options.method === 'POST') {
+    const body = JSON.parse(options.body);
+    updates.push({ id: updates.length + 1, stage: updates.length + 1, message: body.message,
+      hours: Number(body.hours), author: 'Admin', created_at: '2026-01-01 12:00:00', photos: [] });
+    Object.assign(jobs[0], { status: 'in_progress', assigned_to: body.assigned_to || jobs[0].assigned_to });
+    return { id: updates.length };
+  }
   if (path === '/work-orders/42' && options.method === 'PATCH') {
     Object.assign(jobs[0], JSON.parse(options.body));
     return jobs[0];
@@ -86,23 +95,29 @@ await work.addWorkOrder();
 assert.equal(JSON.parse(requests.findLast((r) => r.path === '/work-orders' && r.options.method === 'POST').options.body).assigned_to, null);
 await work.advance(42, 'in_progress');
 assert.equal(opened.at(-1), 'work-assign');
-assert.equal(requests.filter((r) => r.options.method === 'PATCH').length, 0);
+assert.equal(el('#wa-stage-title').textContent, 'Stage 1');
+assert.equal(requests.filter((r) => r.options.method === 'POST' && r.path.endsWith('/updates')).length, 0);
+el('#wa-message').value = 'Started inspection';
+el('#wa-hours').value = '0.5';
 el('#wa-owner').value = '';
 await work.startAssigned();
 assert.match(errors.at(-1)[1], /choose/i);
-assert.equal(requests.filter((r) => r.options.method === 'PATCH').length, 0);
 el('#wa-owner').value = '2';
 await work.startAssigned();
-const patch = JSON.parse(requests.findLast((r) => r.options.method === 'PATCH').options.body);
-assert.deepEqual(patch, { assigned_to: 2, status: 'in_progress' });
+const stage1 = JSON.parse(requests.findLast((r) => r.path.endsWith('/updates') && r.options.method === 'POST').options.body);
+assert.deepEqual(stage1, { message: 'Started inspection', hours: '0.5', photos: [], assigned_to: 2 });
 assert.equal(closed.at(-1), 'work-assign');
-// An already assigned job proceeds without a second prompt.
-jobs[0].status = 'open';
-await work.loadWork();
-const countOpened = opened.length;
-await work.advance(42, 'in_progress');
-assert.equal(opened.length, countOpened);
-assert.deepEqual(JSON.parse(requests.findLast((r) => r.options.method === 'PATCH').options.body), { status: 'in_progress' });
+await work.openWorkUpdates(42);
+assert.equal(el('#wa-stage-title').textContent, 'Stage 2');
+assert.match(el('#wa-history').innerHTML, /Started inspection/);
+el('#wa-message').value = 'Replaced bearing';
+el('#wa-hours').value = '1.25';
+await work.startAssigned();
+assert.equal(updates.length, 2);
+assert.equal(jobs[0].status, 'in_progress');
+await work.openWorkUpdates(42, true);
+assert.equal(el('#wa-entry').hidden, true);
+assert.match(el('#wa-history').innerHTML, /Replaced bearing/);
 // An unavailable list must not pretend the user lacks permission or start a job.
 jobs[0].assigned_to = null;
 jobs[0].status = 'open';

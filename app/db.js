@@ -115,6 +115,23 @@ CREATE TABLE IF NOT EXISTS work_orders (
   assigned_to  INTEGER
 );
 
+-- Stages are an append-only timeline, separate from the final labour total.
+CREATE TABLE IF NOT EXISTS work_order_updates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_order_id INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+  stage INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  hours REAL NOT NULL CHECK (hours >= 0),
+  author TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(work_order_id, stage)
+);
+CREATE TABLE IF NOT EXISTS work_update_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  update_id INTEGER NOT NULL REFERENCES work_order_updates(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS parts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,

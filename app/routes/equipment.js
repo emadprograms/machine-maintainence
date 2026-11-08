@@ -80,9 +80,13 @@ export default {
     // nothing left to ask, and a file nobody points at is litter.
     const jobPhotos = all('SELECT photo FROM work_orders WHERE equipment_id = ? AND photo IS NOT NULL',
       id(req.params.id)).map((w) => w.photo);
+    const updatePhotos = all(`SELECT p.filename FROM work_update_photos p
+      JOIN work_order_updates u ON u.id = p.update_id
+      JOIN work_orders w ON w.id = u.work_order_id WHERE w.equipment_id = ?`, id(req.params.id));
     run('DELETE FROM equipment WHERE id = ?', id(req.params.id));
     removePhoto(row?.photo);
     jobPhotos.forEach(removePhoto);
+    updatePhotos.forEach((p) => removePhoto(p.filename));
     send(res, 200, { ok: true });
   }),
 

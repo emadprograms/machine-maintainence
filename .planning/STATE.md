@@ -36,6 +36,7 @@ Last activity: 2026-11-07 — quick task 261106-erq: "Users" is "Admins & Techni
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | 261105-est | Work-order stages with time logs and photos; final labour hours at closure | See git history |
 | 2026-11-05 | 261105-ers | Unblock the work-order machine picker, add retry and empty-state feedback, and verify selection in Chromium | See git history |
 | 2026-11-05 | 261105-err | Require a problem, allow optional assignment at creation, and ask for an assignee before starting an unassigned work order | See git history |
 | 2026-11-05 | 261105-kkb | Record failed sign-ins instead of blocking them; amended the record to match | `dd6b44e`, `23bf79f` |

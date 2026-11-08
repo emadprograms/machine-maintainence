@@ -21,6 +21,7 @@ export default {
     const f = workOrderFilter(req.query);
     send(res, 200, all(`
       SELECT w.*, e.name AS equipment_name, u.name AS assignee_name,
+             (SELECT MAX(stage) FROM work_order_updates WHERE work_order_id = w.id) AS current_stage,
              -- parts used on this job, plus recorded hours at the configured rate
              ROUND(COALESCE(w.labour_hours, 0) * ?
                    + (SELECT COALESCE(SUM(wop.qty * COALESCE(p.unit_price, 0)), 0)
@@ -88,6 +89,9 @@ export default {
     if (status === 'in_progress' && !owner.value
         && (before.status !== 'in_progress' || (b.assigned_to !== undefined && before.assigned_to))) {
       return send(res, 400, { error: 'Assign the job to someone before starting it' });
+    }
+    if (status === 'in_progress' && before.status !== 'in_progress') {
+      return send(res, 400, { error: 'Add a stage update to start the job' });
     }
     // A job cannot be closed without an account of the repair. "Bearing noise —
     // done" answers nothing six months later, and the moment to write it down is
