@@ -436,6 +436,8 @@ th.sorted .sort-btn { color: var(--ink); }
 
 .settings-button { white-space: nowrap; }
 .settings-field { display: grid; gap: 6px; font-size: 13px; }
+.settings-field label:not(:first-child) { margin-top: 10px; }
+#machine-cost-status { color: #8a4b08; margin-top: 8px; }
 #settings-status { position: absolute; right: 20px; top: 100%; background: #fff4f2; padding: 6px 10px; }
 @media (max-width: 600px) {
   header { gap: 8px; padding: 10px 12px; flex-wrap: wrap; }

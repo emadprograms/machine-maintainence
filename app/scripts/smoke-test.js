@@ -3563,6 +3563,9 @@ ok('stage photo thumbnails, previews and object URL cleanup work', galleryTest.s
 const printUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'print-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('print page handles escaping, missing images, failures and the print action', printUiTest.status === 0,
   (printUiTest.stderr || printUiTest.stdout).slice(0, 500));
+const machineCostTest = spawnSync(process.execPath, [join(root, 'scripts', 'machine-cost-test.js')], { cwd: root, encoding: 'utf8' });
+ok('missing machine costs fall back to job totals without inventing zeroes', machineCostTest.status === 0,
+  String(machineCostTest.stderr || machineCostTest.stdout).slice(0, 400));
 const timeCostTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'timezone-cost-test.js')], { cwd: root, encoding: 'utf8' });
 ok('workshop zone and machine costs survive boundaries, permissions and restart', timeCostTest.status === 0,
   String(timeCostTest.stderr || timeCostTest.stdout).slice(0, 400));

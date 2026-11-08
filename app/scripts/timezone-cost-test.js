@@ -62,6 +62,7 @@ try {
   assert.equal((await call('/settings', 'GET', undefined, '')).status, 401);
   cookie = await login('admin@local', 'test-password');
   assert.equal((await ok('/settings')).time_zone, 'UTC');
+  assert.equal((await ok('/settings')).hourly_rate, 0); // an unset rate is not a guessed price
   await ok('/users', 'POST', { name: 'Technician', email: 'tech@local', password: 'tech-password', role: 'tech' });
   const tech = await login('tech@local', 'tech-password');
   assert.equal((await call('/settings', 'PUT', { time_zone: 'Asia/Bahrain' }, tech)).status, 403);
@@ -70,13 +71,15 @@ try {
   const part = await ok('/parts', 'POST', { name: 'Seal', qty: 10, unit_price: 20 });
   const job1 = await ok('/work-orders', 'POST', { equipment_id: machine.id, title: 'Boundary February' });
   const job2 = await ok('/work-orders', 'POST', { equipment_id: machine.id, title: 'Boundary March' });
-  await ok('/settings', 'PUT', { hourly_rate: 40 });
   const stage = await ok(`/work-orders/${job1.id}/updates`, 'POST', { message: 'Replace seal', hours: 2,
     assigned_to: 1, machine_running: true, parts: [{ part_id: part.id, qty: 2, unit_price: 7.25 }] });
   await ok(`/work-orders/${job2.id}`, 'PATCH', { labour_hours: 1.5 });
   let machines = await ok('/equipment');
   assert.equal(machines.find((m) => m.id === empty.id).total_service_cost, 0);
   assert.equal(machines.find((m) => m.id === machine.id).total_hours, 3.5);
+  assert.equal(machines.find((m) => m.id === machine.id).total_service_cost, 14.5); // recorded parts even at zero rate
+  await ok('/settings', 'PUT', { hourly_rate: 40 });
+  machines = await ok('/equipment');
   assert.equal(machines.find((m) => m.id === machine.id).total_service_cost, 154.5);
   await ok(`/work-orders/${job1.id}/updates/${stage.id}`, 'PUT', { message: 'Corrected', hours: 3, machine_running: true,
     parts: [{ part_id: part.id, qty: 1, unit_price: 8 }] });
@@ -88,6 +91,11 @@ try {
   machines = await ok('/equipment');
   assert.equal(machines.find((m) => m.id === machine.id).total_service_cost, 84.5);
   await ok('/settings', 'PUT', { hourly_rate: 40 });
+  for (const bad of ['', '  ', null, false, -1]) {
+    assert.equal((await call('/settings', 'PUT', { hourly_rate: bad, time_zone: 'Asia/Bahrain' })).status, 400);
+    assert.equal((await ok('/settings')).time_zone, 'UTC');
+    assert.equal((await ok('/settings')).hourly_rate, 40);
+  }
   assert.equal((await call('/settings', 'PUT', { time_zone: 'Not/A_Zone', hourly_rate: 999 })).status, 400);
   assert.equal((await ok('/settings')).hourly_rate, 40); // invalid combined write is atomic
   const saved = await ok('/settings', 'PUT', { time_zone: 'America/New_York' });

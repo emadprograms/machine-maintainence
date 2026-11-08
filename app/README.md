@@ -285,7 +285,7 @@ stored `role` values keep the word *user*, because everything else already speak
 * **Hours and costs stay live.** Stages feed the work order's Hours and Cost and the machine's
   total service hours and total service cost, meaning maintenance labour rather than machine running time. Machine cost is the sum of every job (open or closed): recorded parts costs plus effective service hours at the **current** hourly rate. Changing the rate recalculates historical labour costs; it is not a ledger of rates actually paid. Hours
   and parts are entered on stages, not at closure. Historical reviewed totals are preserved;
-  later stages and corrections remain correctly rebaselined without double-counting. Existing part-use costs
+  later stages and corrections remain correctly rebaselined without double-counting. The rate starts at zero until an administrator sets it in Settings (or Report); when it is zero, Machines explains that labour contributes no cost. Missing cost data is shown as unavailable, never silently as zero. Existing part-use costs
   are captured at the catalog price on upgrade (zero if no price was recorded); later catalog
   price changes do not rewrite them. Copy the data/photos folder with the database when moving
   or backing up.
@@ -323,7 +323,7 @@ stored `role` values keep the word *user*, because everything else already speak
   stage creation/correction or closure with date and time, and sorts in either direction.
   A job with no stages falls back to its report time.
 * **Workshop time zone.** Open *Settings* in the top bar. Administrators can save an IANA
-  time zone such as `Asia/Bahrain`; technicians can view it. UTC is the default for an
+  time zone such as `Asia/Bahrain` and the hourly labour rate; technicians can view them. UTC is the default for an
   existing installation. The setting is saved with the database and is used workshop-wide,
   including timeline and print timestamps, CSV exports, history date ranges, report months,
   dashboard trends and maintenance "today"/due calculations. Daylight saving is applied

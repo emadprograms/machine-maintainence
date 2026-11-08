@@ -7,6 +7,7 @@
 // repeating them: this is one page, not a bundle of independent widgets.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
+import { numericCost, needsMachineCosts, fillMissingMachineCosts } from './machine-cost.js';
 
 // ---- what a row shows ------------------------------------------------------
 // status.js sends the latest reported operating state and an explanation. The
@@ -51,6 +52,7 @@ function actions(machine) {
 // looking it up here beats inventing a GET /api/equipment/:id that nothing else
 // would use.
 let equipmentRows = [];
+let machineCostUnavailable = false, equipmentLoad = 0;
 
 // The four views of the machine list. One filter with four answers, instead of a
 // checkbox that could only say "hide the scrap" or "show me everything everywhere".
@@ -89,6 +91,14 @@ function currentView() {
 function drawEquipment() {
   const { q, view } = currentView();
   const rows = rowsFor('equipment-rows', equipmentRows);
+  const notice = $('#machine-cost-status');
+  if (notice) {
+    const messages = [];
+    if (machineCostUnavailable) messages.push('Some service costs are unavailable. Restart the server after updating and try again.');
+    if (Number(window.workshopSettings?.hourly_rate) === 0 && equipmentRows.some((e) => Number(e.total_hours) > 0))
+      messages.push('The hourly rate is 0.00, so labour adds no cost. An administrator can set the rate in Settings.');
+    notice.textContent = messages.join(' '); notice.hidden = !messages.length;
+  }
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr${e.service_status === 'retired' ? ' class="row-quiet"' : ''}>
       <td class="cell-thumb">${thumbnail(e)}</td>
@@ -96,7 +106,7 @@ function drawEquipment() {
       ${soft(e.category)}${soft(e.location)}
       ${statusCell(e)}
       <td class="cell-num">${Number(e.total_hours || 0)}</td>
-      <td class="cell-num">${Number(e.total_service_cost || 0).toFixed(2)}</td>
+      <td class="cell-num">${numericCost(e.total_service_cost) === null ? '—' : numericCost(e.total_service_cost).toFixed(2)}</td>
       ${actions(e)}
     </tr>`).join('')
     || emptyRow(10, q
@@ -121,10 +131,11 @@ register('equipment-rows', {
   location: (machine) => machine.location,
   status: (machine) => STATUS_WORD[machine.status] || machine.status,
   total_hours: (machine) => Number(machine.total_hours || 0),
-  total_service_cost: (machine) => Number(machine.total_service_cost || 0),
+  total_service_cost: (machine) => numericCost(machine.total_service_cost),
 }, drawEquipment);
 
 export async function loadEquipment() {
+  const load = ++equipmentLoad;
   const { q, view } = currentView();
   // Two requests, deliberately. The table is the view this screen is filtered to;
   // the dropdowns are "every machine in service", because a new job or a new
@@ -135,7 +146,14 @@ export async function loadEquipment() {
     api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
     api('/equipment?service=active'),
   ]);
-  equipmentRows = rows;
+  let nextRows = rows, unavailable = false;
+  if (needsMachineCosts(rows)) {
+    try { nextRows = fillMissingMachineCosts(rows, await api('/work-orders')); }
+    catch { unavailable = true; }
+  }
+  if (load !== equipmentLoad) return;
+  equipmentRows = nextRows;
+  machineCostUnavailable = unavailable;
   // The chosen column survives a refresh, a filter change and a save: losing the
   // order every time the list reloads would make the arrows decorative.
   drawEquipment();

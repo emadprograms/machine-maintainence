@@ -20,6 +20,8 @@ export default {
     const hasRate = b?.hourly_rate !== undefined, hasZone = b?.time_zone !== undefined;
     if (!hasRate && !hasZone) return send(res, 400, { error: 'Choose a setting to change' });
     const rate = hasRate ? Number(b.hourly_rate) : hourlyRate();
+    if (hasRate && !((typeof b.hourly_rate === 'number') || (typeof b.hourly_rate === 'string' && b.hourly_rate.trim())))
+      return send(res, 400, { error: 'Hourly rate must be a number' });
     if (!Number.isFinite(rate)) return send(res, 400, { error: 'Hourly rate must be a number' });
     if (rate < 0) return send(res, 400, { error: 'Hourly rate cannot be negative' });
     const zone = hasZone && typeof b.time_zone === 'string' ? b.time_zone.trim() : b?.time_zone;
