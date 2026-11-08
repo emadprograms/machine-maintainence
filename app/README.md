@@ -48,9 +48,10 @@ Check with `node --version`.
 | `http.js` | `send`, `readBody`, `route()` — how a request becomes an answer | 106 |
 | `values.js` | Turns what a browser sends into what the database may store | 85 |
 | `who.js` | Who is asking: the session cookie, the user behind it | 26 |
-| `db.js` | Database connection, tables, migrations, checkpointing, backup | 380 |
+| `db.js` | Database connection, tables, migrations, checkpointing, backup | 408 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 139 |
-| `report.js` | One month of work, added up | 97 |
+| `hours.js` / `part-usage.js` | Shared live-hour calculation and atomic part consumption | 8 / 24 |
+| `report.js` | One month of work, added up | 98 |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
 | `status.js` | What state a machine is in, from the work orders that say they stop it; also what "in service" means to a query | 90 |
@@ -60,15 +61,17 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 594 |
-| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 295 |
+| `public/index.html` | The whole UI shell: every screen and form | 596 |
+| `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 299 |
 | `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 479 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 468 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 305 · 480 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 589 behaviours | 3,247 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 323 |
+| `public/stage-parts.js` | Optional staged part picker and draft consumption | 85 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 606 behaviours | 3,342 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 386 |
+| `scripts/stage-migration-test.js` | Tests upgrading existing stage hours and part costs | 51 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -78,16 +81,16 @@ The route files, one per screen group:
 |---|---|---|
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 45 |
-| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 128 |
-| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 187 |
-| `routes/work-updates.js` | stage timeline, time logs and stage photographs | 71 |
-| `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
+| `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 131 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 190 |
+| `routes/work-updates.js` | stage timeline, time, parts, machine state and photos | 82 |
+| `routes/parts.js` | spare parts, stock on a job, parts.csv | 132 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
 | `routes/admin.js` | users, assignable people, backup | 81 |
 | `routes/report.js` | the hourly rate, the month, report.csv | 56 |
 
-Total application code: **about 3,970 lines**, and about 1,920 of tests. No file is past the
+Total application code: **about 5,691 lines**, and about 3,931 of tests. No file is past the
 ~600-line mark this project uses as a signal to split, and the test suite now checks that
 rather than trusting anyone to remember it.
 
@@ -244,12 +247,19 @@ stored `role` values keep the word *user*, because everything else already speak
   ticket with an empty history says “No updates yet”; real loading errors are shown
   separately. If the server was not restarted after an update, the dialog asks for a
   restart rather than mistaking an unavailable endpoint for an empty history. Each update
-  retains its author, UTC timestamp, duration and photos; View updates remains available
-  after closure. Reopening continues the same timeline. Stage durations are not added to
-  labour cost directly: the close dialog proposes their total as final labour hours, which
-  can be reviewed and changed. If a previous final total exists it is preserved and the
-  stage sum is shown separately for review. Photos are kept in the existing data/photos
-  folder, so copy that folder with the database when moving or backing up the installation.
+  retains its author, UTC timestamp, duration and photos. It may also record spare parts
+  and their actual unit costs, and answer “Is the machine running now?” Parts are optional;
+  add one or more from the catalog and adjust the suggested price. Saving consumes stock
+  and adds the recorded costs to the work order atomically. An unanswered running question
+  leaves this job's setting unchanged; other stopping jobs can still keep the machine down.
+  The work order's Hours and Cost update as stages are saved, and the Machines table shows
+  total hours across all its jobs. Labour cost uses the configured hourly rate. View updates
+  remains available after closure, and reopening continues the same timeline. The closing
+  dialog offers the live hours for review; after a reviewed total, new stages add only the
+  time recorded since that review. This avoids double-counting and preserves legacy totals.
+  Existing part-use costs are captured at the catalog price on upgrade (zero if no price
+  was recorded); later catalog price changes do not rewrite recorded costs. Photos are kept
+  in the existing data/photos folder, so copy it with the database when moving or backing up.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -473,10 +483,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 589 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 606 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`589 passed, 0 failed`.
+`606 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

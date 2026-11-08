@@ -1,3 +1,4 @@
+import { useStock } from '../part-usage.js';
 // Spare parts, and the stock movements that follow a job.
 //
 // Stock is the one place where two writes must succeed together: consuming a
@@ -106,11 +107,7 @@ export default {
     }
 
     transaction(() => {
-      // Same part twice on one job: add to the existing line instead of failing.
-      run(`INSERT INTO work_order_parts (work_order_id, part_id, qty) VALUES (?,?,?)
-           ON CONFLICT (work_order_id, part_id) DO UPDATE SET qty = qty + excluded.qty`,
-        id(req.params.id), id(b.part_id), qty);
-      run('UPDATE parts SET qty = qty - ? WHERE id = ?', qty, id(b.part_id));
+      useStock(id(req.params.id), null, [{ part_id: part.id, qty, unit_price: part.unit_price ?? 0 }]);
     });
     send(res, 200, all('SELECT p.name, wop.qty FROM work_order_parts wop '
       + 'JOIN parts p ON p.id = wop.part_id WHERE wop.work_order_id = ?', id(req.params.id)));

@@ -146,6 +146,10 @@
 .parts-pick { display: flex; gap: 6px; align-items: center; }
 .parts-pick select { flex: 1; }
 .parts-pick input { width: 72px; }
+.stage-parts-pick { flex-wrap: wrap; align-items: end; }
+.stage-parts-pick label { display: flex; flex-direction: column; gap: 5px; }
+.stage-parts-pick label:first-child { flex: 1 1 200px; min-width: 0; }
+.stage-parts-pick label:nth-child(3) input { width: 120px; }
 .part-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-soft); }
 .part-list:empty { display: none; }
 

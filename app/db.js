@@ -150,6 +150,16 @@ CREATE TABLE IF NOT EXISTS work_order_parts (
   PRIMARY KEY (work_order_id, part_id)
 );
 
+-- Stage-specific consumption retains the actual price and which update used it.
+CREATE TABLE IF NOT EXISTS work_update_parts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  update_id INTEGER NOT NULL REFERENCES work_order_updates(id) ON DELETE CASCADE,
+  part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE RESTRICT,
+  part_name TEXT NOT NULL,
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  unit_price REAL NOT NULL CHECK (unit_price >= 0)
+);
+
 -- The table the reviewed repo did not have: real repeating maintenance.
 CREATE TABLE IF NOT EXISTS pm_schedule (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +227,24 @@ ensureColumn('users', 'created_at', "TEXT");
 // Time spent on a job. Nullable: a job nobody has costed is not a job that took
 // zero hours, and the report says so by counting only what was recorded.
 ensureColumn('work_orders', 'labour_hours', 'REAL');
+// Upgrade existing totals once, atomically. Their stored final total already
+// includes the old stages; only stages added after this baseline are extra.
+if (!db.prepare('PRAGMA table_info(work_orders)').all().some((c) => c.name === 'labour_stage_baseline')) {
+  db.exec(`BEGIN;
+    ALTER TABLE work_orders ADD COLUMN labour_stage_baseline REAL;
+    UPDATE work_orders SET labour_stage_baseline =
+      (SELECT COALESCE(SUM(hours), 0) FROM work_order_updates WHERE work_order_id = work_orders.id)
+      WHERE labour_hours IS NOT NULL;
+    COMMIT;`);
+}
+// Freeze the cost of existing part usage at the catalog price on upgrade.
+if (!db.prepare('PRAGMA table_info(work_order_parts)').all().some((c) => c.name === 'cost_total')) {
+  db.exec(`BEGIN;
+    ALTER TABLE work_order_parts ADD COLUMN cost_total REAL;
+    UPDATE work_order_parts SET cost_total = qty * COALESCE((SELECT unit_price FROM parts WHERE id = part_id), 0);
+    COMMIT;`);
+}
+ensureColumn('work_order_updates', 'machine_running', 'INTEGER');
 // Who reported the fault, as typed. Free text rather than a user id: the person
 // who finds the machine making a noise is often standing next to it, not signed
 // in — and "Ada on the floor" is still the only lead six hours later.

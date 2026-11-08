@@ -2,6 +2,7 @@
 import { send, readBytes, route, id } from '../http.js';
 import { all, get, run, transaction } from '../db.js';
 import { assigneeValue, hoursValue } from '../values.js';
+import { useStock } from '../part-usage.js';
 import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
 
 const MAX_PHOTOS = 5;
@@ -15,7 +16,10 @@ export default {
     const updates = all('SELECT * FROM work_order_updates WHERE work_order_id = ? ORDER BY stage', workId);
     const photos = all(`SELECT p.id, p.update_id FROM work_update_photos p
       JOIN work_order_updates u ON u.id = p.update_id WHERE u.work_order_id = ? ORDER BY p.id`, workId);
-    send(res, 200, updates.map((u) => ({ ...u, photos: photos.filter((p) => p.update_id === u.id).map((p) => p.id) })));
+    const parts = all(`SELECT p.* FROM work_update_parts p JOIN work_order_updates u ON u.id = p.update_id
+      WHERE u.work_order_id = ? ORDER BY p.id`, workId);
+    send(res, 200, updates.map((u) => ({ ...u, photos: photos.filter((p) => p.update_id === u.id).map((p) => p.id),
+      parts: parts.filter((p) => p.update_id === u.id) })));
   }),
 
   'POST /api/work-orders/:id/updates': route(async (req, res) => {
@@ -35,6 +39,11 @@ export default {
     if (!owner.value) return send(res, 400, { error: 'Assign the job to someone before starting it' });
     if (body.photos !== undefined && !Array.isArray(body.photos)) return send(res, 400, { error: 'Invalid photos' });
     const photos = body.photos || [];
+    const parts = body.parts === undefined ? [] : body.parts;
+    if (!Array.isArray(parts) || parts.length > 50) return send(res, 400, { error: 'Choose up to 50 spare parts per update' });
+    if (body.machine_running !== undefined && body.machine_running !== null && typeof body.machine_running !== 'boolean')
+      return send(res, 400, { error: 'Choose whether the machine is running, or leave it unchanged' });
+    const running = body.machine_running == null ? null : (body.machine_running ? 1 : 0);
     if (photos.length > MAX_PHOTOS) return send(res, 400, { error: 'Choose up to five photos per update' });
     const files = [];
     try {
@@ -50,10 +59,12 @@ export default {
       }
       const result = transaction(() => {
         const stage = Number(get('SELECT COALESCE(MAX(stage), 0) + 1 AS n FROM work_order_updates WHERE work_order_id = ?', job.id).n);
-        const result = run('INSERT INTO work_order_updates (work_order_id, stage, message, hours, author) VALUES (?,?,?,?,?)',
-          job.id, stage, body.message.trim(), hours.value, req.user.name);
+        const result = run('INSERT INTO work_order_updates (work_order_id, stage, message, hours, author, machine_running) VALUES (?,?,?,?,?,?)',
+          job.id, stage, body.message.trim(), hours.value, req.user.name, running);
+        useStock(job.id, result.lastInsertRowid, parts);
         for (const name of files) run('INSERT INTO work_update_photos (update_id, filename) VALUES (?,?)', result.lastInsertRowid, name);
-        run("UPDATE work_orders SET status = 'in_progress', assigned_to = ? WHERE id = ?", owner.value, job.id);
+        run("UPDATE work_orders SET status = 'in_progress', assigned_to = ?, stops_machine = COALESCE(?, stops_machine) WHERE id = ?",
+          owner.value, running === null ? null : 1 - running, job.id);
         return { id: Number(result.lastInsertRowid), stage };
       });
       send(res, 201, { ...result, status: 'in_progress', assigned_to: owner.value });

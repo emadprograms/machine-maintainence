@@ -14,7 +14,7 @@ const el = (selector) => {
       set(html) {
         this._html = html;
         this._text = html.replace(/<[^>]*>/g, '');
-        if (['#w-equipment', '#w-owner', '#wa-owner'].includes(selector)) {
+        if (['#w-equipment', '#w-owner', '#wa-owner', '#wa-part'].includes(selector)) {
           this.value = html.match(/<option value="([^"]*)"/)?.[1] ?? '';
         }
       },
@@ -37,9 +37,10 @@ globalThis.formDone = (id) => closed.push(id);
 globalThis.formError = (id, message) => errors.push([id, message]);
 globalThis.alert = (message) => { throw new Error(`Unexpected alert: ${message}`); };
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
+const spareParts = [{ id: 5, name: '<Motor>', qty: 3, unit_price: 100 }, { id: 6, name: 'Belt', qty: 8, unit_price: 12 }];
 let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null, current_stage: null }];
 let updates = [];
-let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false;
+let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false, invalidUpdates = false, failParts = false;
 let waitPeople = null, waitMachines = null, waitUpdates = null, updateError = null;
 globalThis.api = async (path, options = {}) => {
   requests.push({ path, options });
@@ -47,6 +48,10 @@ globalThis.api = async (path, options = {}) => {
     if (waitMachines) return waitMachines;
     if (failMachines) throw new Error('Machines unavailable');
     return noMachines ? [] : [{ id: 1, name: 'Press' }, { id: 2, name: 'Conveyor' }];
+  }
+  if (path === '/parts') {
+    if (failParts) throw new Error('Parts unavailable');
+    return spareParts;
   }
   if (path === '/users/assignable') {
     if (waitPeople) return waitPeople;
@@ -64,7 +69,9 @@ globalThis.api = async (path, options = {}) => {
   if (path === '/work-orders/42/updates' && options.method === 'POST') {
     const body = JSON.parse(options.body);
     updates.push({ id: updates.length + 1, stage: updates.length + 1, message: body.message,
-      hours: Number(body.hours), author: 'Admin', created_at: '2026-01-01 12:00:00', photos: [] });
+      hours: Number(body.hours), author: 'Admin', created_at: '2026-01-01 12:00:00', photos: [],
+      machine_running: body.machine_running == null ? null : Number(body.machine_running),
+      parts: (body.parts || []).map((p) => ({ ...p, part_name: spareParts.find((v) => v.id === p.part_id).name })) });
     Object.assign(jobs[0], { status: 'in_progress', current_stage: updates.length, assigned_to: body.assigned_to || jobs[0].assigned_to });
     return { id: updates.length };
   }
@@ -75,6 +82,7 @@ globalThis.api = async (path, options = {}) => {
   throw new Error(`Unexpected request: ${path}`);
 };
 const work = await import('../public/work.js');
+const stageParts = await import('../public/stage-parts.js');
 await work.loadWork();
 await work.openNewWork();
 assert.equal(opened.at(-1), 'work-form');
@@ -146,13 +154,27 @@ el('#wa-owner').value = '';
 await work.startAssigned();
 assert.match(errors.at(-1)[1], /choose/i);
 el('#wa-owner').value = '2';
+assert.match(el('#wa-part').innerHTML, /&lt;Motor>/);
+el('#wa-part').value = '5';
+stageParts.selectStagePart();
+assert.equal(el('#wa-part-price').value, '100');
+el('#wa-part-price').value = '75';
+stageParts.addStagePart();
+assert.match(el('#wa-part-list').innerHTML, /&lt;Motor>/);
+el('#wa-part').value = '6';
+stageParts.selectStagePart();
+el('#wa-part-qty').value = '2';
+el('#wa-running').value = 'no';
 await work.startAssigned();
 const stage1 = JSON.parse(requests.findLast((r) => r.path.endsWith('/updates') && r.options.method === 'POST').options.body);
-assert.deepEqual(stage1, { message: 'Started inspection', hours: '0.5', photos: [], assigned_to: 2 });
+assert.deepEqual(stage1, { message: 'Started inspection', hours: '0.5', photos: [], assigned_to: 2, machine_running: false,
+  parts: [{ part_id: 5, qty: 1, unit_price: 75 }, { part_id: 6, qty: 2, unit_price: 12 }] });
 assert.equal(closed.at(-1), 'work-assign');
 await work.openWorkUpdates(42);
 assert.equal(el('#wa-stage-title').textContent, 'Stage 2');
 assert.match(el('#wa-history').innerHTML, /Started inspection/);
+assert.match(el('#wa-history').innerHTML, /&lt;Motor>/);
+assert.match(el('#wa-history').innerHTML, /stopped/);
 el('#wa-message').value = 'Replaced bearing';
 el('#wa-hours').value = '1.25';
 await work.startAssigned();
@@ -272,6 +294,34 @@ releaseOldPeople([{ id: 99, name: 'Stale person' }]);
 await oldPeople;
 assert.match(el('#wa-owner').innerHTML, /Admin/);
 assert.doesNotMatch(el('#wa-owner').innerHTML, /Stale person/);
+// A failed optional parts lookup doesn't block an update or lose the draft.
+failParts = true;
+await work.advance(42, 'in_progress');
+await new Promise((resolve) => setImmediate(resolve));
+assert.match(el('#wa-part-status').textContent, /parts unavailable/i);
+assert.equal(el('#wa-part-retry').hidden, false);
+assert.equal(el('#wa-go').disabled, false);
+el('#wa-message').value = 'Can save without spare parts';
+el('#wa-hours').value = '1';
+el('#wa-owner').value = '1';
+await work.startAssigned();
+assert.equal(JSON.parse(requests.findLast((r) => r.path.endsWith('/updates') && r.options.method === 'POST').options.body).parts, undefined);
+await work.openWorkUpdates(42);
+await new Promise((resolve) => setImmediate(resolve));
+el('#wa-message').value = 'Keep my parts draft';
+failParts = false;
+await stageParts.loadStageParts();
+assert.equal(el('#wa-message').value, 'Keep my parts draft');
+assert.equal(el('#wa-part-retry').hidden, true);
+el('#wa-part').value = '5';
+stageParts.selectStagePart();
+el('#wa-part-price').value = '';
+const beforeNoPrice = requests.filter((r) => r.path.endsWith('/updates') && r.options.method === 'POST').length;
+el('#wa-hours').value = '1';
+el('#wa-owner').value = '1';
+await work.startAssigned();
+assert.match(errors.at(-1)[1], /unit cost/i);
+assert.equal(requests.filter((r) => r.path.endsWith('/updates') && r.options.method === 'POST').length, beforeNoPrice);
 failPeople = true;
 await work.openNewWork();
 assert.equal(el('#w-create').disabled, false);
@@ -320,4 +370,17 @@ releaseOldMachines([{ id: 9, name: 'Stale' }]);
 await oldForm;
 assert.equal(el('#w-equipment').value, '2');
 assert.doesNotMatch(el('#w-equipment').innerHTML, /Stale/);
+// Closure uses the freshly loaded stages, not a stale work-list total.
+jobs[0].labour_hours = 10;
+jobs[0].labour_stage_baseline = 2;
+jobs[0].effective_hours = 10;
+updates = [{ hours: 1 }, { hours: 1 }, { hours: 0.5 }];
+await work.loadWork();
+await work.openWorkClose(42);
+assert.equal(el('#wc-hours').value, 10.5);
+assert.match(el('#wc-hours-hint').textContent, /stages total 2.5/i);
+failUpdates = true;
+await work.openWorkClose(42);
+assert.equal(el('#wc-hours').value, 10);
+assert.match(el('#wc-hours-hint').textContent, /could not load the latest stages/i);
 console.log('Work-order UI interaction tests passed');

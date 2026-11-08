@@ -9,6 +9,7 @@
 // of independent widgets.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
+import { resetStageParts, loadStageParts, stagePartsForSave } from './stage-parts.js';
 
 // ------------------------------------------------------------ work orders
 const STATUS_KIND = { open: 'amber', in_progress: 'grey', done: 'green' };
@@ -56,7 +57,7 @@ function drawWork() {
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
           w.stops_machine ? ` ${badge('stops the machine', 'red')}` : ''}</td>
         <td>${badge(w.status.replace('_', ' '), STATUS_KIND[w.status])}${w.status === 'in_progress' && w.current_stage ? ` <span class="row-sub">Stage ${Number(w.current_stage)}</span>` : ''}</td>
-        <td class="cell-num">${w.labour_hours == null ? '—' : Number(w.labour_hours)}</td>
+        <td class="cell-num">${w.effective_hours == null ? '—' : Number(w.effective_hours)}</td>
         <td class="cell-num">${Number(w.cost || 0).toFixed(2)}</td>
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
           menuItem(w.status === 'done' ? 'Reopen'
@@ -86,7 +87,7 @@ register('work-rows', {
   assignee_name: (w) => w.assignee_name,
   priority: (w) => PRIORITY_RANK[w.priority] ?? 3,
   status: (w) => WORK_STATUS_RANK[w.status] ?? 3,
-  labour_hours: (w) => w.labour_hours,
+  labour_hours: (w) => w.effective_hours,
   cost: (w) => w.cost,
 }, drawWork);
 
@@ -278,6 +279,9 @@ export async function openWorkUpdates(idToUpdate, viewOnly = false) {
   $('#wa-message').value = '';
   $('#wa-hours').value = '';
   $('#wa-photos').value = '';
+  $('#wa-running').value = '';
+  resetStageParts();
+  if (editing) loadStageParts();
   $('#wa-owner-field').hidden = !(editing && (job.status === 'open' || !job.assigned_to));
   $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
   $('#wa-owner').disabled = true;
@@ -321,7 +325,8 @@ export async function retryWorkUpdateLoading() {
     if (!Array.isArray(updates)) throw new Error('The server returned an invalid updates list. Restart the app after updating, then retry');
     $('#wa-history').innerHTML = updates.map((u) => `<div class="update-entry"><strong>Stage ${Number(u.stage)}</strong>
       <small> · ${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours</small>
-      <p>${esc(u.message)}</p>${u.photos.map((photo, i) => `<a class="link-photo" target="_blank" rel="noopener"
+      <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'stopped'} (this job)</small>`}
+      ${(u.parts || []).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${Number(p.unit_price).toFixed(2)} each</p>`).join('')}${u.photos.map((photo, i) => `<a class="link-photo" target="_blank" rel="noopener"
         href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${i + 1}</a>`).join(' ')}</div>`).join('')
       || '<p class="hint">No updates yet.</p>';
     $('#wa-stage-title').textContent = `Stage ${updates.length ? Number(updates.at(-1).stage) + 1 : 1}`;
@@ -380,8 +385,13 @@ export async function startAssigned() {
   $('#wa-go').disabled = true;
   try {
     const body = { message, hours, photos: await Promise.all(photos.map(photoData)) };
+    const parts = stagePartsForSave();
+    if (parts.length) body.parts = parts;
+    const running = $('#wa-running').value;
+    if (running) body.machine_running = running === 'yes';
     if (choose) body.assigned_to = Number(owner);
     await api(`/work-orders/${workId}/updates`, { method: 'POST', body: JSON.stringify(body) });
+    partChoices = []; // stock may have changed; the close picker must refresh
     if (updateRun === run) {
       updatingWork = null;
       updateJob = null;
@@ -404,14 +414,16 @@ export async function openWorkClose(idToClose) {
   $('#wc-id').value = idToClose;
   $('#work-close-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wc-resolution').value = job.resolution || '';
-  // Prefill the final total from the stages, without adding it to the recorded
-  // total a second time. A previously closed job keeps its existing total.
-  let updates = [];
-  try { updates = await api(`/work-orders/${idToClose}/updates`); } catch { /* final total can still be entered manually */ }
+  // Prefill the live total, including any stages added after a previous close.
+  // It can still be reviewed and adjusted without double-counting the stages.
+  let updates = [], loaded = true;
+  try { updates = await api(`/work-orders/${idToClose}/updates`); } catch { loaded = false; }
   const stageHours = Math.round(updates.reduce((sum, u) => sum + Number(u.hours), 0) * 1e6) / 1e6;
-  $('#wc-hours').value = job.labour_hours ?? (updates.length ? stageHours : '');
-  $('#wc-hours-hint').textContent = updates.length
-    ? `Stages total ${stageHours} hours. Review the final total before closing.` : '';
+  const total = job.labour_hours == null ? (updates.length ? stageHours : null)
+    : Math.round((Number(job.labour_hours) + stageHours - Number(job.labour_stage_baseline || 0)) * 1e6) / 1e6;
+  $('#wc-hours').value = (loaded ? total : (job.effective_hours ?? job.labour_hours)) ?? '';
+  $('#wc-hours-hint').textContent = !loaded ? 'Could not load the latest stages. Review the final total before closing.'
+    : updates.length ? `Stages total ${stageHours} hours. Review the final total before closing.` : '';
   $('#wc-verified').value = job.verified_by || '';
   formError('work-close', '');
   // The parts screen may never have been opened in this session; the select must

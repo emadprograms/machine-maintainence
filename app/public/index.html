@@ -86,7 +86,7 @@
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="manufacturer">Manufacturer<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th aria-sort="none"><button type="button" class="sort-btn" data-sort="location">Location<span class="sort-mark" aria-hidden="true"></span></button></th>
-            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours">Total hours<span class="sort-mark" aria-hidden="true"></span></button></th>
             <th></th></tr></thead>
             <tbody id="equipment-rows"></tbody></table>
         </div>
@@ -342,6 +342,8 @@
               <label class="field field-wide"><span>Update <span class="required-mark" aria-hidden="true">*</span></span><textarea id="wa-message" rows="3" maxlength="2000" required></textarea></label>
               <label class="field"><span>Time spent (hours) <span class="required-mark" aria-hidden="true">*</span></span><input id="wa-hours" type="number" min="0" max="10000" step="any" required /></label>
               <label class="field"><span>Photos (optional, up to 5, 2 MB each)</span><input id="wa-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple /></label>
+              <label class="field field-wide"><span>Is the machine running now? (optional)</span><select id="wa-running"><option value="">No change</option><option value="yes">Yes, running</option><option value="no">No, stopped</option></select><span class="hint">This updates this job’s effect on the machine; other stopping jobs still count.</span></label>
+              <div class="field field-wide"><span>Spare parts used (optional)</span><div class="parts-pick stage-parts-pick"><label><span>Spare part</span><select id="wa-part" onchange="selectStagePart()"></select></label><label><span>Quantity</span><input id="wa-part-qty" type="number" min="1" step="1" value="1" /></label><label><span>Actual unit cost</span><input id="wa-part-price" type="number" min="0" step="any" /></label><button class="ghost small" type="button" onclick="addStagePart()">Add part</button></div><span id="wa-part-status" class="hint" role="status"></span><button id="wa-part-retry" class="ghost small" type="button" onclick="loadStageParts()" hidden>Retry parts</button><ul id="wa-part-list" class="part-list"></ul><span class="hint">The selected part is included when you save. Add part lets you include more than one.</span></div>
             </div>
           </div>
           <p class="form-error"></p>

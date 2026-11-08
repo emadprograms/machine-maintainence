@@ -36,6 +36,7 @@ Last activity: 2026-11-07 — quick task 261106-erq: "Users" is "Admins & Techni
 
 | Date | ID | Task | Commit |
 |---|---|---|---|
+| 2026-11-05 | debug-stage-costs | Update live machine and work-order hours, record optional staged parts at actual cost, and report running state | See git history |
 | 2026-11-05 | debug-empty-updates | Show the known empty history on a new ticket and distinguish a stale server from a truly empty list | See git history |
 | 2026-11-05 | debug-assignee-picker | Show and preselect assignees when starting, and independently load/retry people and history | See git history |
 | 2026-11-05 | 261105-est | Work-order stages with time logs and photos; final labour hours at closure | See git history |

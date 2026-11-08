@@ -65,21 +65,16 @@ validated. `.planning/REQUIREMENTS.md` tracks the next milestone once it is chos
 - **Shipped v1.0 (2026-11-05):** 6 phases, 6 plans, 22 tasks, ~1,040 lines of application
   code plus ~370 lines of test code. All eleven requirements validated; archived under
   `.planning/milestones/v1.0-*`.
-- **Codebase now (2026-11-06):** `app/` — about 3,970 lines of application code and
-  1,920 of tests. `server.js` is 116 lines of startup and routing; the handlers live in
-  `routes/`, one file per screen group (auth 52, record 43, equipment 118, work-orders 95,
-  parts 135, pm 77, dashboard 76, admin 81, report 56). Shared plumbing: `http.js` (135),
-  `values.js` (54), `who.js` (26), `db.js` (316), `filters.js` (138), `report.js` (97),
-  `status.js` (86) and `photos.js` (71) — the two new modules for 261106-eqs. Client:
-  `index.html` (443), `app.css` (234), `app.js` (560), `shell.js` (121), `dashboard.js`
-  (136), `history.js` (147), `report.js` (79), `machines.js` (273). Eight tables (users,
-  equipment, work_orders, parts, work_order_parts, pm_schedule, sessions, settings, plus
-  `ensureColumn` migrations), and machine photographs as files in `photos/`.
-- **Test suite:** **589 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
+- **Codebase:** `app/` — about 5,691 lines of application code and 3,931 of tests.
+  Server routes are split by screen; shared modules include `hours.js` for live and
+  reviewed labour totals and `part-usage.js` for atomic, actual-cost stock consumption.
+  Stage history, photos and part usage are kept alongside work orders. See `app/README.md`
+  for the current file map and migration behaviour.
+- **Test suite:** **606 checks**, 0 failures, under `PATH=/nonexistent`. It covers a
   `kill -9` restart, sessions surviving a restart, a lone copy of `maintain.db` opening
   with its data, search composing with every filter, exports matching their screens, and a
-  month's costs adding up, and the machine-state matrix: high-priority open ⇒ down, job
-  closed ⇒ running, retired outranking both. Since 261106-eqz it also proves that signing
+  month's costs adding up, live stage hours and actual part costs, and the machine-state
+  matrix: explicitly stopping jobs take a machine down, while retired outranks both. Since 261106-eqz it also proves that signing
   out revokes the session server-side (a captured cookie stops working), that the history
   export honours its filter, and that every endpoint in `routes/` is named somewhere in the
   suite — a coverage floor read from the source, not a hand-written list. Offline audit

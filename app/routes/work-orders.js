@@ -12,6 +12,7 @@ import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
 import { hourlyRate } from '../settings.js';
 import { nextWorkOrderCode } from '../codes.js';
+import { effectiveHours } from '../hours.js';
 
 export default {
   // ---- work orders
@@ -22,10 +23,11 @@ export default {
     send(res, 200, all(`
       SELECT w.*, e.name AS equipment_name, u.name AS assignee_name,
              (SELECT MAX(stage) FROM work_order_updates WHERE work_order_id = w.id) AS current_stage,
-             -- parts used on this job, plus recorded hours at the configured rate
-             ROUND(COALESCE(w.labour_hours, 0) * ?
-                   + (SELECT COALESCE(SUM(wop.qty * COALESCE(p.unit_price, 0)), 0)
-                        FROM work_order_parts wop JOIN parts p ON p.id = wop.part_id
+             ${effectiveHours()} AS effective_hours,
+             -- Parts use the cost recorded when used; hours include live stages.
+             ROUND(COALESCE(${effectiveHours()}, 0) * ?
+                   + (SELECT COALESCE(SUM(wop.cost_total), 0)
+                        FROM work_order_parts wop
                        WHERE wop.work_order_id = w.id), 2) AS cost
       FROM work_orders w
       JOIN equipment e ON e.id = w.equipment_id
@@ -109,11 +111,12 @@ export default {
       return send(res, 400, { error: 'Say what was done before closing the job' });
     }
     run(`UPDATE work_orders SET title=?, status=?, priority=?, notes=?, closed_at=?, assigned_to=?,
-         labour_hours=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
+         labour_hours=?, labour_stage_baseline=?, reported_by=?, resolution=?, verified_by=?, stops_machine=? WHERE id=?`,
       b.title === undefined ? before.title : String(b.title).trim(),
       status, b.priority ?? before.priority, notes,
       status === 'done' ? (before.closed_at ?? nowStamp()) : null,
       owner.value, hours.missing ? before.labour_hours : hours.value,
+      hours.missing ? before.labour_stage_baseline : get('SELECT COALESCE(SUM(hours), 0) AS total FROM work_order_updates WHERE work_order_id = ?', before.id).total,
       reporter.missing ? before.reported_by : reporter.value,
       done, verifier.missing ? before.verified_by : verifier.value,
       b.stops_machine === undefined ? before.stops_machine : stopsValue(b.stops_machine),

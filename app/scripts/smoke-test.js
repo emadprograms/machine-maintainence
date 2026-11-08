@@ -1784,10 +1784,10 @@ const drawFn = (appEq.match(/function drawEquipment\(\) \{[\s\S]*?\n}/) || [''])
 const sortable = [...eqHead.matchAll(/<button[^>]*class="sort-btn" data-sort="([a-z_]+)"/g)]
   .map((m) => m[1]);
 ok('every column heading but the photograph and the menu can be clicked',
-  sortable.join() === 'name,asset_tag,manufacturer,category,location,status',
+  sortable.join() === 'name,asset_tag,manufacturer,category,location,status,total_hours',
   `sortable: ${sortable.join(', ') || 'none'}`);
 ok('and the headings are real buttons, so Tab and Enter work without extra code',
-  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 6
+  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 7
   && !/<th[^>]*>\s*Photo<\/th>[\s\S]*?data-sort="photo"/.test(eqHead));
 ok('a new heading starts ascending, and the same heading again turns it round',
   /const sorted = new Map\(\)/.test(tablesSrc)
@@ -2257,6 +2257,98 @@ ok('deleting a machine also removes its stage records and image files',
   (await late(stageUrl)).status === 404 && stagePhotoFiles.length === 2
   && stagePhotoFiles.every((f) => !existsSync(join(photosDir, f))));
 
+
+// Live stage hours, actual part prices and explicit machine state. These values
+// must change before closure, and neither stock nor photos may be half-saved.
+const liveMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Live stage machine' } })).data;
+const liveJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: liveMachine.id, title: 'Belt broken', stops_machine: true,
+} })).data;
+const motor = (await late('/api/parts', { method: 'POST', body: { name: 'Stage motor', qty: 3, unit_price: 100 } })).data;
+const belt = (await late('/api/parts', { method: 'POST', body: { name: 'Stage belt', qty: 5, unit_price: 10 } })).data;
+const liveUrl = `/api/work-orders/${liveJob.id}/updates`;
+const livePost = (body) => late(liveUrl, { method: 'POST', body });
+const liveRow = async () => (await late('/api/work-orders')).data.find((w) => w.id === liveJob.id);
+const liveEquipment = async () => (await late('/api/equipment')).data.find((e) => e.id === liveMachine.id);
+const partStock = async (id) => (await late('/api/parts')).data.find((p) => p.id === id).qty;
+const rate = Number((await late('/api/settings')).data.hourly_rate);
+const liveOne = await livePost({ message: 'Replaced motor; belt still needs work', hours: 2, assigned_to: 1,
+  machine_running: true, parts: [{ part_id: motor.id, qty: 1, unit_price: 75 }] });
+let live = await liveRow();
+let machineNow = await liveEquipment();
+ok('stage one records an actual part price and live labour before closure', liveOne.status === 201
+  && live.status === 'in_progress' && live.effective_hours === 2 && live.cost === 75 + 2 * rate
+  && await partStock(motor.id) === 2, JSON.stringify(live));
+ok('a running answer restores the machine without closing the job', machineNow.status === 'active'
+  && machineNow.total_hours === 2 && live.stops_machine === 0);
+let liveHistory = (await late(liveUrl)).data;
+ok('the timeline remembers the stage part and machine answer', liveHistory[0].machine_running === 1
+  && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].qty === 1
+  && liveHistory[0].parts[0].unit_price === 75);
+const blocker = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: liveMachine.id, title: 'Another stoppage', stops_machine: true,
+} })).data;
+await rateTech('/api/login', { method: 'POST', body: { email: 'rate@local', password: 'rate-password' } });
+const liveTwo = await rateTech(liveUrl, { method: 'POST', body: { message: 'Fitted the belt', hours: 1.5, machine_running: true,
+  parts: [{ part_id: belt.id, qty: 2, unit_price: 6.25 }, { part_id: motor.id, qty: 1, unit_price: 50 }] } });
+live = await liveRow();
+machineNow = await liveEquipment();
+ok('a technician can add hours and multiple actual-cost parts to the running total', liveTwo.status === 201
+  && live.effective_hours === 3.5 && live.cost === 137.5 + 3.5 * rate
+  && await partStock(motor.id) === 1 && await partStock(belt.id) === 3, JSON.stringify(live));
+ok('a second stopping job still keeps the machine down', machineNow.status === 'down' && machineNow.total_hours === 3.5);
+await late(`/api/work-orders/${blocker.id}`, { method: 'PATCH', body: { stops_machine: false } });
+ok('clearing the other stopping job makes the machine running again', (await liveEquipment()).status === 'active');
+await late(`/api/parts/${motor.id}`, { method: 'PUT', body: { unit_price: 999, name: 'Renamed motor' } });
+liveHistory = (await late(liveUrl)).data;
+ok('catalog price and name changes do not rewrite recorded stage costs or history', (await liveRow()).cost === 137.5 + 3.5 * rate
+  && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].unit_price === 75);
+const liveNo = await livePost({ message: 'Stopped for safety', hours: 0, machine_running: false });
+const liveUnchanged = await livePost({ message: 'Waiting for a part', hours: 0.5,
+  parts: [{ part_id: belt.id, qty: 1, unit_price: 0 }] });
+ok('the stopped answer and an omitted answer keep the machine down', liveNo.status === 201 && liveUnchanged.status === 201
+  && (await liveEquipment()).status === 'down' && (await liveRow()).effective_hours === 4);
+const beforeInvalid = (await late(liveUrl)).data.length;
+const badRunning = await livePost({ message: 'Bad state', hours: 1, machine_running: 'yes' });
+const badCost = await livePost({ message: 'Bad cost', hours: 1, parts: [{ part_id: belt.id, qty: 1, unit_price: -2 }] });
+const badQty = await livePost({ message: 'Bad quantity', hours: 1, parts: [{ part_id: belt.id, qty: 0, unit_price: 1 }] });
+const missingCost = await livePost({ message: 'No cost', hours: 1, parts: [{ part_id: belt.id, qty: 1 }] });
+const boolCost = await livePost({ message: 'Boolean cost', hours: 1, parts: [{ part_id: belt.id, qty: 1, unit_price: true }] });
+const unknownPart = await livePost({ message: 'Unknown part', hours: 1, parts: [{ part_id: 999999, qty: 1, unit_price: 1 }] });
+ok('missing, boolean and unknown part data are refused', missingCost.status === 400 && boolCost.status === 400
+  && unknownPart.status === 400 && (await late(liveUrl)).data.length === beforeInvalid);
+ok('invalid machine answers, unit prices and quantities are rejected', badRunning.status === 400 && badCost.status === 400
+  && badQty.status === 400 && (await late(liveUrl)).data.length === beforeInvalid);
+const stockBeforeFailure = await partStock(belt.id);
+const photosBeforeFailure = readdirSync(photosDir).length;
+const stockFail = await livePost({ message: 'Insufficient stock', hours: 1, machine_running: true,
+  photos: [stagePhoto], parts: [{ part_id: belt.id, qty: 1, unit_price: 7 }, { part_id: belt.id, qty: 50, unit_price: 8 }] });
+ok('a failed stage rolls back all part uses, hours, machine state and photos', stockFail.status === 400
+  && await partStock(belt.id) === stockBeforeFailure && (await late(liveUrl)).data.length === beforeInvalid
+  && (await liveEquipment()).status === 'down' && readdirSync(photosDir).length === photosBeforeFailure);
+const liveClose = await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: {
+  status: 'done', resolution: 'Fixed', labour_hours: 10,
+} });
+live = await liveRow();
+ok('the reviewed final hours replace the running total, without double counting', liveClose.status === 200
+  && live.effective_hours === 10 && live.cost === 137.5 + 10 * rate && (await liveEquipment()).total_hours === 10);
+let liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
+ok('the monthly report uses recorded actual part cost and reviewed hours', liveReport.hours === 10
+  && liveReport.parts_cost === 137.5 && liveReport.total === 137.5 + 10 * rate, JSON.stringify(liveReport));
+await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+await livePost({ message: 'Follow-up after reopening', hours: 0.5, machine_running: true });
+live = await liveRow();
+ok('after reopening, new stage hours add to the reviewed total exactly once', live.effective_hours === 10.5
+  && live.cost === 137.5 + 10.5 * rate && (await liveEquipment()).total_hours === 10.5);
+await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Checked again', labour_hours: 10.5 } });
+live = await liveRow();
+liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
+ok('reclosing keeps the combined total and report consistent', live.effective_hours === 10.5 && liveReport.hours === 10.5
+  && liveReport.parts_cost === 137.5);
+await late(`/api/equipment/${liveMachine.id}`, { method: 'DELETE' });
+ok('deleting the machine cascades its stage-specific part records', (await late(liveUrl)).status === 404
+  && (await late(`/api/parts/${motor.id}`, { method: 'DELETE' })).status === 200);
+await late(`/api/parts/${belt.id}`, { method: 'DELETE' });
 
 const reportMachine = (await late('/api/equipment', { method: 'POST', body: {
   name: 'Press (reporting)' } })).data;
@@ -3156,6 +3248,9 @@ rmSync(unitDb + '-shm', { force: true });
 
 // Run the actual browser module with a small DOM and API double as well as the
 // endpoint tests: a correct backend alone cannot prove the assignment prompt works.
+const stageMigrationTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'stage-migration-test.js')], { cwd: root, encoding: 'utf8' });
+ok('existing stage hours and part costs migrate once without double-counting', stageMigrationTest.status === 0,
+  (stageMigrationTest.stderr || stageMigrationTest.stdout).slice(0, 500));
 const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
   (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
