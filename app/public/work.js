@@ -36,10 +36,8 @@ export const searchWork = debounce(() => loadWork());
 
 export async function loadWork() {
   workCache = await api(`/work-orders${workQuery()}`);
-  // A technician may not read the assignable list. That is expected, and it must
-  // not be confused with "the work-order fetch failed" — this catch is scoped to
-  // the assignee lookup alone. The assertion that guards the empty state reads
-  // this function's text, so the reason is written where the next reader looks.
+  // A failed assignee lookup must not be confused with a failed work-order fetch.
+  // Both administrators and technicians can read this limited list of names.
   if (!assignable.length) {
     try { assignable = await api('/users/assignable'); } catch { assignable = []; }
   }
@@ -97,8 +95,7 @@ register('work-rows', {
 // dialog asks for everything the record holds, in the same order the report form
 // does, and one Save writes it all.
 let editingJob = null;
-// A technician cannot list people, so the owner control is not offered to them at
-// all — and the save does not send it, because sending nothing must never mean
+// If the people lookup failed, do not send an assignment: missing must not mean
 // "unassign".
 let canAssign = false;
 
@@ -162,15 +159,74 @@ export async function saveWork() {
   } catch (e) { formError('work-edit', e.message); }
 }
 
+// A fresh form owns its two lookups; an older response must not overwrite it.
+let workFormRun = 0;
+let machineLoad = 0;
+
+export async function retryWorkMachines() {
+  const formRun = workFormRun;
+  const load = ++machineLoad;
+  const picker = $('#w-equipment');
+  picker.disabled = true;
+  picker.innerHTML = '<option value="">Loading machines…</option>';
+  $('#w-create').disabled = true;
+  $('#w-machine-retry').hidden = true;
+  $('#w-machine-status').textContent = 'Loading machines…';
+  try {
+    const machines = await api('/equipment?service=active');
+    if (formRun !== workFormRun || load !== machineLoad) return;
+    if (!machines.length) {
+      picker.innerHTML = '<option value="">No machines in service</option>';
+      $('#w-machine-status').textContent = 'No machines in service. Add or restore a machine, then retry.';
+      $('#w-machine-retry').hidden = false;
+      return;
+    }
+    picker.innerHTML = machines.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    picker.disabled = false;
+    $('#w-create').disabled = false;
+    $('#w-machine-status').textContent = '';
+  } catch (e) {
+    if (formRun !== workFormRun || load !== machineLoad) return;
+    picker.innerHTML = '<option value="">Could not load machines</option>';
+    $('#w-machine-status').textContent = `Could not load machines: ${e.message}`;
+    $('#w-machine-retry').hidden = false;
+  }
+}
+
+// Machines and people load independently: a slow assignee lookup must not leave
+// the machine picker unusable. Opening the form never depends on visiting Machines.
+export async function openNewWork() {
+  const formRun = ++workFormRun;
+  $('#w-owner').innerHTML = '<option value="">— unassigned —</option>';
+  $('#w-owner').disabled = true;
+  openForm('work-form');
+  const machines = retryWorkMachines();
+  const people = (async () => {
+    try {
+      const users = await api('/users/assignable');
+      if (formRun !== workFormRun) return;
+      assignable = users;
+      $('#w-owner').innerHTML = `<option value="">— unassigned —</option>${users.map((u) =>
+        `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
+      $('#w-owner').disabled = false;
+    } catch (e) {
+      if (formRun === workFormRun) formError('work-form', `Could not load people: ${e.message}. You can create it unassigned.`);
+    }
+  })();
+  await Promise.all([machines, people]);
+}
+
 export async function addWorkOrder() {
   const title = $('#w-title').value.trim();
   if (!title) return formError('work-form', 'Say what is wrong — even a few words is enough.');
+  if (!$('#w-equipment').value || $('#w-equipment').disabled) return formError('work-form', 'Choose a machine first.');
   try {
     // The job first, then its photograph: the route is /work-orders/:id/photo and a
     // photograph of a fault that does not exist yet has nowhere to live. This is
     // why the report form can carry a photo before any job id exists.
     const created = await api('/work-orders', { method: 'POST', body: JSON.stringify({
       equipment_id: $('#w-equipment').value, title, priority: $('#w-priority').value,
+      assigned_to: $('#w-owner').value || null,
       labour_hours: $('#w-hours')?.value || null,
       notes: $('#w-notes')?.value.trim() || null,
       reported_by: $('#w-reporter')?.value.trim() || null,
@@ -187,6 +243,7 @@ export async function addWorkOrder() {
       const el = $(sel); if (el) el.value = '';
     });
     if ($('#w-photo')) $('#w-photo').value = '';
+    $('#w-owner').value = '';
     formDone('work-form');
     loadWork();
   } catch (e) { formError('work-form', e.message); }
@@ -194,10 +251,64 @@ export async function addWorkOrder() {
 
 export async function advance(id, status) {
   // Closing is not another step forward, it is a record: it asks what was done
-  // before it will write "done". Everything else moves with one click.
+  // before it will write "done".
   if (status === 'done') return openWorkClose(id);
+  // So is starting one: a job in progress belongs to somebody. The move asks who,
+  // rather than being refused or — worse — quietly starting an unowned job. A job
+  // that already has a name on it moves with one click, as before.
+  const job = workCache.find((w) => w.id === id);
+  if (status === 'in_progress' && job && !job.assigned_to) return openWorkAssign(id);
   try { await api(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); loadWork(); }
-  catch (e) { alert(e.message); }
+  catch (e) {
+    // Another user may have removed the assignee since this list was loaded.
+    if (status === 'in_progress' && /assign the job to someone/i.test(e.message)) {
+      try { await loadWork(); return openWorkAssign(id); } catch (refreshError) { alert(refreshError.message); return; }
+    }
+    alert(e.message);
+  }
+}
+
+// ---- who is doing it ------------------------------------------------------
+let assigningWork = null;
+
+// Ask both administrators and technicians; the limited names endpoint is available
+// to both. If it fails, leave the dialog open and explain rather than guessing.
+export async function openWorkAssign(idToStart) {
+  const job = workCache.find((w) => w.id === idToStart);
+  if (!job) return;
+  assigningWork = idToStart;
+  $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
+  $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
+  $('#wa-owner').disabled = true;
+  $('#wa-go').disabled = true;
+  openForm('work-assign');
+  try {
+    const people = await api('/users/assignable');
+    // A second dialog may have been opened while this request was in flight.
+    if (assigningWork !== idToStart) return;
+    assignable = people;
+    $('#wa-owner').innerHTML = `<option value="">— choose somebody —</option>${people.map((u) =>
+      `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
+    $('#wa-owner').disabled = !people.length;
+    $('#wa-go').disabled = !people.length;
+    if (!people.length) formError('work-assign', 'No accounts are available to assign.');
+  } catch (e) { formError('work-assign', `Could not load people: ${e.message}`); }
+}
+
+/** Assign and start atomically, so a failed request cannot leave a partial change. */
+export async function startAssigned() {
+  if (!assigningWork) return;
+  const owner = $('#wa-owner').value;
+  if (!owner) return formError('work-assign', 'Choose who is doing it, then start the job.');
+  try {
+    await api(`/work-orders/${assigningWork}`, { method: 'PATCH', body: JSON.stringify({
+      assigned_to: Number(owner),
+      status: 'in_progress',
+    })});
+    assigningWork = null;
+    formDone('work-assign');
+    loadWork();
+  } catch (e) { formError('work-assign', e.message); }
 }
 
 // ---- closing a job -------------------------------------------------------

@@ -190,9 +190,32 @@ ok('work order created', wo.status === 201 && wo.data.status === 'open');
 ok('bogus machine id gives a readable 400',
   (await c('/api/work-orders', { method: 'POST', body: { equipment_id: 999, title: 'ghost' } }))
     .status === 400);
+// A problem is required on creation, while assignment remains optional.
+for (const title of [undefined, '', '  ', null, 123]) {
+  const rejected = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title } });
+  ok(`blank or invalid problem is rejected (${String(title)})`, rejected.status === 400 && /problem/i.test(rejected.data.error || ''));
+}
+const refusedStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
+ok('starting an unassigned job is refused', refusedStart.status === 400 && /assign/i.test(refusedStart.data.error || ''));
+const startStillOpen = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id);
+ok('a refused start leaves the job open and unassigned', startStillOpen.status === 'open' && startStillOpen.assigned_to === null);
+const preassigned = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Assigned at creation', assigned_to: 1 } });
+ok('a job can be created already assigned but remains open', preassigned.status === 201 && preassigned.data.assigned_to === 1 && preassigned.data.status === 'open');
+const preStart = await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
+ok('an already assigned job starts without another assignment', preStart.status === 200 && preStart.data.status === 'in_progress' && preStart.data.assigned_to === 1);
+const clearStarted = await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+ok('an in-progress job cannot be unassigned', clearStarted.status === 400);
+const afterClear = (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id);
+ok('refusing to unassign preserves the assignee and status', afterClear.assigned_to === 1 && afterClear.status === 'in_progress');
+ok('an in-progress job can still be edited without clearing its assignee',
+  (await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { notes: 'checking' } })).data.assigned_to === 1);
+const badStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 999999 } });
+ok('starting with an invalid assignee is refused', badStart.status === 400);
 ok('status advances open -> in_progress',
-  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } }))
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 1 } }))
     .data.status === 'in_progress');
+ok('starting with an assignment saves both together',
+  (await c('/api/work-orders')).data.some((w) => w.id === wo.data.id && w.status === 'in_progress' && w.assigned_to === 1));
 const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done', resolution: 'Replaced the seal' } });
 ok('done sets closed_at', done.data.status === 'done' && !!done.data.closed_at);
 ok('invalid status is rejected with a message',
@@ -334,6 +357,18 @@ const tech = makeClient();
 const techLogin = await tech('/api/login', { method: 'POST', body: {
   email: 'tech@local', password: 'tech-password' } });
 ok('created user can log in', techLogin.status === 200 && techLogin.data.role === 'tech');
+
+const techCreatedJob = await tech('/api/work-orders', { method: 'POST', body: {
+  equipment_id: m1.data.id, title: 'Technician assigned job', assigned_to: created.data.id,
+} });
+ok('technicians can create assigned work orders', techCreatedJob.status === 201 && techCreatedJob.data.assigned_to === created.data.id);
+const techStart = await tech(`/api/work-orders/${techCreatedJob.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
+ok('technicians can start assigned work orders', techStart.status === 200 && techStart.data.status === 'in_progress');
+const techOpenJob = await tech('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Technician unassigned job' } });
+const techAssignStart = await tech(`/api/work-orders/${techOpenJob.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: created.data.id } });
+ok('technicians can assign and start an unassigned job in one request',
+  techAssignStart.status === 200 && techAssignStart.data.assigned_to === created.data.id && techAssignStart.data.status === 'in_progress');
+
 ok('technician cannot create users',
   (await tech('/api/users', { method: 'POST', body: {
     name: 'Sneaky', email: 's@local', password: 'longenough1', role: 'admin' } })).status === 403);
@@ -844,7 +879,7 @@ const CREATING_DIALOGS = ['work-form', 'equipment-form', 'parts-form', 'pm-form'
 // filtered by name rather than by hoping it looks different.
 const creatingIds = allDialogs
   .filter((d) => /class="form-grid/.test(d) && !/-edit$/.test(dialogId(d))
-    && !/-close$/.test(dialogId(d)))
+    && !/-close$/.test(dialogId(d)) && !/-assign$/.test(dialogId(d)))
   .map(dialogId);
 ok('each creating screen has its own dialog',
   CREATING_DIALOGS.every((id) => creatingIds.includes(id))
@@ -1460,7 +1495,8 @@ ok('closing that job brings the machine back to running',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 
 const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
-await setJob(routine.id, { status: 'in_progress' });
+const routineStarted = await setJob(routine.id, { status: 'in_progress', assigned_to: 1 });
+ok('routine job really started before checking the machine', routineStarted.data.status === 'in_progress');
 ok('a job somebody is working on does not stop the machine either, unless it says so',
   (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
 await setJob(routine.id, { stops_machine: true });
@@ -3038,6 +3074,24 @@ ok('and trims what was typed before wrapping it',
 rmSync(unitDb, { force: true });
 rmSync(unitDb + '-wal', { force: true });
 rmSync(unitDb + '-shm', { force: true });
+
+// Run the actual browser module with a small DOM and API double as well as the
+// endpoint tests: a correct backend alone cannot prove the assignment prompt works.
+const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
+  (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
+const assignDialog = (html.match(/<dialog id="work-assign"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the work-order forms expose the assignment controls and wire up the actions',
+  workForm.includes('id="w-owner"') && workForm.includes('id="w-title" required')
+  && html.includes('onclick="openNewWork()"') && appSrc13.includes('openNewWork()')
+  && assignDialog.includes('id="wa-owner"') && assignDialog.includes('onclick="startAssigned()"')
+  && appSrc13.includes('startAssigned()'));
+
+ok('the machine picker shows its own status and retry control',
+  workForm.includes('id="w-machine-status"') && workForm.includes('id="w-machine-retry"')
+  && workForm.includes('onclick="retryWorkMachines()"') && appSrc13.includes('function retryWorkMachines()'));
+ok('the machines screen does not overwrite the work-order picker',
+  !appEq.includes("$('#w-equipment').innerHTML"));
 
 // ---- the page speaks for itself -----------------------------------------
 // A dialog with no heading is announced as "dialog" and nothing else; a button

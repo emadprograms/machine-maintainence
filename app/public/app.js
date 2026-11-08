@@ -220,6 +220,8 @@ function downloadParts() { partsReady.then((m) => m.downloadParts()); }
 const workReady = import('/work.js').then((m) => { return m; });
 
 async function loadWork() { return (await workReady).loadWork(); }
+async function openNewWork() { return (await workReady).openNewWork(); }
+async function retryWorkMachines() { return (await workReady).retryWorkMachines(); }
 async function addWorkOrder() { return (await workReady).addWorkOrder(); }
 function advance(id, status) { (workReady).then((m) => m.advance(id, status)); }
 function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
@@ -227,6 +229,7 @@ function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
 function usePart() { (workReady).then((m) => m.usePart()); }
 function confirmCloseWork() { (workReady).then((m) => m.confirmCloseWork()); }
+function startAssigned() { (workReady).then((m) => m.startAssigned()); }
 
 // ----------------------------------------------------- preventive maint.
 function dueKind(days) {

@@ -138,7 +138,6 @@ export async function loadEquipment() {
   drawEquipment();
 
   const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
-  $('#w-equipment').innerHTML = options;
   $('#pm-equipment').innerHTML = options;
 }
 

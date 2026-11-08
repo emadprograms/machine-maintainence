@@ -62,12 +62,13 @@ Check with `node --version`.
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
 | `public/index.html` | The whole UI shell: every screen and form | 595 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 288 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 469 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and its close dialog | 121 · 136 · 188 · 103 · 101 · 304 · 268 · 155 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 472 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 379 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 536 behaviours | 3,105 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 558 behaviours | 3,159 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 161 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -78,7 +79,7 @@ The route files, one per screen group:
 | `routes/auth.js` | login, logout, me | 52 |
 | `routes/record.js` | history, history.csv | 45 |
 | `routes/equipment.js` | machines: list, create, edit, retire, delete, photograph | 124 |
-| `routes/work-orders.js` | work orders, numbers, the photo of the fault, the close rule, work-orders.csv | 176 |
+| `routes/work-orders.js` | work orders, numbers, the photo of the fault, start and close rules, work-orders.csv | 183 |
 | `routes/parts.js` | spare parts, stock on a job, parts.csv | 135 |
 | `routes/pm.js` | recurring maintenance | 77 |
 | `routes/dashboard.js` | the landing screen's four answers and its six-month trend | 76 |
@@ -225,6 +226,15 @@ stored `role` values keep the word *user*, because everything else already speak
   of people it is a choice, without it the same control shows the one true answer, is disabled
   and says why — and the save leaves ownership out entirely, because sending nothing must
   never mean *unassign*.
+* **A work order needs a problem, but assignment is optional at creation.** Select a
+  person in *Assigned to* or leave it blank; either way it starts as open. Starting an
+  unassigned job asks who should do it, and assigns and starts it in one request. An
+  assigned job starts directly. The server enforces the rule and prevents clearing the
+  assignee while a job is in progress. Existing unassigned in-progress jobs can still be
+  edited; they must be assigned if reopened and started again. Both administrators and
+  technicians can use the limited names list.
+  The machine picker loads independently of the assignee list, shows when no machines
+  are in service, and offers Retry when its lookup fails or the list is empty.
 * **Every work order has a number.** `WO-2026-0001`, one series per year, given by the
   server when the ticket is created and never reused or renumbered: the id is for the
   database, the number is for the whiteboard, the phone call with the vendor and the printed
@@ -448,10 +458,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 536 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 558 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`536 passed, 0 failed`.
+`558 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Machine Maintenance</title>
   <link rel="stylesheet" href="/app.css" />
-
 </head>
 <body>
-
 <!-- Login -->
 <section id="login" class="card">
   <h2>Sign in</h2>
@@ -19,7 +17,6 @@
   </div>
   <p id="login-error" class="error"></p>
 </section>
-
 <!-- App -->
 <div id="app" class="hidden">
   <header>
@@ -27,7 +24,6 @@
     <span id="who" class="muted"></span>
     <button class="small" onclick="logout()">Sign out</button>
   </header>
-
   <div class="layout">
     <aside id="sidebar"></aside>
     <main>
@@ -95,7 +91,6 @@
             <tbody id="equipment-rows"></tbody></table>
         </div>
       </div>
-
       <dialog id="equipment-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -122,7 +117,6 @@
           </div>
         </form>
       </dialog>
-
       <dialog id="equipment-edit" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -153,7 +147,6 @@
           </div>
         </form>
       </dialog>
-
       <dialog id="equipment-delete" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -175,7 +168,6 @@
           </div>
         </form>
       </dialog>
-
       <dialog id="machine-history" class="sheet">
         <div class="sheet-inner">
           <div class="sheet-head">
@@ -201,7 +193,7 @@
           <h2>Work orders</h2>
           <p class="page-sub">What needs fixing, who owns it, and what is already done.</p>
         </div>
-        <button class="primary" onclick="openForm('work-form')">New work order</button>
+        <button class="primary" onclick="openNewWork()">New work order</button>
       </div>
       <div class="card">
         <div class="card-toolbar">
@@ -220,7 +212,6 @@
             <tbody id="work-rows"></tbody></table>
         </div>
       </div>
-
       <dialog id="work-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -229,8 +220,10 @@
           </div>
           <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
           <div class="form-grid form-grid-wide">
-            <label class="field"><span>Machine</span><select id="w-equipment"></select></label>
-            <label class="field"><span>Problem</span><input id="w-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Machine</span><select id="w-equipment" required></select>
+              <span id="w-machine-status" class="hint" role="status"></span><button id="w-machine-retry" class="ghost small" type="button" onclick="retryWorkMachines()" hidden>Retry loading machines</button></label>
+            <label class="field"><span>Problem</span><input id="w-title" required placeholder="What is wrong?" /></label>
+            <label class="field"><span>Assigned to</span><select id="w-owner"><option value="">— unassigned —</option></select></label>
             <label class="field"><span>Priority</span>
               <select id="w-priority">
                 <option value="low">Low</option>
@@ -256,11 +249,10 @@
           <p class="form-error"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('work-form')">Cancel</button>
-            <button class="primary" type="button" onclick="addWorkOrder()">Create work order</button>
+            <button class="primary" type="button" id="w-create" onclick="addWorkOrder()">Create work order</button>
           </div>
         </form>
       </dialog>
-
       <dialog id="work-edit" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -273,8 +265,7 @@
               <input id="we-title" placeholder="What is wrong?" /></label>
             <label class="field"><span>Assigned to</span>
               <select id="we-owner"></select>
-              <span class="hint" id="we-owner-hint" hidden>Only an administrator can change the
-                owner. It stays as it is.</span></label>
+              <span class="hint" id="we-owner-hint" hidden>People could not be loaded. The assignment stays as it is.</span></label>
             <label class="field"><span>Priority</span>
               <select id="we-priority">
                 <option value="low">Low</option>
@@ -309,7 +300,6 @@
           </div>
         </form>
       </dialog>
-
       <dialog id="work-close" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -339,6 +329,24 @@
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
             <button class="primary" type="button" onclick="confirmCloseWork()">Close the job</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="work-assign" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-assign-title">Who is doing this job?</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-assign')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-assign-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Assigned to</span>
+              <select id="wa-owner"></select></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-assign')">Cancel</button>
+            <button class="primary" type="button" id="wa-go" onclick="startAssigned()">Start the job</button>
           </div>
         </form>
       </dialog>
@@ -372,7 +380,6 @@
         </div>
       </div>
     </section>
-
     <section data-page="parts" class="hidden">
       <div class="page-head">
         <div>
@@ -397,7 +404,6 @@
             <tbody id="parts-rows"></tbody></table>
         </div>
       </div>
-
       <dialog id="parts-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -420,7 +426,6 @@
           </div>
         </form>
       </dialog>
-
       <!-- Editing a part is a dialog, like editing a machine or a work order. It used
            to turn the table row into five inputs, which could not show the supplier at
            all: the one field the create form has and the row editor did not. -->
@@ -471,7 +476,6 @@
             <tbody id="pm-rows"></tbody></table>
         </div>
       </div>
-
       <dialog id="pm-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -517,7 +521,6 @@
             <tbody id="users-rows"></tbody></table>
         </div>
       </div>
-
       <dialog id="users-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -570,7 +573,6 @@
         </div>
       </div>
     </section>
-
     <section data-page="backup" class="hidden">
       <div class="page-head">
         <div>
@@ -589,7 +591,6 @@
     </main>
   </div>
 </div>
-
 <script src="/app.js"></script>
 </body>
 </html>

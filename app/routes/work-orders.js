@@ -36,8 +36,8 @@ export default {
 
   'POST /api/work-orders': route(async (req, res) => {
     const b = await readBody(req);
-    if (!b?.equipment_id || !b?.title?.trim()) {
-      return send(res, 400, { error: 'Machine and title are required' });
+    if (!b?.equipment_id || typeof b.title !== 'string' || !b.title.trim()) {
+      return send(res, 400, { error: 'Machine and problem are required' });
     }
     const owner = assigneeValue(b.assigned_to);
     if (owner.error) return send(res, 400, { error: owner.error });
@@ -65,8 +65,8 @@ export default {
     const b = await readBody(req);
     const before = get('SELECT * FROM work_orders WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Work order not found' });
-    if (b.title !== undefined && !String(b.title).trim()) {
-      return send(res, 400, { error: 'Title cannot be empty' });
+    if (b.title !== undefined && (typeof b.title !== 'string' || !b.title.trim())) {
+      return send(res, 400, { error: 'Problem cannot be empty' });
     }
     const owner = b.assigned_to === undefined
       ? { value: before.assigned_to }
@@ -82,6 +82,13 @@ export default {
     if (verifier.error) return send(res, 400, { error: verifier.error });
     const notes = b.notes === undefined ? before.notes : (String(b.notes ?? '').trim() || null);
     const status = b.status ?? before.status;
+    // A job in progress belongs to somebody. This is about the transition, like the
+    // rule below it: a job already being worked on keeps its state when something
+    // else about it changes, but nothing starts work without a name attached.
+    if (status === 'in_progress' && !owner.value
+        && (before.status !== 'in_progress' || (b.assigned_to !== undefined && before.assigned_to))) {
+      return send(res, 400, { error: 'Assign the job to someone before starting it' });
+    }
     // A job cannot be closed without an account of the repair. "Bearing noise —
     // done" answers nothing six months later, and the moment to write it down is
     // the moment the job is finished. The rule is about the transition, not the
