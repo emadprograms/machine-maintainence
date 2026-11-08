@@ -258,6 +258,8 @@ export async function advance(id, status) {
 let updatingWork = null;
 let updateJob = null;
 let updateRun = 0;
+let updateLoad = 0;
+let updateEditing = false;
 
 // A single dialog is both the full timeline and the next-stage editor. It remains
 // available in read-only mode after closing; no update overwrites an earlier one.
@@ -266,37 +268,83 @@ export async function openWorkUpdates(idToUpdate, viewOnly = false) {
   if (!job) return;
   updatingWork = idToUpdate;
   updateJob = job;
-  const run = ++updateRun;
+  ++updateRun;
   const editing = !viewOnly && job.status !== 'done';
+  updateEditing = editing;
   $('#work-assign-title').textContent = editing ? (job.status === 'open' ? 'Start the job' : 'Add an update') : 'Work order updates';
   $('#work-assign-what').textContent = `${job.code ? `${job.code} · ` : ''}${job.equipment_name} — ${job.title}`;
   $('#wa-entry').hidden = !editing;
   $('#wa-go').hidden = !editing;
-  $('#wa-go').disabled = true;
   $('#wa-message').value = '';
   $('#wa-hours').value = '';
   $('#wa-photos').value = '';
-  $('#wa-owner-field').hidden = Boolean(job.assigned_to);
-  $('#wa-history').textContent = 'Loading updates…';
+  $('#wa-owner-field').hidden = !(editing && (job.status === 'open' || !job.assigned_to));
+  $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
+  $('#wa-owner').disabled = true;
   openForm('work-assign');
-  try {
-    const [updates, people] = await Promise.all([
-      api(`/work-orders/${idToUpdate}/updates`),
-      editing && !job.assigned_to ? api('/users/assignable') : Promise.resolve([]),
-    ]);
-    if (updateRun !== run) return;
+  return retryWorkUpdateLoading();
+}
+
+// The people and history requests are independent. A slow or failed history
+// request must not leave an otherwise available assignee picker blank.
+export async function retryWorkUpdateLoading() {
+  if (!updatingWork || !updateJob) return;
+  const run = updateRun, load = ++updateLoad, workId = updatingWork, job = updateJob;
+  const editing = updateEditing;
+  const choose = editing && (job.status === 'open' || !job.assigned_to);
+  const selected = $('#wa-owner').value || (job.assigned_to ? String(job.assigned_to) : '');
+  let historyReady = false, peopleReady = !choose;
+  const failures = [];
+  const current = () => run === updateRun && load === updateLoad;
+  const refresh = () => {
+    if (!current()) return;
+    const pending = !historyReady || !peopleReady;
+    $('#wa-load-status').textContent = failures.length ? failures.join(' ') : (pending ? 'Loading updates and people…' : '');
+    $('#wa-retry').hidden = failures.length === 0;
+    $('#wa-go').disabled = !editing || pending || failures.length > 0;
+  };
+  $('#wa-go').disabled = true;
+  $('#wa-retry').hidden = true;
+  formError('work-assign', '');
+  $('#wa-history').textContent = 'Loading updates…';
+  if (choose) {
+    $('#wa-owner').innerHTML = '<option value="">Loading people…</option>';
+    $('#wa-owner').disabled = true;
+  }
+  refresh();
+  const history = api(`/work-orders/${workId}/updates`).then((updates) => {
+    if (!current()) return;
     $('#wa-history').innerHTML = updates.map((u) => `<div class="update-entry"><strong>Stage ${Number(u.stage)}</strong>
       <small> · ${esc(u.created_at)} UTC · ${esc(u.author)} · ${Number(u.hours)} hours</small>
       <p>${esc(u.message)}</p>${u.photos.map((photo, i) => `<a class="link-photo" target="_blank" rel="noopener"
-        href="/api/work-orders/${idToUpdate}/updates/${u.id}/photos/${photo}">Photo ${i + 1}</a>`).join(' ')}</div>`).join('')
+        href="/api/work-orders/${workId}/updates/${u.id}/photos/${photo}">Photo ${i + 1}</a>`).join(' ')}</div>`).join('')
       || '<p class="hint">No updates yet.</p>';
     $('#wa-stage-title').textContent = `Stage ${updates.length ? Number(updates.at(-1).stage) + 1 : 1}`;
-    if (editing && !job.assigned_to) {
-      $('#wa-owner').innerHTML = `<option value="">— choose somebody —</option>${people.map((u) =>
-        `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
-    }
-    $('#wa-go').disabled = !editing;
-  } catch (e) { if (updateRun === run) formError('work-assign', `Could not load updates: ${e.message}`); }
+    historyReady = true;
+    refresh();
+  }).catch((e) => {
+    if (!current()) return;
+    $('#wa-history').textContent = '';
+    failures.push(`Could not load updates: ${e.message}.`);
+    refresh();
+  });
+  const people = choose ? api('/users/assignable').then((users) => {
+    if (!current()) return;
+    assignable = users;
+    $('#wa-owner').innerHTML = `<option value="">— choose somebody —</option>${users.map((u) =>
+      `<option value="${u.id}">${esc(u.name)}</option>`).join('')}`;
+    if (selected && users.some((u) => String(u.id) === selected)) $('#wa-owner').value = selected;
+    $('#wa-owner').disabled = users.length === 0;
+    if (!users.length) failures.push('No accounts are available to assign. Ask an admin to add one.');
+    peopleReady = users.length > 0;
+    refresh();
+  }).catch((e) => {
+    if (!current()) return;
+    $('#wa-owner').innerHTML = '<option value="">Could not load people</option>';
+    failures.push(`Could not load people: ${e.message}.`);
+    refresh();
+  }) : Promise.resolve();
+  await Promise.all([history, people]);
 }
 
 function photoData(file) {
@@ -309,7 +357,7 @@ function photoData(file) {
 }
 
 export async function startAssigned() {
-  if (!updatingWork || !updateJob) return;
+  if (!updatingWork || !updateJob || $('#wa-go').disabled) return;
   const run = updateRun, workId = updatingWork, job = updateJob;
   const message = $('#wa-message').value.trim();
   const hours = $('#wa-hours').value;
@@ -318,13 +366,14 @@ export async function startAssigned() {
   if (!message) return formError('work-assign', 'Write an update for this stage.');
   if (hours === '' || !Number.isFinite(Number(hours)) || Number(hours) < 0)
     return formError('work-assign', 'Enter the time spent in hours.');
-  if (!job.assigned_to && !owner) return formError('work-assign', 'Choose who is doing this job.');
+  const choose = job.status === 'open' || !job.assigned_to;
+  if (choose && !owner) return formError('work-assign', 'Choose who is doing this job.');
   if (photos.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024))
     return formError('work-assign', 'Choose up to five photos, each under 2 MB.');
   $('#wa-go').disabled = true;
   try {
     const body = { message, hours, photos: await Promise.all(photos.map(photoData)) };
-    if (!job.assigned_to) body.assigned_to = Number(owner);
+    if (choose) body.assigned_to = Number(owner);
     await api(`/work-orders/${workId}/updates`, { method: 'POST', body: JSON.stringify(body) });
     if (updateRun === run) {
       updatingWork = null;

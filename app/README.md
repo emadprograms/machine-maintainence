@@ -60,15 +60,15 @@ Check with `node --version`.
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
 | `settings.js` / `dates.js` | The hourly rate; date parsing | 24 each |
-| `public/index.html` | The whole UI shell: every screen and form | 593 |
+| `public/index.html` | The whole UI shell: every screen and form | 594 |
 | `public/app.css` | The whole stylesheet — was a `<style>` block until the page reached 600 lines | 295 |
-| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 473 |
-| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 412 |
+| `public/app.js` | Fetches data and draws the screens that are small enough to keep here | 474 |
+| `public/shell.js` · `dashboard.js` · `history.js` · `report.js` · `charts.js` · `machines.js` · `work.js` | One module per screen group; `charts.js` draws the bars, `work.js` holds the fault list and work-order dialogs | 121 · 136 · 188 · 103 · 101 · 303 · 461 |
 | `public/sort.js` | The ordering rule for a table — numbers written as text, blanks last, ties kept — kept apart so the suite can run it on rows instead of reading it | 50 |
 | `public/tables.js` | Everything every table does the same way: the heading click, the arrow and `aria-sort`, and the three-dot row menu | 121 |
 | `public/parts.js` | The spare parts screen: its filter, its table, its editing dialog and its CSV | 155 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 586 behaviours | 3,234 |
-| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 176 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks 588 behaviours | 3,245 |
+| `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 266 |
 | `scripts/audit-offline.js` | Proves nothing reaches the internet | 151 |
 | `start.bat` / `backup.bat` | Windows launchers | — |
 
@@ -230,7 +230,9 @@ stored `role` values keep the word *user*, because everything else already speak
 * **A work order needs a problem, but assignment is optional at creation.** Select a
   person in *Assigned to* or leave it blank; either way it starts as open. Starting an
   unassigned job asks who should do it; starting any job requires a Stage 1 update.
-  The server saves the first stage, assignment and status together and prevents clearing
+  The start dialog shows the existing assignee, if any, and allows choosing a different
+  person. People and updates load independently, with an explanation and Retry if either
+  lookup fails. The server saves the first stage, assignment and status together and prevents clearing
   the assignee while a job is in progress. Existing unassigned in-progress jobs can still be
   edited; they must be assigned if reopened and started again. Both administrators and
   technicians can use the limited names list.
@@ -468,10 +470,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 586 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks 588 behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`586 passed, 0 failed`.
+`588 passed, 0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

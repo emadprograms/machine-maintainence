@@ -368,6 +368,14 @@ const techOpenJob = await tech('/api/work-orders', { method: 'POST', body: { equ
 const techAssignStart = await tech(`/api/work-orders/${techOpenJob.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25, assigned_to: created.data.id } });
 ok('technicians can assign and start an unassigned job in one request',
   techAssignStart.status === 201 && techAssignStart.data.assigned_to === created.data.id && techAssignStart.data.status === 'in_progress');
+const reassignedJob = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Assigned at report', assigned_to: 1 } });
+const reassignStart = await tech(`/api/work-orders/${reassignedJob.data.id}/updates`, { method: 'POST', body: {
+  message: 'Taking over this job', hours: 0.5, assigned_to: created.data.id,
+} });
+ok('starting a preassigned job can change the assignee atomically',
+  reassignStart.status === 201 && reassignStart.data.assigned_to === created.data.id
+  && (await c('/api/work-orders')).data.some((w) => w.id === reassignedJob.data.id && w.assigned_to === created.data.id && w.status === 'in_progress'));
+
 
 ok('technician cannot create users',
   (await tech('/api/users', { method: 'POST', body: {
@@ -3156,6 +3164,9 @@ ok('final labour hours appear only in the close dialog',
 ok('the stage dialog asks for an update, time and optional photos',
   ['wa-message', 'wa-hours', 'wa-photos', 'wa-history'].every((id) => assignDialog.includes(`id="${id}"`))
   && assignDialog.includes('multiple'));
+ok('the stage dialog explains loading failures and offers retry',
+  assignDialog.includes('id="wa-load-status"') && assignDialog.includes('id="wa-retry"')
+  && assignDialog.includes('onclick="retryWorkUpdateLoading()"') && appSrc13.includes('function retryWorkUpdateLoading()'));
 ok('the work-order forms expose the assignment controls and wire up the actions',
   workForm.includes('id="w-owner"') && workForm.includes('id="w-title" required')
   && html.includes('onclick="openNewWork()"') && appSrc13.includes('openNewWork()')

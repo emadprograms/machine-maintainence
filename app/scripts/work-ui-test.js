@@ -34,8 +34,8 @@ globalThis.alert = (message) => { throw new Error(`Unexpected alert: ${message}`
 const people = [{ id: 1, name: 'Admin' }, { id: 2, name: '<Technician>' }];
 let jobs = [{ id: 42, code: 'WO-42', equipment_name: 'Press', title: 'Leak', status: 'open', priority: 'medium', assigned_to: null }];
 let updates = [];
-let failPeople = false, failMachines = false, noMachines = false;
-let waitPeople = null, waitMachines = null;
+let failPeople = false, failMachines = false, noMachines = false, failUpdates = false, noPeople = false;
+let waitPeople = null, waitMachines = null, waitUpdates = null;
 globalThis.api = async (path, options = {}) => {
   requests.push({ path, options });
   if (path === '/equipment?service=active') {
@@ -46,11 +46,15 @@ globalThis.api = async (path, options = {}) => {
   if (path === '/users/assignable') {
     if (waitPeople) return waitPeople;
     if (failPeople) throw new Error('Network unavailable');
-    return people;
+    return noPeople ? [] : people;
   }
   if (path.startsWith('/work-orders?') || (path === '/work-orders' && !options.method)) return jobs;
   if (path === '/work-orders' && options.method === 'POST') return { id: 99 };
-  if (path === '/work-orders/42/updates' && !options.method) return updates;
+  if (path === '/work-orders/42/updates' && !options.method) {
+    if (waitUpdates) return waitUpdates;
+    if (failUpdates) throw new Error('History unavailable');
+    return updates;
+  }
   if (path === '/work-orders/42/updates' && options.method === 'POST') {
     const body = JSON.parse(options.body);
     updates.push({ id: updates.length + 1, stage: updates.length + 1, message: body.message,
@@ -96,6 +100,10 @@ assert.equal(JSON.parse(requests.findLast((r) => r.path === '/work-orders' && r.
 await work.advance(42, 'in_progress');
 assert.equal(opened.at(-1), 'work-assign');
 assert.equal(el('#wa-stage-title').textContent, 'Stage 1');
+assert.equal(el('#wa-owner-field').hidden, false);
+assert.equal(el('#wa-owner').disabled, false);
+assert.match(el('#wa-owner').innerHTML, /Admin/);
+assert.match(el('#wa-owner').innerHTML, /&lt;Technician>/);
 assert.equal(requests.filter((r) => r.options.method === 'POST' && r.path.endsWith('/updates')).length, 0);
 el('#wa-message').value = 'Started inspection';
 el('#wa-hours').value = '0.5';
@@ -118,6 +126,21 @@ assert.equal(jobs[0].status, 'in_progress');
 await work.openWorkUpdates(42, true);
 assert.equal(el('#wa-entry').hidden, true);
 assert.match(el('#wa-history').innerHTML, /Replaced bearing/);
+// A preassigned open job still shows its assignee and can be reassigned on start.
+jobs[0].status = 'open';
+jobs[0].assigned_to = 1;
+await work.loadWork();
+await work.advance(42, 'in_progress');
+assert.equal(el('#wa-owner-field').hidden, false);
+assert.equal(el('#wa-owner').value, '1');
+assert.match(el('#wa-owner').innerHTML, /&lt;Technician>/);
+el('#wa-owner').value = '2';
+el('#wa-message').value = 'Reassigned and restarted';
+el('#wa-hours').value = '0.25';
+await work.startAssigned();
+assert.equal(jobs[0].assigned_to, 2);
+assert.equal(JSON.parse(requests.findLast((r) => r.path.endsWith('/updates') && r.options.method === 'POST').options.body).assigned_to, 2);
+
 // An unavailable list must not pretend the user lacks permission or start a job.
 jobs[0].assigned_to = null;
 jobs[0].status = 'open';
@@ -125,7 +148,74 @@ await work.loadWork();
 failPeople = true;
 await work.advance(42, 'in_progress');
 assert.equal(el('#wa-go').disabled, true);
-assert.match(errors.at(-1)[1], /network unavailable/i);
+assert.match(el('#wa-load-status').textContent, /could not load people.*network unavailable/i);
+assert.equal(el('#wa-owner').disabled, true);
+assert.equal(el('#wa-retry').hidden, false);
+el('#wa-message').value = 'Keep my draft';
+failPeople = false;
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-owner').disabled, false);
+assert.equal(el('#wa-go').disabled, false);
+assert.equal(el('#wa-message').value, 'Keep my draft');
+assert.equal(el('#wa-retry').hidden, true);
+// History failures and slow history must not leave the people picker blank.
+failUpdates = true;
+await work.advance(42, 'in_progress');
+assert.equal(el('#wa-owner').disabled, false);
+assert.match(el('#wa-owner').innerHTML, /Admin/);
+assert.equal(el('#wa-go').disabled, true);
+assert.match(el('#wa-load-status').textContent, /could not load updates.*history unavailable/i);
+assert.equal(el('#wa-retry').hidden, false);
+el('#wa-owner').value = '2';
+failUpdates = false;
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-go').disabled, false);
+assert.equal(el('#wa-owner').value, '2');
+noPeople = true;
+await work.advance(42, 'in_progress');
+assert.equal(el('#wa-owner').disabled, true);
+assert.equal(el('#wa-go').disabled, true);
+assert.match(el('#wa-load-status').textContent, /no accounts/i);
+noPeople = false;
+await work.retryWorkUpdateLoading();
+assert.equal(el('#wa-owner').disabled, false);
+let releaseUpdates;
+waitUpdates = new Promise((resolve) => { releaseUpdates = resolve; });
+const pendingUpdate = work.advance(42, 'in_progress');
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(el('#wa-owner').disabled, false);
+assert.match(el('#wa-owner').innerHTML, /Admin/);
+assert.equal(el('#wa-go').disabled, true);
+el('#wa-message').value = 'Cannot save while loading';
+el('#wa-hours').value = '1';
+el('#wa-owner').value = '2';
+const beforePendingSave = requests.filter((r) => r.path.endsWith('/updates') && r.options.method === 'POST').length;
+await work.startAssigned();
+assert.equal(requests.filter((r) => r.path.endsWith('/updates') && r.options.method === 'POST').length, beforePendingSave);
+releaseUpdates(updates);
+await pendingUpdate;
+waitUpdates = null;
+assert.equal(el('#wa-go').disabled, false);
+// A late failure from an earlier retry cannot replace a successful newer load.
+let rejectOldUpdates;
+waitUpdates = new Promise((resolve, reject) => { rejectOldUpdates = reject; });
+const oldUpdate = work.retryWorkUpdateLoading();
+waitUpdates = null;
+await work.retryWorkUpdateLoading();
+rejectOldUpdates(new Error('Stale failure'));
+await oldUpdate;
+assert.equal(el('#wa-go').disabled, false);
+assert.doesNotMatch(el('#wa-load-status').textContent, /stale failure/i);
+let releaseOldPeople;
+waitPeople = new Promise((resolve) => { releaseOldPeople = resolve; });
+const oldPeople = work.retryWorkUpdateLoading();
+waitPeople = null;
+await work.retryWorkUpdateLoading();
+releaseOldPeople([{ id: 99, name: 'Stale person' }]);
+await oldPeople;
+assert.match(el('#wa-owner').innerHTML, /Admin/);
+assert.doesNotMatch(el('#wa-owner').innerHTML, /Stale person/);
+failPeople = true;
 await work.openNewWork();
 assert.equal(el('#w-create').disabled, false);
 assert.equal(el('#w-owner').disabled, true);
