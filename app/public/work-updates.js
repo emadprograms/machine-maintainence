@@ -30,7 +30,7 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#wa-go').hidden = !editing;
   $('#wa-go').textContent = 'Save update'; $('#wa-cancel').textContent = editing ? 'Cancel' : 'Close';
   $('#wa-delete').hidden = true;
-  $('#wa-history-panel').open = viewOnly; $('#wa-parts-panel').open = false; $('#wa-photos-panel').open = false;
+  $('#wa-history-panel').open = viewOnly; $('#wa-parts-panel').open = false; $('#wa-photos-panel').open = false; $('#wa-report-panel').open = false;
   $('#wa-history-label').textContent = viewOnly ? 'Timeline' : 'Previous updates';
   $('#wa-history-count').textContent = 'Loading…'; $('#wa-photos-summary').textContent = 'Optional · Attach up to 5 files';
   $('#wa-photo-selection').textContent = ''; $('#wa-scroll').scrollTop = 0;
@@ -152,6 +152,7 @@ export function editLatestStage(stageId) {
   $('#wa-history-panel').open = false; $('#wa-scroll').scrollTop = 0;
   $('#wa-parts-panel').open = Boolean(editingStage.parts?.length);
   $('#wa-photos-panel').open = Boolean(editingStage.photos?.length);
+  $('#wa-report-panel').open = Boolean(editingStage.report);
   stateTouched = true;
   $('#work-assign-title').textContent = 'Edit latest stage';
   $('#wa-stage-title').textContent = `Stage ${Number(editingStage.stage)}`;

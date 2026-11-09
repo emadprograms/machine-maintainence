@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS parts (
   reorder_level INTEGER NOT NULL DEFAULT 5
 );
 
+CREATE TABLE IF NOT EXISTS part_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id INTEGER NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL, kind TEXT NOT NULL, original_name TEXT NOT NULL
+);
+
 -- Which parts went into which job (many-to-many).
 CREATE TABLE IF NOT EXISTS work_order_parts (
   work_order_id INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,

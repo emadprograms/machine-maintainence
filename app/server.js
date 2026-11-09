@@ -23,10 +23,12 @@ import stageAdminRoutes from './routes/stage-admin.js';
 import uploadRoutes from './routes/uploads.js';
 import { cleanExpiredUploads } from './uploads.js';
 import partsRoutes from './routes/parts.js';
+import partAttachmentRoutes from './routes/part-attachments.js';
 import pmRoutes from './routes/pm.js';
 import dashboardRoutes from './routes/dashboard.js';
 import adminRoutes from './routes/admin.js';
 import reportRoutes from './routes/report.js';
+import reportTypeRoutes from './routes/report-types.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -61,10 +63,12 @@ const api = {
   ...stageAdminRoutes,
   ...uploadRoutes,
   ...partsRoutes,
+  ...partAttachmentRoutes,
   ...pmRoutes,
   ...dashboardRoutes,
   ...adminRoutes,
   ...reportRoutes,
+  ...reportTypeRoutes,
 };
 
 // -------------------------------------------------------------- routing

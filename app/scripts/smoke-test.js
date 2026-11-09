@@ -1350,7 +1350,7 @@ ok('the report exports with a total row that matches the screen',
   && Number(totalRow[4]) === Number(report.data.parts_cost),
   `csv total row: ${JSON.stringify(totalRow)}`);
 ok('the report is a screen with its own export',
-  appUrl.includes("{ key: 'report', label: 'Report' }")
+  appUrl.includes("{ key: 'report', label: 'Reports' }")
   && /downloadReport/.test(readFileSync(join(root, 'public', 'report.js'), 'utf8')),
   'no sidebar entry or no export');
 
@@ -3584,7 +3584,7 @@ ok('stage history and optional additions use accessible disclosures',
 ok('the stage form provides a labelled parts table and clear disclosure arrows',
   /<table class="stage-parts-table">/.test(assignDialog) && /<th scope="col">Spare part/.test(assignDialog)
   && /<th scope="col">Quantity/.test(assignDialog) && /<th scope="col">Actual unit cost/.test(assignDialog)
-  && /aria-label="Add selected part"/.test(assignDialog) && (assignDialog.match(/class="disclosure-chevron"/g) || []).length === 3
+  && /aria-label="Add selected part"/.test(assignDialog) && (assignDialog.match(/class="disclosure-chevron"/g) || []).length === 4
   && /<path d="m6 9 6 6 6-6"/.test(assignDialog));
 const stageLayout = readFileSync(join(root, 'public', 'stage-experience.css'), 'utf8');
 const printMarkup = readFileSync(join(root, 'public', 'print-job.html'), 'utf8');
@@ -3598,8 +3598,8 @@ ok('machine status reads like a form field and uses the muted stage palette',
 ok('the stage timeline and photo preview have dedicated responsive styles',
   stageLayout.includes('.stage-view-only .update-history') && stageLayout.includes('.stage-thumbnail')
   && html.includes('id="stage-photo-viewer"') && html.includes('id="wa-new-photos"'));
-ok('the row menu offers a print action and the standalone page is print-ready',
-  workSrc.includes("menuItem('Print job'") && appSrc13.includes('function printWork(')
+ok('work order printing is in Reports, not the row menu, and the printable page is ready',
+  !workSrc.includes("menuItem('Print job'") && html.includes('id="report-work-select"')
   && printMarkup.includes('Save as PDF') && printCss.includes('@media print'));
 ok('the stage form scrolls independently of its visible actions and errors',
   assignDialog.includes('id="wa-scroll" class="stage-scroll"') && assignDialog.includes('class="stage-footer"')
@@ -3642,6 +3642,18 @@ ok('temporary stage uploads can be discarded', discardProbe.status === 200);
 const mediaSuite = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'media-test.js')], { cwd: root, encoding: 'utf8' });
 ok('streamed media, reports, permissions, ranges and cleanup work end to end', mediaSuite.status === 0,
   (mediaSuite.stderr || mediaSuite.stdout).slice(0, 600));
+
+const reportProbeMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Report probe' } })).data;
+const reportMachineProbe = await late(`/api/reports/machine/${reportProbeMachine.id}`);
+ok('machine service reports are authenticated and available', reportMachineProbe.status === 200 && reportMachineProbe.data.cost_basis === 'parts');
+ok('inventory reports are available', (await late('/api/reports/parts')).status === 200);
+ok('machine reports export to CSV', (await late(`/api/export/machine-report.csv?id=${reportProbeMachine.id}`)).status === 200);
+ok('inventory reports export to CSV', (await late('/api/export/inventory-report.csv')).status === 200);
+await late(`/api/equipment/${reportProbeMachine.id}`, { method: 'DELETE' });
+
+const reportsAttachmentsSuite = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'reports-attachments-test.js')], { cwd: root, encoding: 'utf8' });
+ok('reports and spare-part attachments work end to end', reportsAttachmentsSuite.status === 0,
+  (reportsAttachmentsSuite.stderr || reportsAttachmentsSuite.stdout).slice(0, 600));
 
 // ---- no endpoint is unknown to the suite --------------------------------
 // A floor rather than a proof: every route in `routes/` must at least be *named*

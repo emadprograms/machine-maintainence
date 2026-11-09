@@ -7,6 +7,7 @@
 // formError, formDone) rather than repeating them.
 
 import { register, rowsFor, markTable, rowMenu, menuItem } from './tables.js';
+import { loadPartAttachments, partAttachmentsForSave, discardPartUploads, partSession, currentPartSession } from './part-attachments.js';
 
 // The list as last loaded. Editing reads the whole record from here rather than
 // asking for it again — the row that drew the button already has it.
@@ -99,16 +100,22 @@ export function editPart(idToEdit) {
     + `${part.supplier ? ` from ${part.supplier}` : ''}`
     + `${low ? ' — at or below the reorder level, so it is flagged on the list.' : '.'}`;
   openForm('part-edit');
+  loadPartAttachments(part.id);
 }
 
 /** Save the whole record. Every field is sent, so clearing the supplier or the
  *  price really clears it — the route keeps whatever it is not told. */
 export async function savePart() {
+  if ($('#pe-save').disabled) return;
   const partId = Number($('#pe-id').value);
   const name = $('#pe-name').value.trim();
   if (!name) return formError('part-edit', 'A part needs a name.');
+  const uploaded = [], session = partSession('pe'); $('#pe-save').disabled = true;
   try {
-    await api(`/parts/${partId}`, { method: 'PUT', body: JSON.stringify({
+    const attachments = await partAttachmentsForSave('pe', '#part-edit', uploaded, session);
+    if (!currentPartSession('pe', session) || !$('#part-edit').open) throw new Error('Cancelled');
+    const result = await api(`/parts/${partId}`, { method: 'PUT', body: JSON.stringify({
+      ...attachments,
       name,
       reference: $('#pe-ref').value.trim() || null,
       supplier: $('#pe-supplier').value.trim() || null,
@@ -116,9 +123,11 @@ export async function savePart() {
       unit_price: $('#pe-price').value,
       reorder_level: $('#pe-reorder').value,
     })});
-    formDone('part-edit');
+    uploaded.length = 0; if (result.warning) alert(result.warning);
+    if (currentPartSession('pe', session)) formDone('part-edit');
     loadParts();
-  } catch (e) { formError('part-edit', e.message); }
+  } catch (e) { if (currentPartSession('pe', session) && $('#part-edit').open) formError('part-edit', e.message); }
+  finally { if (currentPartSession('pe', session)) $('#pe-save').disabled = false; await discardPartUploads(uploaded); }
 }
 
 export async function removePart(idToRemove) {
@@ -126,9 +135,10 @@ export async function removePart(idToRemove) {
   // called O'Brien or one containing a quote must not break the button.
   const part = partsCache.find((p) => p.id === idToRemove);
   const label = part ? part.name : 'this part';
-  if (!confirm(`Delete "${label}" from the spare parts list?\n\nIts stock count and price go with it. This cannot be undone.`)) return;
+  if (!confirm(`Delete "${label}" from the spare parts list?\n\nIts stock count, price and attachments go with it. This cannot be undone.`)) return;
   try {
-    await api(`/parts/${idToRemove}`, { method: 'DELETE' });
+    const result = await api(`/parts/${idToRemove}`, { method: 'DELETE' });
+    if (result.warning) alert(result.warning);
     loadParts();
   } catch (e) { alert(e.message); }
 }
@@ -138,18 +148,25 @@ export function downloadParts() {
 }
 
 export async function addPart() {
+  if ($('#p-save').disabled) return;
   const name = $('#p-name').value.trim();
   if (!name) return formError('parts-form', 'A part needs a name.');
+  const uploaded = [], session = partSession('p'); $('#p-save').disabled = true;
   try {
+    const attachments = await partAttachmentsForSave('p', '#parts-form', uploaded, session);
+    if (!currentPartSession('p', session) || !$('#parts-form').open) throw new Error('Cancelled');
     await api('/parts', { method: 'POST', body: JSON.stringify({
-      name, reference: $('#p-ref').value, qty: $('#p-qty').value,
+      ...attachments, name, reference: $('#p-ref').value, qty: $('#p-qty').value,
       unit_price: $('#p-price').value, reorder_level: $('#p-reorder').value,
       supplier: $('#p-supplier').value,
     })});
-    ['#p-name', '#p-ref', '#p-price', '#p-supplier'].forEach((s) => { $(s).value = ''; });
-    $('#p-qty').value = '0';
-    $('#p-reorder').value = '5';
-    formDone('parts-form');
+    uploaded.length = 0;
+    if (currentPartSession('p', session)) {
+      ['#p-name', '#p-ref', '#p-price', '#p-supplier'].forEach((s) => { $(s).value = ''; });
+      $('#p-qty').value = '0'; $('#p-reorder').value = '5';
+      formDone('parts-form');
+    }
     loadParts();
-  } catch (e) { formError('parts-form', e.message); }
+  } catch (e) { if (currentPartSession('p', session) && $('#parts-form').open) formError('parts-form', e.message); }
+  finally { if (currentPartSession('p', session)) $('#p-save').disabled = false; await discardPartUploads(uploaded); }
 }

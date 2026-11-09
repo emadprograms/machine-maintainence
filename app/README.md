@@ -51,7 +51,7 @@ Check with `node --version`.
 | `db.js` | Database connection, tables, migrations, checkpointing, backup | 453 |
 | `filters.js` | Every WHERE clause: search and filters, shared with the exports | 148 |
 | `hours.js` / `part-usage.js` | Shared live-hour calculation and atomic part consumption | 8 / 45 |
-| `report.js` | One month of work, added up | 98 |
+| `report.js` / `report-types.js` | Monthly completed work, machine service and spare-parts reports | — |
 | `trend.js` | The last six months, for the dashboard charts | 47 |
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
 | `status.js` | Latest explicit machine-state report and the separate retirement rule | 85 |
@@ -71,10 +71,11 @@ Check with `node --version`.
 | `public/stage-parts.js` | Optional staged part picker and draft consumption | 136 |
 | `public/work-updates.js` | Responsive stage timeline, state switch and latest-stage editor | 226 |
 | `public/stage-gallery.js` / `stage-experience.css` | Stage timeline, responsive editor styling and in-app photo previews | — |
-| `public/print-job.html` / `print-job.js` / `print-job.css` | Standalone, print-ready local job page | — |
+| `public/print-job.*` / `print-report.*` | Standalone, print-ready local work-order and reports pages | — |
+| `public/report-hub.js` / `public/part-attachments.js` | Report selection and streamed spare-part attachment controls | — |
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
-| `scripts/smoke-test.js` | Starts a throwaway server and checks 687 behaviours | 3,645 |
+| `scripts/smoke-test.js` | Starts a throwaway server and checks hundreds of behaviours | 3,645 |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
@@ -278,8 +279,7 @@ stored `role` values keep the word *user*, because everything else already speak
   Deleting the only stage of an in-progress job returns that job to open. Photo files are
   removed after the database commit; a storage failure is logged and the admin is warned to
   remove the named leftover files manually. Backups made before deletion are not affected.
-* **Print or save a complete work order as a PDF.** Choose *Print job* from its three-dot
-  menu. A fresh local print view includes the original report, machine details, closure,
+* **Print or save a complete work order as a PDF.** In **Reports**, choose *Work order* and select the job. A fresh local print view includes the original report, machine details, closure,
   totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
   dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
 * **Hours and costs stay live, separately.** The work-order cost is its recorded
@@ -316,7 +316,7 @@ stored `role` values keep the word *user*, because everything else already speak
   details and clears the closed date; a later close requires a new running confirmation.
   Historical resolution, verification and reviewed-hour records remain readable.
 * **Work-order actions are ordered and labelled with icons.** View updates, Add update,
-  Print job, any applicable editing action, and finally Close job. Open jobs use Add update
+  any applicable editing action, and finally Close job. Printing is in Reports. Open jobs use Add update
   to start the first stage; closed jobs can be reopened.
 * **Machine details are easier to understand.** The total service hours heading describes
   maintenance labour; the row action is Edit machine details. Remove an existing photo
@@ -335,8 +335,13 @@ stored `role` values keep the word *user*, because everything else already speak
   maintenance dates entered as calendar days are never shifted.
 * **History** lists finished work, newest first, narrowable to a date range — "what did
   we close in October".
-* **Report** adds a month up: jobs closed, service hours and parts-only cost, plus the
-  machines that took the most work.
+* **Reports** is the generation hub for a work-order printout, monthly completed work,
+  an individual machine’s all-time service history, and current spare-parts inventory.
+  Machine reports count every work order as one service event, show counts by status,
+  service hours and recorded parts-only costs. Monthly reports count closed jobs in the
+  selected month. Inventory value excludes items with no unit price. Machine and inventory
+  filters apply to the on-screen report, its CSV and print/PDF. No sales or labour costs are
+  inferred. Work-order reports are available for open and completed jobs.
 * **The Dashboard draws two charts** — jobs closed per month and what each month cost,
   recorded parts only — for the last six months. They are drawn as SVG in the page: no
   charting library, no request to anything outside the machine.
@@ -432,10 +437,13 @@ function, and `sites: loadSites` to the `loaders` object in `showPage`.
   bytes live in `photos/`, and deleting the machine or replacing its picture deletes the
   old file. Uploads stream to disk without a 2 MB limit; monitor available disk space.
   Stage updates accept up to five photos/videos and one PDF, DOC or DOCX job report.
+  Each spare-part catalog record supports up to 20 photos, videos or PDF/Word documents,
+  including receipts. Open Edit part to add, view or remove them. Attachments are removed
+  when the part is deleted; a part already used on a job cannot be deleted.
   Temporary uploads are private to the uploading user and expire after 24 hours.
 * Every change is a real transaction. If a step fails, the earlier steps are undone — for
   example, using 99 of a part with only 3 in stock leaves the stock exactly as it was.
-* `maintain.db` is your data, and `photos/` holds machine, fault and stage media and reports beside it. Copy
+* `maintain.db` is your data, and `photos/` holds machine, fault, stage and spare-part media and documents beside it. Copy
   the folder to back up; delete it to start over.
   `secret.txt` is the per-install signing key — keep it, or everyone is logged out.
 * **The side file is merged back after every save.** WAL mode normally leaves recent
@@ -471,7 +479,7 @@ The folder holds four things:
 | `maintain.db` | every record |
 | `secret.txt` | the signing key: keep it, or everyone is signed out |
 | `backup-*.db` | snapshots taken by the Backup button |
-| `photos/` | machine, fault and stage media and job reports, one file each |
+| `photos/` | machine, fault, stage and spare-part media and documents, one file each |
 
 That last one is why "copy the folder" is the instruction rather than "copy the database":
 the Backup button snapshots `maintain.db`, and a photograph is a file beside it. Restoring

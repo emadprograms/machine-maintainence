@@ -10,6 +10,7 @@ const shellReady = import('/shell.js').then((m) => { window.shell = m; return m;
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const historyReady = import('/history.js').then((m) => { return m; });
 const reportReady = import('/report.js').then((m) => { return m; });
+const reportHubReady = import('/report-hub.js');
 const machinesReady = import('/machines.js').then((m) => { return m; });
 const partsReady = import('/parts.js').then((m) => { return m; });
 // The shared table kit — one sorting rule and one three-dot menu for every table in
@@ -174,7 +175,7 @@ const PAGES = [
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
   { key: 'history', label: 'History' },
-  { key: 'report', label: 'Report' },
+  { key: 'report', label: 'Reports' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
   { key: 'users', label: 'Admins & Technicians', adminOnly: true },
@@ -200,7 +201,7 @@ async function showPage(key) {
   const loaders = {
     dashboard: loadDashboard,
     due: loadDue, equipment: loadEquipment, work: loadWork,
-    history: loadHistory, report: loadReport,
+    history: loadHistory, report: loadReportsPage,
     pm: loadPm, parts: loadParts, users: loadUsers,
   };
   try { await syncTimeZone(); }
@@ -300,9 +301,6 @@ async function openNewWork() { return (await workReady).openNewWork(); }
 async function retryWorkMachines() { return (await workReady).retryWorkMachines(); }
 async function addWorkOrder() { return (await workReady).addWorkOrder(); }
 function advance(id, status) { (workReady).then((m) => m.advance(id, status)); }
-function printWork(id) {
-  if (!window.open(`/print-job.html?id=${Number(id)}`, '_blank')) alert('Allow pop-ups to print this job.');
-}
 function editWork(idToEdit) { (workReady).then((m) => m.editWork(idToEdit)); }
 function saveWork() { (workReady).then((m) => m.saveWork()); }
 function searchWork() { (workReady).then((m) => m.searchWork()); }
@@ -328,6 +326,11 @@ async function loadHistory() {
 
 async function loadReport() {
   return (await reportReady).loadReport();
+}
+async function loadReportsPage() {
+  const hub = await reportHubReady;
+  if ($('#report-type').value === 'monthly') return (await reportReady).loadReport();
+  return hub.changeReportType();
 }
 
 async function loadDashboard() {

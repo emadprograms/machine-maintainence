@@ -8,6 +8,8 @@ import { send, readBody, route, id, sendCsv } from '../http.js';
 import { stockValue, priceValue } from '../values.js';
 import { all, get, run, transaction } from '../db.js';
 import { partsFilter } from '../filters.js';
+import { removePhoto } from '../photos.js';
+import { ownedUploads, consumeUploads } from '../uploads.js';
 
 export default {
   // ---- spare parts
@@ -25,9 +27,16 @@ export default {
     if (level.error) return send(res, 400, { error: level.error.replace('Quantity', 'Reorder level') });
     const price = priceValue(b.unit_price);
     if (price.error) return send(res, 400, { error: price.error });
-    const r = run(`INSERT INTO parts (name, reference, qty, unit_price, supplier, reorder_level)
-                   VALUES (?,?,?,?,?,?)`,
-      b.name.trim(), b.reference || null, stock.value, price.value, b.supplier || null, level.value);
+    const media = ownedUploads(b.media_upload_ids || [], Number(req.user.sub), 'media');
+    const docs = ownedUploads(b.document_upload_ids || [], Number(req.user.sub), 'report');
+    if (media.length + docs.length > 20) return send(res, 400, { error: 'Choose up to 20 attachments per part' });
+    const r = transaction(() => {
+      const r = run(`INSERT INTO parts (name, reference, qty, unit_price, supplier, reorder_level) VALUES (?,?,?,?,?,?)`,
+        b.name.trim(), b.reference || null, stock.value, price.value, b.supplier || null, level.value);
+      for (const file of [...media, ...docs]) run('INSERT INTO part_attachments (part_id, filename, kind, original_name) VALUES (?,?,?,?)', r.lastInsertRowid, file.filename, file.kind, file.original_name);
+      consumeUploads([...media, ...docs]);
+      return r;
+    });
     send(res, 201, get('SELECT * FROM parts WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -52,15 +61,28 @@ export default {
     const price = b.unit_price === undefined ? { value: before.unit_price } : priceValue(b.unit_price);
     if (price.error) return send(res, 400, { error: price.error });
 
-    run(`UPDATE parts SET name = ?, reference = ?, qty = ?, unit_price = ?, supplier = ?,
-                          reorder_level = ?
-         WHERE id = ?`,
-      b.name === undefined ? before.name : String(b.name).trim(),
-      b.reference === undefined ? before.reference : (b.reference || null),
-      stock.value, price.value,
-      b.supplier === undefined ? before.supplier : (b.supplier || null),
-      level.value, before.id);
-    send(res, 200, get('SELECT * FROM parts WHERE id = ?', before.id));
+    const media = ownedUploads(b.media_upload_ids || [], Number(req.user.sub), 'media');
+    const docs = ownedUploads(b.document_upload_ids || [], Number(req.user.sub), 'report');
+    const existing = all('SELECT * FROM part_attachments WHERE part_id = ?', before.id);
+    const remove = b.remove_attachment_ids || [];
+    if (!Array.isArray(remove) || new Set(remove).size !== remove.length || remove.some((x) => !Number.isInteger(x) || !existing.some((v) => v.id === x)))
+      return send(res, 400, { error: 'Choose attachments belonging to this part' });
+    if (existing.length - remove.length + media.length + docs.length > 20) return send(res, 400, { error: 'Choose up to 20 attachments per part' });
+    transaction(() => {
+      run(`UPDATE parts SET name = ?, reference = ?, qty = ?, unit_price = ?, supplier = ?,
+                            reorder_level = ?
+           WHERE id = ?`,
+        b.name === undefined ? before.name : String(b.name).trim(),
+        b.reference === undefined ? before.reference : (b.reference || null),
+        stock.value, price.value,
+        b.supplier === undefined ? before.supplier : (b.supplier || null),
+        level.value, before.id);
+      for (const attachmentId of remove) run('DELETE FROM part_attachments WHERE id = ?', attachmentId);
+      for (const file of [...media, ...docs]) run('INSERT INTO part_attachments (part_id, filename, kind, original_name) VALUES (?,?,?,?)', before.id, file.filename, file.kind, file.original_name);
+      consumeUploads([...media, ...docs]);
+    });
+    const failed = existing.filter((f) => remove.includes(f.id) && !removePhoto(f.filename)).map((f) => f.filename);
+    send(res, 200, { ...get('SELECT * FROM parts WHERE id = ?', before.id), warning: failed.length ? `Could not remove files: ${failed.join(', ')}` : null });
   }),
 
   // Deleting is allowed only for a part no job has consumed. The pre-check exists
@@ -80,8 +102,10 @@ export default {
         work_orders: usedOn,
       });
     }
+    const files = all('SELECT filename FROM part_attachments WHERE part_id = ?', part.id);
     run('DELETE FROM parts WHERE id = ?', part.id);
-    send(res, 200, { ok: true });
+    const failed = files.filter((f) => !removePhoto(f.filename)).map((f) => f.filename);
+    send(res, 200, { ok: true, warning: failed.length ? `Could not remove files: ${failed.join(', ')}` : null });
   }),
 
   // Which parts were used on this job.

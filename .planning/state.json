@@ -1,18 +1,8 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v5.0 \u2014 Work-order experience and print",
-  "phases": [
-    {
-      "number": "v5",
-      "name": "Work-order experience and print",
-      "status": "complete"
-    }
-  ],
-  "next": {
-    "command": "/gsd-new-milestone",
-    "label": "Start the next milestone",
-    "reason": "v5.0 is complete and archived"
-  },
-  "updated_at": "2026-11-05T15:16:52.902Z"
+  "milestone": "v7.0 — Central reports and spare-part attachments",
+  "phases": [{ "number": "v7", "name": "Reports and spare-part attachments", "status": "complete" }],
+  "next": { "command": "/gsd-new-milestone", "label": "Start the next milestone", "reason": "v7.0 is implemented and verified; PR remains open" },
+  "updated_at": "2026-11-05"
 }

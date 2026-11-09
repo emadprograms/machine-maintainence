@@ -69,7 +69,6 @@ function drawWork() {
         ${rowMenu(`${w.code || w.title} on ${w.equipment_name}`, [
           menuItem('View updates', `openWorkUpdates(${w.id}, true)`, { icon: 'view' }),
           ...(w.status !== 'done' ? [menuItem('Add update', `openWorkUpdates(${w.id})`, { icon: 'add' })] : []),
-          menuItem('Print job', `printWork(${w.id})`, { icon: 'print' }),
           ...(w.current_stage == null ? [menuItem('Edit', `editWork(${w.id})`, { icon: 'edit' })] : []),
           ...(w.status === 'in_progress' ? [menuItem('Close job', `advance(${w.id}, 'done')`, { icon: 'close' })] : []),
           ...(w.status === 'done' ? [menuItem('Reopen', `advance(${w.id}, 'open')`, { icon: 'reopen' })] : []),

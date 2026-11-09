@@ -1,3 +1,11 @@
+## v7.0 Central reports and spare-part attachments (Implemented; PR open)
+
+- One Reports hub for work-order print/PDF, monthly completed work, machine service and spare-parts inventory; parts-only costs, status counts, and matching filter/print/CSV behavior.
+- Streamed, authenticated part photos/videos and receipt documents with transactional association and cleanup; expandable stage job-report section.
+- 696 smoke checks, offline audit, dedicated integration and desktop/mobile browser verification passed. Details: `.planning/milestones/v7.0-REPORTS-AND-PART-ATTACHMENTS.md`.
+
+---
+
 # Project Milestones: Machine Maintenance (Lean Rebuild)
 
 ## v5.0 Work-order experience and print (Shipped: 2026-11-05)

@@ -160,3 +160,12 @@ already and can only say what needs attention now.
 **Phase records:** `.planning/milestones/v3.0-phases/`
 
 </details>
+
+
+## v7.0 Central reports and spare-part attachments — IMPLEMENTED (PR open)
+
+- [x] Reports hub with work-order, monthly, machine service and inventory reports.
+- [x] Spare-part photo/video and receipt attachments; expandable stage job reports.
+- [x] Integration, regression, migration, offline and desktop/mobile verification.
+
+Details: `.planning/milestones/v7.0-REPORTS-AND-PART-ATTACHMENTS.md`.

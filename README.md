@@ -6,8 +6,7 @@ the spare-parts store — and, since v3.0, what the work is costing and how that
 A machine's state follows the latest explicit work-order report, stage update or closing confirmation.
 Closing requires confirmation that the machine is running; a closing note is optional. Admins can correct or delete only the latest stage, including
 its photos, videos, attached job report, time and spare parts. Machines can record a model and serial number. Once a stage exists, the original report is locked;
-the chronological timeline includes the original report, photo previews, stages and closure. Machine history links each numbered job to that timeline; work orders have sortable last-activity timestamps. *Print job* opens a complete print view that can
-be saved as a PDF. Deleting a machine — which removes its work orders and everything else — asks you to type its name; anybody
+the chronological timeline includes the original report, photo previews, stages and closure. Machine history links each numbered job to that timeline; work orders have sortable last-activity timestamps. The Reports section generates work-order, machine service, monthly and spare-parts reports that can be printed or saved as PDFs. Spare-part records can hold photos, videos and receipt documents. Deleting a machine — which removes its work orders and everything else — asks you to type its name; anybody
 can add a machine and report a fault. A retired machine leaves the everyday list — the machine filter offers in service, down,
 retired or everything — stops being offered when new work is started, and stops generating
 maintenance reminders, without losing anything it has.
@@ -45,6 +44,7 @@ cd app
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
 node --no-warnings=ExperimentalWarning scripts/media-test.js
+node --no-warnings=ExperimentalWarning scripts/reports-attachments-test.js
 ```
 
 The first starts its own server on a throwaway database and checks hundreds of behaviours; the
