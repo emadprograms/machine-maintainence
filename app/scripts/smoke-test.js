@@ -1769,6 +1769,10 @@ ok('both machine forms call the same field a barcode and show the same example',
   && (indexEq.match(/<span>Barcode<\/span><input id="ee-tag" placeholder="e\.g\. 101220054"/g) || []).length === 1
   && !/Asset tag/.test(indexEq),
   'the two dialogs describe the same column differently');
+ok('machine forms show model and serial examples without the introductory section',
+  ['e', 'ee'].every((prefix) => indexEq.includes(`id="${prefix}-model" placeholder="e.g. QT-250"`)
+    && indexEq.includes(`id="${prefix}-serial" placeholder="e.g. SN-123456"`))
+  && !indexEq.includes('Only the name is required; the rest can be filled in later'));
 ok('the machine editor carries no status control at all',
     editor.length > 0 && !editor.includes('id="ee-status"')
     && !/<select/.test(editor) && !/<option/.test(editor),
