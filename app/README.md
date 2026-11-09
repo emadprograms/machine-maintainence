@@ -56,7 +56,7 @@ Check with `node --version`.
 | `auth.js` | Password hashing, login tokens, password generation | 56 |
 | `status.js` | Latest explicit machine-state report and the separate retirement rule | 85 |
 | `codes.js` | Work order numbers: one series per year, `WO-2026-0001` | 24 |
-| `photos.js` | Photographs — of a machine or of a fault: type sniffed from the bytes, size capped | 73 |
+| `photos.js` / `media.js` | Legacy photo support and streamed media/report storage, validation and downloads | — |
 | `reset-password.js` | The way back in when a password is forgotten | 58 |
 | `sessions.js` | Sign-ins as rows, so a restart keeps you signed in | 46 |
 | `login-log.js` | Records failed sign-ins without blocking anyone | 51 |
@@ -220,7 +220,7 @@ stored `role` values keep the word *user*, because everything else already speak
   form had asked for it since parts existed, and the one field you cannot correct is the one
   you notice. The row is a row again, with Edit and Delete on it.
 * **A machine can be corrected — by an administrator.** Edit on its row opens what the
-  record holds: name, barcode, manufacturer, category, location, notes and a photograph.
+  record holds: name, barcode, manufacturer, model, serial number, category, location, notes and media.
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
   those requests too, so the hidden button is not the protection.
 * **The latest explicit answer says whether the machine is running.** The report form
@@ -256,7 +256,7 @@ stored `role` values keep the word *user*, because everything else already speak
   The machine picker loads independently of the assignee list, shows when no machines
   are in service, and offers Retry when its lookup fails or the list is empty.
 * **A work order keeps its stage-by-stage time log.** Starting asks for a written
-  Stage 1 update, time spent and optionally up to five photos (2 MB each). An in-progress
+  Stage 1 update, time spent and optionally up to five photos or videos and one PDF or Word job report. An in-progress
   ticket can receive Stage 2, Stage 3 and so on, or be closed after any stage. Empty history,
   loading errors and a server needing restart are distinguished. Each stage keeps its author,
   timestamp in the workshop time zone, duration, photos, machine state and optional parts. Add as many parts as
@@ -298,13 +298,13 @@ stored `role` values keep the word *user*, because everything else already speak
   sheet. It shows under the problem on the list, beside the job in History, at the top of the
   close dialog, and as its own column in both exports. Jobs that predate the column are
   numbered on upgrade, oldest first, per year.
-* **A machine can have a photograph.** JPEG, PNG or WebP up to 2 MB, stored as a file in
+* **A machine can have a photograph.** JPEG, PNG, WebP, MP4, MOV or WebM, stored as a file in
   `photos/` beside the database. The type is decided by the first bytes of the file, not by
   the name or the header the browser sent, and the filename is chosen by the server.
 * **A fault report says what was seen, who saw it and what it looked like.** Notes, a
   free-text name and a photograph of the fault, all optional, alongside the machine,
   the problem and the priority. The photograph is bytes to `/api/work-orders/:id/photo`
-  under the same 2 MB cap and the same sniffed-type rule as a machine's photograph; the
+  using the same streamed upload and sniffed-type rule as a machine's media; the
   difference is deliberate — **any signed-in person may attach or remove one**, because
   the technician who finds the fault is exactly who needs to photograph it. Deleting a
   machine still takes its jobs and their photographs with it.
@@ -430,10 +430,12 @@ function, and `sites: loadSites` to the `loaders` object in `showPage`.
 * **Nothing is written when you only view pages.** Opening a list does not touch the disk.
 * **A photograph is a file, not a blob.** The row keeps a filename the server chose, the
   bytes live in `photos/`, and deleting the machine or replacing its picture deletes the
-  old file. A 2 MB cap is applied while reading, so a wrong pick cannot fill the disk.
+  old file. Uploads stream to disk without a 2 MB limit; monitor available disk space.
+  Stage updates accept up to five photos/videos and one PDF, DOC or DOCX job report.
+  Temporary uploads are private to the uploading user and expire after 24 hours.
 * Every change is a real transaction. If a step fails, the earlier steps are undone — for
   example, using 99 of a part with only 3 in stock leaves the stock exactly as it was.
-* `maintain.db` is your data, and `photos/` holds the machine photographs beside it. Copy
+* `maintain.db` is your data, and `photos/` holds machine, fault and stage media and reports beside it. Copy
   the folder to back up; delete it to start over.
   `secret.txt` is the per-install signing key — keep it, or everyone is logged out.
 * **The side file is merged back after every save.** WAL mode normally leaves recent
@@ -469,7 +471,7 @@ The folder holds four things:
 | `maintain.db` | every record |
 | `secret.txt` | the signing key: keep it, or everyone is signed out |
 | `backup-*.db` | snapshots taken by the Backup button |
-| `photos/` | machine photographs, one file each |
+| `photos/` | machine, fault and stage media and job reports, one file each |
 
 That last one is why "copy the folder" is the instruction rather than "copy the database":
 the Backup button snapshots `maintain.db`, and a photograph is a file beside it. Restoring

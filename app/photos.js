@@ -6,7 +6,7 @@
 //      Content-Type header and never by the extension in a filename.
 //   2. The name is chosen here, with a random component. The client's filename is
 //      not stored, so a name like ../../auth.js cannot exist.
-//   3. The size is capped while reading, in http.js, before anything is buffered.
+//   3. New media is streamed by media.js; this module retains legacy image support.
 //
 // Files live in <data>/photos rather than inside maintain.db: a workshop's backup
 // is copied by hand, and a database that carries 200 photographs is a database
@@ -17,7 +17,6 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA_DIR } from './db.js';
 
-export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;   // 2 MB: a phone photo, resized
 
 const DIR = join(DATA_DIR, 'photos');
 mkdirSync(DIR, { recursive: true });

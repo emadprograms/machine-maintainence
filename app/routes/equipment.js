@@ -15,7 +15,8 @@ import { equipmentFilter } from '../filters.js';
 import { effectiveHours } from '../hours.js';
 import { workOrderCost } from '../costs.js';
 import { withStatus, SERVICE_STATES } from '../status.js';
-import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
+import { removePhoto } from '../photos.js';
+import { saveStream, sendFile } from '../media.js';
 
 const photoOf = (idToFind) => get('SELECT photo FROM equipment WHERE id = ?', idToFind);
 
@@ -44,10 +45,10 @@ export default {
   'POST /api/equipment': route(async (req, res) => {
     const b = await readBody(req);
     if (!b?.name?.trim()) return send(res, 400, { error: 'Name is required' });
-    const r = run(`INSERT INTO equipment (name, asset_tag, category, location, status, notes, manufacturer)
-                   VALUES (?,?,?,?,?,?,?)`,
+    const r = run(`INSERT INTO equipment (name, asset_tag, category, location, status, notes, manufacturer, model, serial_number)
+                   VALUES (?,?,?,?,?,?,?,?,?)`,
       b.name.trim(), b.asset_tag || null, b.category || null, b.location || null,
-      'active', b.notes || null, b.manufacturer || null);
+      'active', b.notes || null, b.manufacturer || null, b.model || null, b.serial_number || null);
     const row = get('SELECT * FROM equipment WHERE id = ?', r.lastInsertRowid);
     send(res, 201, withStatus([row])[0]);
   }),
@@ -70,10 +71,11 @@ export default {
       });
     }
     run(`UPDATE equipment SET name=?, asset_tag=?, category=?, location=?, status=?,
-           notes=?, manufacturer=? WHERE id=?`,
+           notes=?, manufacturer=?, model=?, serial_number=? WHERE id=?`,
       b.name?.trim() ?? before.name, b.asset_tag ?? before.asset_tag, b.category ?? before.category,
       b.location ?? before.location, b.status ?? before.status, b.notes ?? before.notes,
-      b.manufacturer ?? before.manufacturer, id(req.params.id));
+      b.manufacturer ?? before.manufacturer, b.model === undefined ? before.model : (b.model || null),
+      b.serial_number === undefined ? before.serial_number : (b.serial_number || null), id(req.params.id));
     const row = get('SELECT * FROM equipment WHERE id = ?', id(req.params.id));
     send(res, 200, withStatus([row])[0]);
   }),
@@ -89,10 +91,13 @@ export default {
     const updatePhotos = all(`SELECT p.filename FROM work_update_photos p
       JOIN work_order_updates u ON u.id = p.update_id
       JOIN work_orders w ON w.id = u.work_order_id WHERE w.equipment_id = ?`, id(req.params.id));
+    const reports = all(`SELECT r.filename FROM work_update_reports r JOIN work_order_updates u ON u.id = r.update_id
+      JOIN work_orders w ON w.id = u.work_order_id WHERE w.equipment_id = ?`, id(req.params.id));
     run('DELETE FROM equipment WHERE id = ?', id(req.params.id));
     removePhoto(row?.photo);
     jobPhotos.forEach(removePhoto);
     updatePhotos.forEach((p) => removePhoto(p.filename));
+    reports.forEach((p) => removePhoto(p.filename));
     send(res, 200, { ok: true });
   }),
 
@@ -101,26 +106,18 @@ export default {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Admins only' });
     const before = photoOf(id(req.params.id));
     if (!before) return send(res, 404, { error: 'Machine not found' });
-    const bytes = await readBytes(req, MAX_PHOTO_BYTES);
-    if (!bytes.length) return send(res, 400, { error: 'No image was sent' });
-    const saved = savePhoto(bytes);
-    if (saved.error) return send(res, 400, { error: saved.error });
-    run('UPDATE equipment SET photo = ? WHERE id = ?', saved.name, id(req.params.id));
-    removePhoto(before.photo);        // replacing a photograph replaces the file
+    const saved = await saveStream(req);
+    const current = photoOf(id(req.params.id));
+    if (!current) { removePhoto(saved.name); return send(res, 404, { error: 'Machine not found' }); }
+    try { run('UPDATE equipment SET photo = ? WHERE id = ?', saved.name, id(req.params.id)); }
+    catch (e) { removePhoto(saved.name); throw e; }
+    removePhoto(current.photo);
     send(res, 200, { photo: saved.name, type: saved.type });
   }, { raw: true }),
 
   'GET /api/equipment/:id/photo': route(async (req, res) => {
     const row = photoOf(id(req.params.id));
-    const bytes = row ? readPhoto(row.photo) : null;
-    if (!bytes) return send(res, 404, { error: 'No photograph for this machine' });
-    res.writeHead(200, {
-      'content-type': photoType(row.photo),
-      'content-length': bytes.length,
-      // Private: the bytes are behind a sign-in, so no shared cache may keep them.
-      'cache-control': 'private, max-age=60',
-    });
-    res.end(bytes);
+    if (!row || !sendFile(req, res, row.photo)) return send(res, 404, { error: 'No media for this machine' });
   }),
 
   'DELETE /api/equipment/:id/photo': route(async (req, res) => {

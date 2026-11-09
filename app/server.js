@@ -20,6 +20,8 @@ import workOrderRoutes from './routes/work-orders.js';
 import jobPrintRoutes from './routes/job-print.js';
 import workUpdateRoutes from './routes/work-updates.js';
 import stageAdminRoutes from './routes/stage-admin.js';
+import uploadRoutes from './routes/uploads.js';
+import { cleanExpiredUploads } from './uploads.js';
 import partsRoutes from './routes/parts.js';
 import pmRoutes from './routes/pm.js';
 import dashboardRoutes from './routes/dashboard.js';
@@ -57,6 +59,7 @@ const api = {
   ...jobPrintRoutes,
   ...workUpdateRoutes,
   ...stageAdminRoutes,
+  ...uploadRoutes,
   ...partsRoutes,
   ...pmRoutes,
   ...dashboardRoutes,
@@ -103,6 +106,7 @@ const server = createServer(async (req, res) => {
 // Sessions left over from before a restart are still valid; expired ones are
 // deleted on the way in so the table cannot grow without limit.
 purgeExpired();
+cleanExpiredUploads();
 
 // Ctrl+C closes the database properly, which merges the side file into
 // maintain.db. Windows cannot trap SIGTERM, which is why every write also

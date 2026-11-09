@@ -6,7 +6,8 @@
 import { send, readBody, readBytes, route, id, sendCsv } from '../http.js';
 import { hoursValue, assigneeValue, reporterValue, resolutionValue, verifiedValue,
   stopsValue } from '../values.js';
-import { MAX_PHOTO_BYTES, savePhoto, readPhoto, removePhoto, photoType } from '../photos.js';
+import { removePhoto } from '../photos.js';
+import { saveStream, sendFile } from '../media.js';
 import { all, get, run, transaction } from '../db.js';
 import { nowStamp } from '../dates.js';
 import { workOrderFilter } from '../filters.js';
@@ -132,28 +133,21 @@ export default {
 
   // Fault photos may be changed by any signed-in person until a stage exists.
   'POST /api/work-orders/:id/photo': route(async (req, res) => {
-    const bytes = await readBytes(req, MAX_PHOTO_BYTES);
     const before = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
     if (!before) return send(res, 404, { error: 'Work order not found' });
     if (reportLocked(id(req.params.id))) return send(res, 409, { error: reportLockMessage });
-    const saved = savePhoto(bytes);
-    if (saved.error) return send(res, 400, { error: saved.error });
-    run('UPDATE work_orders SET photo = ? WHERE id = ?', saved.name, id(req.params.id));
-    removePhoto(before.photo);        // replacing a photograph replaces the file
+    const saved = await saveStream(req);
+    const current = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
+    if (!current || reportLocked(id(req.params.id))) { removePhoto(saved.name); return send(res, 409, { error: reportLockMessage }); }
+    try { run('UPDATE work_orders SET photo = ? WHERE id = ?', saved.name, id(req.params.id)); }
+    catch (e) { removePhoto(saved.name); throw e; }
+    removePhoto(current.photo);        // replacing a photograph replaces the file
     send(res, 200, { photo: saved.name, type: saved.type });
   }, { raw: true }),       // bytes, not JSON: parsing a JPEG would answer 400 to every photograph
 
   'GET /api/work-orders/:id/photo': route(async (req, res) => {
     const row = get('SELECT photo FROM work_orders WHERE id = ?', id(req.params.id));
-    const bytes = row ? readPhoto(row.photo) : null;
-    if (!bytes) return send(res, 404, { error: 'No photograph for this work order' });
-    res.writeHead(200, {
-      'content-type': photoType(row.photo),
-      'content-length': bytes.length,
-      // The name changes when the photograph does, so the answer never is.
-      'cache-control': 'private, max-age=86400',
-    });
-    res.end(bytes);
+    if (!row || !sendFile(req, res, row.photo)) return send(res, 404, { error: 'No media for this work order' });
   }),
 
   'DELETE /api/work-orders/:id/photo': route(async (req, res) => {

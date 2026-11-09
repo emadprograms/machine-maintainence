@@ -58,7 +58,7 @@ function drawWork() {
   $('#work-rows').innerHTML = rows.map((w) => `<tr>
         ${strong(w.equipment_name)}<td class="cell-strong">${esc(w.title)}${w.photo
           ? ` <a class="link-photo" href="/api/work-orders/${w.id}/photo" target="_blank"
-                 rel="noopener">photo</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
+                 rel="noopener">${/\.(mp4|mov|webm)$/i.test(w.photo) ? 'video' : 'photo'}</a>` : ''}<span class="row-sub">${esc(w.code || '')}</span></td>
         <td class="cell-muted">${w.assignee_name ? esc(w.assignee_name) : 'Nobody yet'}</td>
         <td>${badge(w.priority, w.priority === 'high' ? 'red' : w.priority === 'low' ? 'grey' : 'amber')}${
           w.stops_machine ? ` ${badge('last noted out of service', 'red')}` : ''}</td>

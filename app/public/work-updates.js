@@ -32,10 +32,11 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#wa-delete').hidden = true;
   $('#wa-history-panel').open = viewOnly; $('#wa-parts-panel').open = false; $('#wa-photos-panel').open = false;
   $('#wa-history-label').textContent = viewOnly ? 'Timeline' : 'Previous updates';
-  $('#wa-history-count').textContent = 'Loading…'; $('#wa-photos-summary').textContent = 'Optional · Attach up to 5 photos';
+  $('#wa-history-count').textContent = 'Loading…'; $('#wa-photos-summary').textContent = 'Optional · Attach up to 5 files';
   $('#wa-photo-selection').textContent = ''; $('#wa-scroll').scrollTop = 0;
   $('#wa-message').value = ''; $('#wa-hours').value = ''; $('#wa-photos').value = '';
   $('#wa-existing-photos').innerHTML = '';
+  $('#wa-report').value = ''; $('#wa-report-keep').hidden = true; $('#wa-keep-report').checked = true; $('#wa-report-name').textContent = '';
   $('#wa-running-help').textContent = 'The state you record becomes the machine’s latest status.';
   showToggle(false); $('#wa-running-label').textContent = 'Loading…';
   resetStageParts();
@@ -54,13 +55,13 @@ function timeline(updates) {
   const report = `<article class="update-entry timeline-report"><div class="update-top"><strong>Problem reported</strong></div>
     <small class="update-meta">${esc(timeLabel(job.created_at))}${job.reported_by ? ` · Reported by ${esc(job.reported_by)}` : ''}</small>
     <p><strong>${esc(job.title)}</strong></p>${job.priority ? `<small>Priority: ${esc(job.priority)}</small>` : ''}${job.notes ? `<p>${esc(job.notes)}</p>` : ''}
-    ${job.photo ? `<div class="stage-photo-grid"><button type="button" class="stage-thumbnail" onclick="previewFaultPhoto()" aria-label="Preview fault photo"><img src="/api/work-orders/${Number(job.id)}/photo" alt="" loading="lazy"><span>Fault photo</span></button></div>` : ''}</article>`;
+    ${job.photo ? `<div class="stage-photo-grid"><button type="button" class="stage-thumbnail" onclick="previewFaultPhoto(${/\.(mp4|mov|webm)$/i.test(job.photo)})" aria-label="Preview fault media">${/\.(mp4|mov|webm)$/i.test(job.photo) ? `<video src="/api/work-orders/${Number(job.id)}/photo" preload="metadata" muted playsinline></video>` : `<img src="/api/work-orders/${Number(job.id)}/photo" alt="" loading="lazy">`}<span>Fault media</span></button></div>` : ''}</article>`;
   const stages = updates.map((u, i) => `<article class="update-entry"><div class="update-top"><div><strong>Stage ${Number(u.stage)}</strong>${i === updates.length - 1 ? '<span class="stage-latest">Latest</span>' : ''}</div>
       ${admin && i === updates.length - 1 ? `<button type="button" class="stage-row-action stage-edit-action" onclick="editLatestStage(${Number(u.id)})" aria-label="Edit latest stage" title="Edit latest stage"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg></button>` : ''}</div>
     <small class="update-meta">${esc(timeLabel(u.created_at))} · ${esc(u.author)} · ${Number(u.hours)} ${Number(u.hours) === 1 ? 'hour' : 'hours'}${u.edited_by ? ` · Edited by ${esc(u.edited_by)}` : ''}</small>
     <p>${esc(u.message)}</p>${u.machine_running == null ? '' : `<small>Machine: ${u.machine_running ? 'running' : 'out of service'}</small>`}
     ${groupStageParts(u.parts).map((p) => `<p class="hint">${esc(p.part_name)} × ${Number(p.qty)} · ${formatStagePrice(p.unit_price)} each</p>`).join('')}
-    ${historyPhotos(u)}</article>`).join('');
+    ${historyPhotos(u)}${u.report ? `<p><a href="/api/work-orders/${Number(job.id)}/updates/${Number(u.id)}/report">Job report: ${esc(u.report.original_name)}</a></p>` : ''}</article>`).join('');
   const closure = job.status === 'done' ? `<article class="update-entry timeline-closed"><div class="update-top"><strong>Job closed</strong></div>
     <small class="update-meta">${esc(timeLabel(job.closed_at))}</small>
     ${job.resolution ? `<p>${esc(job.resolution)}</p>` : ''}</article>` : '';
@@ -145,7 +146,7 @@ export function editLatestStage(stageId) {
   if (!stateReady || !$('#wa-retry').hidden) return formError('work-assign', 'Reload the latest history and machine state before editing.');
   const ownerChanged = !$('#wa-owner-field').hidden && $('#wa-owner').value !== String(updateJob?.assigned_to || '');
   if (($('#wa-message').value.trim() || $('#wa-hours').value || $('#wa-photos').files?.length
-      || hasStagePartsDraft() || stateTouched || ownerChanged)
+      || $('#wa-report').files?.length || hasStagePartsDraft() || stateTouched || ownerChanged)
       && !window.confirm('Discard the new update draft and edit the latest stage instead?')) return;
   editingStage = latestStage;
   $('#wa-history-panel').open = false; $('#wa-scroll').scrollTop = 0;
@@ -158,7 +159,9 @@ export function editLatestStage(stageId) {
   $('#wa-go').textContent = 'Save changes'; $('#wa-cancel').textContent = 'Cancel'; $('#wa-delete').hidden = false;
   $('#wa-owner-field').hidden = true;
   $('#wa-message').value = editingStage.message; $('#wa-hours').value = String(editingStage.hours);
-  $('#wa-photos').value = '';
+  $('#wa-photos').value = ''; $('#wa-report').value = '';
+  $('#wa-report-keep').hidden = !editingStage.report; $('#wa-keep-report').checked = true;
+  $('#wa-report-name').textContent = editingStage.report ? `Current report: ${editingStage.report.original_name}. Selecting a new file replaces it.` : '';
   showToggle(editingStage.machine_running == null ? currentRunning : Boolean(editingStage.machine_running));
   $('#wa-running-help').textContent = 'This is the state recorded during this stage. A newer report may determine the current state.';
   $('#wa-existing-photos').innerHTML = existingPhotos(editingStage);
@@ -171,18 +174,17 @@ export function stagePhotoSelectionChanged() {
   const files = Array.from($('#wa-photos').files || []);
   const kept = document.querySelectorAll('#wa-existing-photos input[type="checkbox"]:checked').length;
   const count = files.length + kept;
-  $('#wa-photos-summary').textContent = count ? `${count} ${count === 1 ? 'photo' : 'photos'} selected` : 'Optional · Attach up to 5 photos';
+  $('#wa-photos-summary').textContent = count ? `${count} ${count === 1 ? 'file' : 'files'} selected` : 'Optional · Attach up to 5 files';
   updateNewPhotos(files);
-  $('#wa-photo-selection').textContent = files.length > 5 ? 'Only up to five photos can be added.' : '';
+  $('#wa-photo-selection').textContent = files.length > 5 ? 'Only up to five files can be added.' : '';
 }
 
-function photoData(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Could not read a photo'));
-    reader.readAsDataURL(file);
-  });
+async function uploadStageFile(file, kind) {
+  const response = await fetch(`/api/uploads?kind=${kind}`, { method: 'POST', credentials: 'same-origin',
+    headers: { 'content-type': file.type || 'application/octet-stream', 'x-upload-name': encodeURIComponent(file.name) }, body: file });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Could not upload attachment');
+  return result.id;
 }
 
 export async function startAssigned() {
@@ -196,25 +198,42 @@ export async function startAssigned() {
     return formError('work-assign', 'Enter the time spent in hours.');
   const choose = !stage && (job.status === 'open' || !job.assigned_to);
   if (choose && !owner) return formError('work-assign', 'Choose who is doing this job.');
-  if (photos.length + keep.length > 5 || photos.some((p) => p.size > 2 * 1024 * 1024)) {
+  if (photos.length + keep.length > 5) {
     $('#wa-photos-panel').open = true;
-    return formError('work-assign', 'Choose up to five photos, each under 2 MB.');
+    return formError('work-assign', 'Choose up to five photos or videos.');
   }
   $('#wa-go').disabled = true;
+  const uploaded = [];
   try {
-    const body = { message, hours, photos: await Promise.all(photos.map(photoData)), machine_running: $('#wa-running').checked };
     let parts;
     try { parts = stagePartsForSave(); } catch (error) { $('#wa-parts-panel').open = true; throw error; }
+    const body = { message, hours, upload_ids: [], machine_running: $('#wa-running').checked };
+    const report = $('#wa-report').files?.[0], total = photos.length + (report ? 1 : 0);
+    for (const file of photos) {
+      if (updateRun === run) $('#wa-load-status').textContent = `Uploading attachment ${uploaded.length + 1} of ${total}…`;
+      const token = await uploadStageFile(file, 'media'); uploaded.push(token); body.upload_ids.push(token);
+      if (updateRun !== run || !$('#work-assign').open) throw new Error('Update cancelled');
+    }
+    if (report) {
+      if (updateRun === run) $('#wa-load-status').textContent = `Uploading attachment ${uploaded.length + 1} of ${total}…`;
+      body.report_upload_id = await uploadStageFile(report, 'report'); uploaded.push(body.report_upload_id);
+    }
+    if (stage) body.remove_report = !$('#wa-keep-report').checked;
+    if (updateRun !== run || !$('#work-assign').open) throw new Error('Update cancelled');
     if (parts.length || stage) body.parts = parts;
     if (choose) body.assigned_to = Number(owner);
     if (stage) body.keep_photos = keep;
     const result = await api(`/work-orders/${workId}/updates${stage ? `/${stage.id}` : ''}`,
       { method: stage ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    uploaded.length = 0;
     if (result.warning) alert(result.warning);
     if (updateRun === run) { updatingWork = null; updateJob = null; formDone('work-assign'); }
     await refresh();
   } catch (e) {
-    if (updateRun === run) { formError('work-assign', e.message); $('#wa-go').disabled = false; }
+    if (updateRun === run && $('#work-assign').open) { formError('work-assign', e.message); $('#wa-go').disabled = false; }
+  } finally {
+    if (updateRun === run) $('#wa-load-status').textContent = '';
+    await Promise.all(uploaded.map((token) => fetch(`/api/uploads/${token}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})));
   }
 }
 

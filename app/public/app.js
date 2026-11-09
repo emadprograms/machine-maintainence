@@ -114,15 +114,8 @@ async function api(path, options = {}) {
   }
   return data;
 }
-/**
- * Upload a photograph. Bytes are not JSON, so this cannot go through api(); and
- * the 2 MB refusal happens here as well as on the server, because a phone photo
- * that fails at the end of an upload is worse than a sentence before it starts.
- */
+// Send media directly instead of loading it into a JSON body.
 async function postPhoto(path, file) {
-  if (file.size > 2 * 1024 * 1024) {
-    throw new Error('That photograph is larger than 2 MB. Resize it and try again.');
-  }
   const res = await fetch(path, {
     method: 'POST',
     credentials: 'same-origin',

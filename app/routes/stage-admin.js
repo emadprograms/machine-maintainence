@@ -7,6 +7,7 @@ import { useStock, returnStageStock } from '../part-usage.js';
 import { effectiveHours } from '../hours.js';
 import { MAX_STAGE_BODY, MAX_STAGE_PHOTOS, saveStagePhotos } from '../stage-photos.js';
 import { removePhoto } from '../photos.js';
+import { ownedUploads, consumeUploads } from '../uploads.js';
 
 function latest(workId, updateId) {
   const job = get('SELECT * FROM work_orders WHERE id = ?', workId);
@@ -62,7 +63,12 @@ export default {
     if (!Array.isArray(keep) || keep.some((x) => !Number.isInteger(x) || !oldPhotos.some((p) => p.id === x)) || new Set(keep).size !== keep.length)
       return send(res, 400, { error: 'Choose photos belonging to this stage' });
     const photos = body.photos === undefined ? [] : body.photos;
-    if (!Array.isArray(photos) || keep.length + photos.length > MAX_STAGE_PHOTOS)
+    const uploads = ownedUploads(body.upload_ids || [], Number(req.user.sub), 'media');
+    const reports = ownedUploads(body.report_upload_id ? [body.report_upload_id] : [], Number(req.user.sub), 'report');
+    if (body.remove_report !== undefined && typeof body.remove_report !== 'boolean') throw new Error('Invalid report selection');
+    const oldReport = get('SELECT * FROM work_update_reports WHERE update_id = ?', updateId);
+    const removeReport = oldReport && (body.remove_report || reports.length);
+    if (!Array.isArray(photos) || keep.length + photos.length + uploads.length > MAX_STAGE_PHOTOS)
       return send(res, 400, { error: 'Choose up to five photos per update' });
     const files = [], removed = oldPhotos.filter((p) => !keep.includes(p.id));
     try {
@@ -87,10 +93,13 @@ export default {
           refreshJobStop(job, current.prior_stops_machine);
         }
         for (const photo of removed) run('DELETE FROM work_update_photos WHERE id = ?', photo.id);
-        for (const name of files) run('INSERT INTO work_update_photos (update_id, filename) VALUES (?,?)', updateId, name);
+        for (const name of [...files, ...uploads.map((u) => u.filename)]) run('INSERT INTO work_update_photos (update_id, filename) VALUES (?,?)', updateId, name);
+        if (removeReport) run('DELETE FROM work_update_reports WHERE update_id = ?', updateId);
+        if (reports.length) run('INSERT INTO work_update_reports (update_id, filename, original_name) VALUES (?,?,?)', updateId, reports[0].filename, reports[0].original_name);
+        consumeUploads([...uploads, ...reports]);
       });
     } catch (e) { files.forEach(removePhoto); if (e.status === 413) return send(res, 413, { error: e.message }); throw e; }
-    const warning = cleanupWarning(removed, 'updated');
+    const warning = cleanupWarning([...removed, ...(removeReport ? [oldReport] : [])], 'updated');
     send(res, 200, { ok: true, warning });
   }, { raw: true }),
 
@@ -98,6 +107,7 @@ export default {
     if (req.user.role !== 'admin') return send(res, 403, { error: 'Only admins can delete stages' });
     const workId = id(req.params.id), updateId = id(req.params.updateId);
     const photos = all('SELECT filename FROM work_update_photos WHERE update_id = ?', updateId);
+    photos.push(...all('SELECT filename FROM work_update_reports WHERE update_id = ?', updateId));
     transaction(() => {
       const { job, stage } = latest(workId, updateId);
       const beforeHours = currentHours(job);

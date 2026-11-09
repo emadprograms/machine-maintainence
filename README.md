@@ -5,7 +5,7 @@ what they are, what work has been reported against them, what is due next, what 
 the spare-parts store — and, since v3.0, what the work is costing and how that is trending.
 A machine's state follows the latest explicit work-order report, stage update or closing confirmation.
 Closing requires confirmation that the machine is running; a closing note is optional. Admins can correct or delete only the latest stage, including
-its photos, time and spare parts. Once a stage exists, the original report is locked;
+its photos, videos, attached job report, time and spare parts. Machines can record a model and serial number. Once a stage exists, the original report is locked;
 the chronological timeline includes the original report, photo previews, stages and closure. Machine history links each numbered job to that timeline; work orders have sortable last-activity timestamps. *Print job* opens a complete print view that can
 be saved as a PDF. Deleting a machine — which removes its work orders and everything else — asks you to type its name; anybody
 can add a machine and report a fault. A retired machine leaves the everyday list — the machine filter offers in service, down,
@@ -44,10 +44,11 @@ to add a field or a table yourself.
 cd app
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 node --no-warnings=ExperimentalWarning scripts/audit-offline.js
+node --no-warnings=ExperimentalWarning scripts/media-test.js
 ```
 
-The first starts its own server on a throwaway database and checks 685 behaviours; the
-second proves the app reaches nothing outside the machine. Both must pass before a change
+The first starts its own server on a throwaway database and checks hundreds of behaviours; the
+second proves the app reaches nothing outside the machine. All must pass before a change
 is finished, and every assertion is expected to fail when the defect it guards is
 reintroduced — see `.planning/RETROSPECTIVE.md`.
 

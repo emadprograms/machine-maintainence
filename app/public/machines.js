@@ -18,6 +18,7 @@ const STATUS_KIND = { active: 'green', down: 'red', retired: 'grey' };
 
 function thumbnail(machine) {
   if (machine.photo) {
+    if (/\.(mp4|mov|webm)$/i.test(machine.photo)) return `<a href="/api/equipment/${machine.id}/photo" target="_blank" rel="noopener" aria-label="Open video of ${esc(machine.name)}">▶ Video</a>`;
     return `<img class="thumb" src="/api/equipment/${machine.id}/photo"
       alt="${esc(machine.name)}" loading="lazy" />`;
   }
@@ -100,7 +101,7 @@ function drawEquipment() {
   $('#equipment-rows').innerHTML = rows.map((e) => `
     <tr${e.service_status === 'retired' ? ' class="row-quiet"' : ''}>
       <td class="cell-thumb">${thumbnail(e)}</td>
-      ${strong(e.name)}${soft(e.asset_tag)}${soft(e.manufacturer)}
+      ${strong(e.name, [e.model && `Model: ${e.model}`, e.serial_number && `Serial: ${e.serial_number}`].filter(Boolean).join(' · '))}${soft(e.asset_tag)}${soft(e.manufacturer)}
       ${soft(e.category)}${soft(e.location)}
       ${statusCell(e)}
       <td class="cell-num">${Number(e.total_hours || 0)}</td>
@@ -171,6 +172,7 @@ export async function addEquipment() {
       name,
       asset_tag: $('#e-tag').value.trim() || null,
       manufacturer: $('#e-maker').value.trim() || null,
+      model: $('#e-model').value.trim() || null, serial_number: $('#e-serial').value.trim() || null,
       category: $('#e-cat').value.trim() || null,
       location: $('#e-loc').value.trim() || null,
       notes: $('#e-notes').value.trim() || null,
@@ -183,7 +185,7 @@ export async function addEquipment() {
       try { await uploadPhoto(created.id, file); }
       catch (e) { formError('equipment-form', `${e.message} The machine itself was saved.`); loadEquipment(); return; }
     }
-    ['#e-name', '#e-tag', '#e-maker', '#e-cat', '#e-loc', '#e-notes'].forEach((s) => {
+    ['#e-name', '#e-tag', '#e-maker', '#e-model', '#e-serial', '#e-cat', '#e-loc', '#e-notes'].forEach((s) => {
       const el = $(s); if (el) el.value = '';
     });
     if ($('#e-photo')) $('#e-photo').value = '';
@@ -203,13 +205,14 @@ export function editEquipment(idToEdit) {
   $('#ee-cat').value = machine.category || '';
   $('#ee-loc').value = machine.location || '';
   $('#ee-maker').value = machine.manufacturer || '';
+  $('#ee-model').value = machine.model || ''; $('#ee-serial').value = machine.serial_number || '';
   $('#ee-notes').value = machine.notes || '';
   // A file input cannot be filled from script, so an empty one means "keep what
   // is there". The preview is what tells the admin a photograph already exists.
   $('#ee-photo').value = '';
   $('#ee-photo-clear').checked = false;
   $('#ee-photo-preview').innerHTML = machine.photo
-    ? `<img src="/api/equipment/${machine.id}/photo?t=${Date.now()}" alt="${esc(machine.name)}" />`
+    ? (/\.(mp4|mov|webm)$/i.test(machine.photo) ? `<video src="/api/equipment/${machine.id}/photo" controls playsinline></video>` : `<img src="/api/equipment/${machine.id}/photo?t=${Date.now()}" alt="${esc(machine.name)}" />`)
     : '<span>No photograph yet</span>';
   $('#equipment-edit-title').textContent = `Edit machine details · ${machine.name}`;
   $('#ee-photo-undo').hidden = true;
@@ -233,7 +236,7 @@ Object.assign(window, { removeEquipmentPhoto, undoEquipmentPhotoRemoval });
 
 /** Send the bytes as they are. The server sniffs the type and picks the name;
  *  the header below is a courtesy, not a claim it will believe. */
-// The bytes-in upload and its 2 MB refusal live in app.js: a fault photograph on a
+// The shared streaming uploader lives in app.js: a fault photograph on a
 // work order goes through exactly the same door, and two copies of that check would
 // drift the day one cap changes.
 async function uploadPhoto(machineId, file) {
@@ -253,6 +256,7 @@ export async function saveEquipment() {
     category: $('#ee-cat').value.trim() || null,
     location: $('#ee-loc').value.trim() || null,
     manufacturer: $('#ee-maker').value.trim() || null,
+    model: $('#ee-model').value.trim() || null, serial_number: $('#ee-serial').value.trim() || null,
     notes: $('#ee-notes').value.trim() || null,
     // No status: it is not a field. The server refuses one anyway, with a message
     // that says to close the job instead.

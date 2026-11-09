@@ -135,6 +135,17 @@ CREATE TABLE IF NOT EXISTS work_update_photos (
   filename TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pending_uploads (
+  id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+  filename TEXT NOT NULL, kind TEXT NOT NULL, original_name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS work_update_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  update_id INTEGER NOT NULL UNIQUE REFERENCES work_order_updates(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL, original_name TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS parts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
@@ -210,6 +221,8 @@ ensureColumn('equipment', 'manufacturer', 'TEXT');
 // which file. Storing megabytes inside SQLite would make every backup and every
 // copy of maintain.db carry them.
 ensureColumn('equipment', 'photo', 'TEXT');
+ensureColumn('equipment', 'model', 'TEXT');
+ensureColumn('equipment', 'serial_number', 'TEXT');
 
 // Since 261106-eqs the machine's *state* is computed from its work orders, and the
 // column only records whether an admin withdrew it from service. Any row still

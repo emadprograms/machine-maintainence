@@ -51,9 +51,10 @@ export function equipmentFilter(query = {}) {
 
   if (query.q) {
     where.push(`(e.name LIKE ? ESCAPE '\\' OR e.asset_tag LIKE ? ESCAPE '\\'
-                 OR e.location LIKE ? ESCAPE '\\' OR e.category LIKE ? ESCAPE '\\')`);
+                 OR e.location LIKE ? ESCAPE '\\' OR e.category LIKE ? ESCAPE '\\'
+                 OR e.model LIKE ? ESCAPE '\\' OR e.serial_number LIKE ? ESCAPE '\\')`);
     const p = likeParam(query.q);
-    params.push(p, p, p, p);
+    params.push(p, p, p, p, p, p);
   }
   // Retired machines are not offered for new work (261106-eqt). The screen asks with
   // ?service=active; no parameter still means everything, so nothing that already

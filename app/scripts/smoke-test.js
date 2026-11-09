@@ -1630,14 +1630,14 @@ const textAsJpeg = await c(`/api/equipment/${fixable.data.id}/photo`, {
   method: 'POST', contentType: 'image/jpeg',
   rawBody: Buffer.from('this is not an image, whatever the header says') });
 ok('text sent as a JPEG is refused on its bytes, not its header',
-  textAsJpeg.status === 400 && /JPEG, PNG or WebP/.test(textAsJpeg.data.error || ''),
+  textAsJpeg.status === 400 && /JPEG, PNG, WebP/.test(textAsJpeg.data.error || ''),
   JSON.stringify(textAsJpeg.data));
 
 const huge = await c(`/api/equipment/${fixable.data.id}/photo`, {
   method: 'POST', contentType: 'image/jpeg',
   rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
-ok('a photograph over the cap is refused with 413, not buffered',
-  huge.status === 413, `status ${huge.status}`);
+ok('a photograph over 2 MB is accepted',
+  huge.status === 200, `status ${huge.status}`);
 
 ok('the photograph can be removed without touching the record',
   (await c(`/api/equipment/${fixable.data.id}/photo`, { method: 'DELETE' })).status === 200
@@ -1789,9 +1789,9 @@ ok('saving sends the photograph when one was chosen',
   /uploadPhoto\(machineId, file\)/.test(saveFn), saveFn ? 'chosen file dropped' : 'no saveEquipment()');
 // The refusal moved to app.js when work orders got a fault photograph: one
 // uploader serves both forms now, so the claim is about the client, not one file.
-ok('a photograph over 2 MB is refused in the browser too',
-  /2 \* 1024 \* 1024/.test(clientSrc) && /postPhoto/.test(appEq),
-  'the size check or the shared uploader is missing');
+ok('media uploader does not impose the old 2 MB browser limit',
+  !/file\.size > 2 \* 1024 \* 1024/.test(clientSrc) && /postPhoto/.test(appEq),
+  'the old size limit remains or the shared uploader is missing');
 ok('the photograph is uploaded as bytes to the machine\'s own route',
   /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
 ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
@@ -1934,9 +1934,9 @@ ok('confirming checks the sentence again before calling the server',
 ok('the dialog counts what is about to be destroyed',
   appEq.includes('work order${jobs.length === 1') && appEq.includes('maintenance task${mine.length === 1'),
   'it says "everything" without saying how much');
-ok('the name column carries only the name',
-  /strong\(e\.name\)/.test(appEq) && !/strong\(e\.name,/.test(appEq),
-  'category and location are shown twice');
+ok('the name column includes model and serial without duplicating category or location',
+  /strong\(e\.name,/.test(appEq) && appEq.includes('e.model') && appEq.includes('e.serial_number'),
+  'model or serial is missing');
 ok('the row fills the category and location columns',
   appEq.includes('${soft(e.category)}${soft(e.location)}'),
   'the columns exist and the row leaves them empty');
@@ -2720,13 +2720,13 @@ ok('and can take a blurred one back out',
 const faultText = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
   method: 'POST', contentType: 'image/jpeg', rawBody: Buffer.from('this is not an image') });
 ok('text sent as a JPEG is refused on its bytes here too',
-  faultText.status === 400 && /JPEG, PNG or WebP/.test(faultText.data.error || ''),
+  faultText.status === 400 && /JPEG, PNG, WebP/.test(faultText.data.error || ''),
   JSON.stringify(faultText.data));
 const faultHuge = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
   method: 'POST', contentType: 'image/jpeg',
   rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
-ok('a fault photograph over the cap is refused with 413, not buffered',
-  faultHuge.status === 413, `status ${faultHuge.status}`);
+ok('a fault photograph over 2 MB is accepted',
+  faultHuge.status === 200, `status ${faultHuge.status}`);
 
 // The jobs go when the machine does (ON DELETE CASCADE); their photographs must
 // go too, or a workshop backup grows files nothing can ever point at again.
@@ -3628,6 +3628,16 @@ ok('the machines screen does not overwrite the work-order picker',
   const emptyButtons = html.match(/<button[^>]*>\s*<\/button>/g) || [];
   ok('no button is a blank rectangle', emptyButtons.length === 0, emptyButtons.join(' '));
 }
+
+// Temporary stage media has an authenticated upload/discard endpoint.
+const uploadProbe = await late('/api/uploads?kind=media', { method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('stage media can be uploaded for later association', uploadProbe.status === 201 && !!uploadProbe.data.id);
+const discardProbe = await late(`/api/uploads/${uploadProbe.data.id}`, { method: 'DELETE' });
+ok('temporary stage uploads can be discarded', discardProbe.status === 200);
+
+const mediaSuite = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'media-test.js')], { cwd: root, encoding: 'utf8' });
+ok('streamed media, reports, permissions, ranges and cleanup work end to end', mediaSuite.status === 0,
+  (mediaSuite.stderr || mediaSuite.stdout).slice(0, 600));
 
 // ---- no endpoint is unknown to the suite --------------------------------
 // A floor rather than a proof: every route in `routes/` must at least be *named*
