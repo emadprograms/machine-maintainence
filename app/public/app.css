@@ -39,6 +39,11 @@
     padding: 4px 4px 12px 8px; font-weight: 600; font-size: 14px; flex-shrink: 0;
   }
   .side-home { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; border-radius: 9px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .side-home { transform-origin: left center; transition: transform .16s ease; }
+    .side-home:focus-visible { transform: scale(1.035); }
+    .side-home:hover { transform: scale(1.035); }
+  }
   .side-home .side-label { min-width: 0; line-height: 1.15; }
   .side-home:hover .side-label, .side-home.on .side-label { color: var(--brand); }
   .side-mark svg { width: 21px; height: 21px; }

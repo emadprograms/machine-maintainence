@@ -1148,6 +1148,10 @@ ok('the current screen is announced with aria-current', /aria-current/.test(shel
 ok('every entry carries an accessible name', /aria-label="\$\{p\.label\}"/.test(shellSrc));
 ok('the toggle reports its state with aria-expanded', /aria-expanded/.test(shellSrc));
 const shellCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+ok('the dashboard brand grows slightly on hover while respecting reduced motion',
+  /prefers-reduced-motion:\s*no-preference/.test(shellCss)
+  && /\.side-home:hover\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss)
+  && /\.side-home:focus-visible\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss));
 ok('the sidebar toggle is above navigation and does not get pushed to the bottom',
   shellSrc.indexOf('class="side-brand"') < shellSrc.indexOf('class="side-toggle"')
   && shellSrc.indexOf('class="side-toggle"') < shellSrc.indexOf('class="side-nav"')
