@@ -22,7 +22,7 @@ const rows = [
   { id: 6, task: 'later', equipment_name: 'Press', interval_days: 30, next_due: '2026-04-01', days_left: 91 },
 ];
 const context = vm.createContext({
-  $: el, tablesReady: Promise.resolve(),
+  $: el, window: {}, tablesReady: Promise.resolve(),
   api: async () => { if (response instanceof Error) throw response; return response; },
   kit: { rowsFor: (_, values) => values, markTable() {}, rowMenu() { return ''; }, menuItem() { return ''; } },
   esc: (x) => String(x ?? '').replaceAll('<', '&lt;'), strong: (x) => `<td>${x}</td>`,

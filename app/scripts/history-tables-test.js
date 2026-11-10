@@ -28,8 +28,10 @@ try {
   const lathe=await ok('/api/equipment','POST',{name:'Lathe',category:'Machining'});
   const other=await ok('/api/equipment','POST',{name:'Other pump',category:'Pumps'});
   const legacy=await ok('/api/pm','POST',{equipment_id:pump.id,task:'Oil service',interval_days:7,last_done:'2020-01-02',next_due:'2020-01-09'});
+  const part=await ok('/api/parts','POST',{name:'Seal',reference:'SEAL-1',qty:20,unit_price:3});
   const closed=await ok('/api/work-orders','POST',{equipment_id:pump.id,title:'Span interval'});
-  const stage = await ok(`/api/work-orders/${closed.id}/updates`,'POST',{message:'Started repair',hours:1,assigned_to:1});
+  const stage = await ok(`/api/work-orders/${closed.id}/updates`,'POST',{message:'Started repair',hours:1,assigned_to:1,parts:[{part_id:part.id,qty:2,unit_price:4}]});
+  await ok(`/api/work-orders/${closed.id}/parts`,'POST',{part_id:part.id,qty:3});
   await ok(`/api/work-orders/${closed.id}`,'PATCH',{status:'done',machine_running:true,resolution:'Repaired'});
   const open=await ok('/api/work-orders','POST',{equipment_id:pump.id,title:'Still active'});
   const outside=await ok('/api/work-orders','POST',{equipment_id:lathe.id,title:'Outside'});
@@ -66,6 +68,22 @@ try {
   assert.equal(rows.find(r=>r.id===closed.id&&r.kind==='work').start_day,'2020-01-05');
   assert.equal(rows.find(r=>r.id===open.id&&r.kind==='work').start_day,null);
   assert.equal(rows.find(r=>r.id===closed.id&&r.kind==='work').end_day,'2020-01-20');
+  const completed=(await ok(`/api/history-table?view=maintenance&from=2020-01-04&to=2020-01-10&category=Pumps&machines=${pump.id}`)).rows;
+  assert.equal(completed.length,1); assert.ok(completed.every(r=>r.kind==='maintenance')); assert.equal(completed[0].end_day,'2020-01-05');
+  const usage=(await ok(`/api/history-table?view=parts&parts=${part.id}&machines=${pump.id}`)).rows;
+  assert.equal(usage.length,2); assert.equal(usage.find(r=>r.source==='stage').qty,2); assert.equal(usage.find(r=>r.source==='stage').cost,8);
+  assert.equal(usage.find(r=>r.source==='undated').qty,3); assert.equal(usage.find(r=>r.source==='undated').event_day,null);
+  assert.equal(usage.find(r=>r.source==='undated').cost,null);
+  assert.equal((await ok(`/api/history-table?view=parts&q=SEAL-1&parts=${part.id}`)).rows.length,2);
+  assert.equal((await ok(`/api/history-table?view=parts&machines=${lathe.id},${other.id}`)).rows.length,0);
+  assert.equal((await ok(`/api/history-table?view=parts&from=2020-01-05&to=2020-01-05&parts=${part.id}&category=Pumps`)).rows.length,1);
+  assert.equal((await ok(`/api/history-table?view=parts&from=2020-01-06&parts=${part.id}`)).rows.length,0);
+  assert.equal((await ok(`/api/history-table?view=parts&category=Machining`)).rows.length,0);
+  assert.equal((await call('/api/history-table?view=parts&parts=1%29OR1%3D1')).status,400);
+  assert.equal((await call('/api/history-table?view=parts&from=2020-02-31')).status,400);
+  const usageCsv=await ok(`/api/export/history-table.csv?view=parts&from=2020-01-05&to=2020-01-05`);
+  assert.match(usageCsv,/Seal/); assert.match(usageCsv,/Stage/); assert.doesNotMatch(usageCsv,/Undated job usage/);
+  const maintenanceCsv=await ok(`/api/export/history-table.csv?view=maintenance&to=2020-01-05`); assert.match(maintenanceCsv,/Oil service/);
   const work=(await ok(`/api/history-table?view=work&from=2020-01-04&to=2020-01-10&machines=${pump.id}`)).rows;
   assert.equal(work.length,2); assert.ok(work.every(r=>r.kind==='work'));
   assert.equal((await ok(`/api/history-table?view=work&status=done&machines=${pump.id}`)).rows.length,1);
@@ -81,11 +99,25 @@ try {
   const csv=await ok(`/api/export/history-table.csv?view=work&from=2020-01-04&to=2020-01-10&machines=${pump.id}`);
   assert.match(csv,/Span interval/); assert.match(csv,/Still active/); assert.doesNotMatch(csv,/Outside/);
   await ok('/api/settings','PUT',{time_zone:'America/New_York'});
+  db=new DatabaseSync(join(dir,'maintain.db')); db.prepare("UPDATE work_order_updates SET created_at='2020-01-05 02:00:00' WHERE id=?").run(stage.id); db.close();
+  assert.equal((await ok(`/api/history-table?view=parts&from=2020-01-04&to=2020-01-04`)).rows[0].event_day,'2020-01-04');
+  assert.equal((await ok(`/api/history-table?view=parts&from=2020-01-05&to=2020-01-05`)).rows.length,0);
   const local=(await ok(`/api/history-table?view=work&from=2020-01-03&to=2020-01-03&machines=${lathe.id}`)).rows;
   assert.ok(local.some(r=>r.id===boundary.id&&r.opened_day==='2020-01-02'&&r.end_day==='2020-01-03'));
   assert.ok(!(await ok(`/api/history-table?view=work&from=2020-01-04&to=2020-01-04&machines=${lathe.id}`)).rows.some(r=>r.id===boundary.id));
   assert.ok((await ok(`/api/history-table?view=machine&from=2020-01-05&to=2020-01-05&machines=${pump.id}`)).rows.some(r=>r.kind==='maintenance'&&r.end_day==='2020-01-05'));
-  const unauth=await fetch(base+'/api/history-table?view=work'); assert.equal(unauth.status,401);
+  await ok(`/api/work-orders/${closed.id}/updates/${stage.id}`,'PUT',{parts:[{part_id:part.id,qty:1,unit_price:5}]});
+  const corrected=(await ok(`/api/history-table?view=parts&parts=${part.id}`)).rows;
+  assert.equal(corrected.find(r=>r.source==='stage').qty,1); assert.equal(corrected.find(r=>r.source==='stage').cost,5);
+  assert.equal(corrected.find(r=>r.source==='undated').qty,3);
+  await ok(`/api/work-orders/${closed.id}/updates/${stage.id}`,'DELETE');
+  const afterDelete=(await ok(`/api/history-table?view=parts&parts=${part.id}`)).rows;
+  assert.equal(afterDelete.length,1); assert.equal(afterDelete[0].source,'undated'); assert.equal(afterDelete[0].qty,3);
+  for (const view of ['work','parts','maintenance']) {
+    assert.equal((await fetch(base+`/api/history-table?view=${view}`)).status,401);
+    assert.equal((await fetch(base+`/api/export/history-table.csv?view=${view}`)).status,401);
+  }
+
   await stop(); await start();
   rows=(await ok('/api/history-table?view=machine')).rows;
   assert.equal(rows.filter(r=>r.kind==='maintenance').length,3);

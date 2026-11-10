@@ -384,7 +384,7 @@
       <dialog id="stage-photo-viewer" aria-labelledby="stage-photo-title"><form method="dialog"><div class="photo-viewer-head"><h3 id="stage-photo-title">Photo preview</h3><button class="icon-btn" type="submit" aria-label="Close">&times;</button></div><img id="stage-photo-image" alt="" /><video id="stage-photo-video" controls playsinline hidden></video><p id="stage-photo-caption" role="status"></p></form></dialog>
 
 
-    <section data-page="parts" class="hidden">
+    <section data-page="parts" class="hidden"><div id="extra-parts-tabs"></div><div id="extra-parts-list" role="tabpanel" aria-labelledby="extra-parts-tab-list" tabindex="0">
       <div class="page-head">
         <div>
           <h2>Spare parts</h2>
@@ -408,7 +408,7 @@
             <tbody id="parts-rows"></tbody></table>
         </div>
       </div>
-      <dialog id="parts-form" class="sheet">
+      </div><div id="extra-parts-history" role="tabpanel" aria-labelledby="extra-parts-tab-history" tabindex="0" hidden></div><dialog id="parts-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
             <h3>New spare part</h3>
@@ -458,7 +458,7 @@
     </section>
 
     <!-- Preventive maintenance -->
-    <section data-page="pm" class="hidden">
+    <section data-page="pm" class="hidden"><div id="extra-pm-tabs"></div><div id="extra-pm-list" role="tabpanel" aria-labelledby="extra-pm-tab-list" tabindex="0">
       <div class="page-head">
         <div>
           <h2>Maintenance</h2>
@@ -480,7 +480,7 @@
             <tbody id="pm-rows"></tbody></table>
         </div>
       </div>
-      <dialog id="pm-form" class="sheet">
+      </div><div id="extra-pm-history" role="tabpanel" aria-labelledby="extra-pm-tab-history" tabindex="0" hidden></div><dialog id="pm-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
             <h3>New maintenance schedule</h3>
@@ -594,6 +594,6 @@
     <div class="sheet-foot"><button type="button" class="ghost" onclick="closeForm('app-settings')">Cancel</button><button type="button" id="settings-save" class="primary" onclick="saveSettings()">Save settings</button></div>
   </div>
 </dialog>
-<script src="/app.js"></script>
+<script src="/app.js"></script><script type="module" src="/extra-history-ui.js"></script>
 </body>
 </html>

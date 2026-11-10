@@ -9,7 +9,7 @@ import { timeZone } from './settings.js';
 
 export function historyTable(query = {}) {
   const view = String(query.view || '');
-  if (!['machine', 'work'].includes(view)) return { error: 'Choose machine or work history' };
+  if (!['machine', 'work', 'maintenance'].includes(view)) return { error: 'Choose machine, work or maintenance history' };
   const from = query.from ? parseDay(String(query.from), 'From') : null;
   const to = query.to ? parseDay(String(query.to), 'To') : null;
   if (from?.error || to?.error) return { error: from?.error || to?.error };
@@ -35,7 +35,7 @@ export function historyTable(query = {}) {
   if (from?.value) { workWhere.push('(w.closed_at IS NULL OR workshop_day(w.closed_at, ?) >= ?)'); workParams.push(zone, from.value); }
   if (to?.value) { workWhere.push('workshop_day(w.created_at, ?) <= ?'); workParams.push(zone, to.value); }
   const where = (conditions) => conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const work = all(`SELECT 'work' AS kind, w.id, w.code, w.title, w.status, w.priority,
+  const work = view === 'maintenance' ? [] : all(`SELECT 'work' AS kind, w.id, w.code, w.title, w.status, w.priority,
     e.id AS equipment_id, e.name AS equipment_name, e.category, u.name AS owner,
     w.resolution, w.created_at, w.closed_at,
     workshop_day(w.created_at, ?) AS opened_day,
@@ -45,7 +45,7 @@ export function historyTable(query = {}) {
     FROM work_orders w JOIN equipment e ON e.id=w.equipment_id
     LEFT JOIN users u ON u.id=w.assigned_to ${where(workWhere)}`, zone, zone, zone, ...workParams);
   let maintenance = [];
-  if (view === 'machine' && (!status || status === 'done')) {
+  if (view !== 'work' && (!status || status === 'done')) {
     const pmWhere = [...clauses], pmParams = [...params];
     if (search) { const p = likeParam(search); pmWhere.push("(s.task LIKE ? ESCAPE '\\' OR e.name LIKE ? ESCAPE '\\')"); pmParams.push(p, p); }
     if (from?.value) { pmWhere.push('p.completed_on >= ?'); pmParams.push(from.value); }

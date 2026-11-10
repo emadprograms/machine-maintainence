@@ -869,8 +869,8 @@ ok('every header carries a purpose sentence',
 ok('no screen opens with a form',
   screenBodies.every((m) => {
     const first = m[2].trim();
-    return /^(?:<div class="page-head"|<div class="section-tabs")/.test(first);
-  }), screenBodies.filter((m) => !/^(?:<div class="page-head"|<div class="section-tabs")/.test(m[2].trim())).map((m) => m[1]).join(','));
+    return /^(?:<div class="page-head"|<div class="section-tabs"|<div id="extra-(?:parts|pm)-tabs")/.test(first);
+  }), screenBodies.filter((m) => !/^(?:<div class="page-head"|<div class="section-tabs"|<div id="extra-(?:parts|pm)-tabs")/.test(m[2].trim())).map((m) => m[1]).join(','));
 ok('no form sits on a page outside a dialog',
   screenBodies.every((m) => {
     const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
@@ -1108,6 +1108,9 @@ ok('history table and CSV endpoints answer with authenticated filtered records',
 const historyTablesUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'history-tables-ui-test.js')], { cwd: root, encoding: 'utf8' });
 ok('history table UI handles filtering, errors and safe print snapshots', historyTablesUiTest.status === 0,
   (historyTablesUiTest.stderr || historyTablesUiTest.stdout).slice(0, 600));
+const extraHistoryUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'extra-history-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('maintenance and parts history UI handles filters, errors and safe printing', extraHistoryUiTest.status === 0,
+  (extraHistoryUiTest.stderr || extraHistoryUiTest.stdout).slice(0, 600));
 const historyTablesTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'history-tables-test.js')], { cwd: root, encoding: 'utf8' });
 ok('history overlap, scheduled maintenance migration and export regression', historyTablesTest.status === 0,
   (historyTablesTest.stderr || historyTablesTest.stdout).slice(0, 600));

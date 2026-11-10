@@ -193,7 +193,7 @@ function buildTabs(user) {
 
 function navigatePage(key) {
   if (key === 'work') selectWorkTab('active', false);
-  if (key === 'equipment') selectMachineTab('list', false);
+  if (key === 'equipment') selectMachineTab('list', false); if (key === 'pm' || key === 'parts') window.extraHistoryTabs?.select(key, 'list', false);
   return showPage(key);
 }
 
@@ -206,7 +206,7 @@ async function showPage(key) {
   const loaders = {
     dashboard: loadDashboard,
     equipment: () => machineTab === 'history' ? loadHistoryTable('machine') : loadEquipment(), work: () => workTab === 'history' ? loadHistoryTable('work') : loadWork(),
-    pm: loadPm, parts: loadParts, users: loadUsers,
+    pm: () => window.extraHistoryTabs?.isHistory('pm') ? window.extraHistoryTabs.load('pm') : loadPm(), parts: () => window.extraHistoryTabs?.isHistory('parts') ? window.extraHistoryTabs.load('parts') : loadParts(), users: loadUsers,
   };
   try { await syncTimeZone(); }
   catch (error) {
@@ -253,7 +253,7 @@ function workTabKey(event) {
   selectWorkTab(next); $(`#work-tab-${next}`).focus();
 }
 function openDueMaintenance() {
-  $('#pm-filter').value = 'due';
+  window.extraHistoryTabs?.select('pm', 'list', false); $('#pm-filter').value = 'due';
   $('#pm-days').value = '7';
   return showPage('pm');
 }
