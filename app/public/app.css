@@ -384,7 +384,7 @@ th.sorted .sort-btn { color: var(--ink); }
 .stage-photo-picker strong, .stage-photo-picker small { display: block; }
 .stage-photo-picker strong { color: #245b91; font-size: 13px; }
 .stage-photo-picker small { color: var(--soft); font-size: 12px; margin-top: 3px; }
-#wa-photo-selection { overflow-wrap: anywhere; margin: 8px 0 0; }
+#wa-photo-selection, #wa-report-selection, #wa-report-name { overflow-wrap: anywhere; margin: 8px 0 0; }
 .stage-footer { flex: none; border-top: 1px solid #edf0f3; background: white; padding: 16px 30px; }
 .stage-footer .form-error { margin: 0 0 10px; }
 .stage-footer .form-error:empty { display: none; }

@@ -36,7 +36,7 @@ export async function openWorkUpdates(job, viewOnly = false, refresh = () => {},
   $('#wa-photo-selection').textContent = ''; $('#wa-scroll').scrollTop = 0;
   $('#wa-message').value = ''; $('#wa-hours').value = ''; $('#wa-photos').value = '';
   $('#wa-existing-photos').innerHTML = '';
-  $('#wa-report').value = ''; $('#wa-report-keep').hidden = true; $('#wa-keep-report').checked = true; $('#wa-report-name').textContent = '';
+  $('#wa-report').value = ''; $('#wa-report-selection').textContent = ''; $('#wa-report-clear').hidden = true; $('#wa-report-keep').hidden = true; $('#wa-keep-report').checked = true; $('#wa-report-name').textContent = '';
   $('#wa-running-help').textContent = 'The state you record becomes the machine’s latest status.';
   showToggle(false); $('#wa-running-label').textContent = 'Loading…';
   resetStageParts();
@@ -161,6 +161,7 @@ export function editLatestStage(stageId) {
   $('#wa-owner-field').hidden = true;
   $('#wa-message').value = editingStage.message; $('#wa-hours').value = String(editingStage.hours);
   $('#wa-photos').value = ''; $('#wa-report').value = '';
+  $('#wa-report-selection').textContent = ''; $('#wa-report-clear').hidden = true;
   $('#wa-report-keep').hidden = !editingStage.report; $('#wa-keep-report').checked = true;
   $('#wa-report-name').textContent = editingStage.report ? `Current report: ${editingStage.report.original_name}. Selecting a new file replaces it.` : '';
   showToggle(editingStage.machine_running == null ? currentRunning : Boolean(editingStage.machine_running));
@@ -178,6 +179,17 @@ export function stagePhotoSelectionChanged() {
   $('#wa-photos-summary').textContent = count ? `${count} ${count === 1 ? 'file' : 'files'} selected` : 'Optional · Attach up to 5 files';
   updateNewPhotos(files);
   $('#wa-photo-selection').textContent = files.length > 5 ? 'Only up to five files can be added.' : '';
+}
+
+// The custom picker hides the native file label, so show the chosen name explicitly.
+export function stageReportSelectionChanged() {
+  const file = $('#wa-report').files?.[0];
+  $('#wa-report-selection').textContent = file ? `Selected: ${file.name}` : '';
+  $('#wa-report-clear').hidden = !file;
+}
+export function clearStageReportSelection() {
+  $('#wa-report').value = '';
+  stageReportSelectionChanged();
 }
 
 async function uploadStageFile(file, kind) {
@@ -253,4 +265,4 @@ export async function deleteLatestStage() {
   } finally { $('#wa-delete').disabled = false; }
 }
 
-Object.assign(window, { editLatestStage, deleteLatestStage, stageToggleChanged, stagePhotoSelectionChanged });
+Object.assign(window, { editLatestStage, deleteLatestStage, stageToggleChanged, stagePhotoSelectionChanged, stageReportSelectionChanged, clearStageReportSelection });

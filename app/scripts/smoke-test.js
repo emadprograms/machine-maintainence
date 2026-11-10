@@ -3581,6 +3581,11 @@ ok('stage history and optional additions use accessible disclosures',
   ['wa-history-panel', 'wa-parts-panel', 'wa-photos-panel'].every((id) => assignDialog.includes(`<details id="${id}"`))
   && assignDialog.includes('id="wa-history-count"') && assignDialog.includes('id="wa-parts-summary"')
   && assignDialog.includes('id="wa-photos-summary"') && assignDialog.includes('aria-describedby="wa-running-help"'));
+const reportDisclosure = (assignDialog.match(/<details id="wa-report-panel"[\s\S]*?<\/details>/) || [''])[0];
+ok('the job report picker uses the same accessible upload card as stage media',
+  /<label class="stage-photo-picker">[\s\S]*?id="wa-report"[^>]*aria-label="Choose job report"/.test(reportDisclosure)
+  && assignDialog.includes('id="wa-report-selection"') && assignDialog.includes('id="wa-report-clear"')
+  && assignDialog.includes('onchange="stageReportSelectionChanged()"'));
 ok('the stage form provides a labelled parts table and clear disclosure arrows',
   /<table class="stage-parts-table">/.test(assignDialog) && /<th scope="col">Spare part/.test(assignDialog)
   && /<th scope="col">Quantity/.test(assignDialog) && /<th scope="col">Actual unit cost/.test(assignDialog)

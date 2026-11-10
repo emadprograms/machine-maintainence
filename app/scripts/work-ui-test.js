@@ -679,4 +679,14 @@ const pendingTimeline = history.openMachineHistoryJob(42); const countOpened = o
 history.closeMachineHistory(); releaseHistory(); await pendingTimeline; waitHistoryJob = null;
 assert.equal(opened.length, countOpened); // a closed history cannot open a late timeline
 
+// The custom report card announces its selection without interpreting filenames as HTML.
+el('#wa-report').files = [{ name: '<inspection>.pdf' }];
+updateUI.stageReportSelectionChanged();
+assert.equal(el('#wa-report-selection').textContent, 'Selected: <inspection>.pdf');
+assert.equal(el('#wa-report-clear').hidden, false);
+el('#wa-report').files = [];
+updateUI.clearStageReportSelection();
+assert.equal(el('#wa-report-selection').textContent, '');
+assert.equal(el('#wa-report-clear').hidden, true);
+
 console.log('Work-order UI interaction tests passed');
