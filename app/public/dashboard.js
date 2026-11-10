@@ -57,7 +57,7 @@ function card({ key, label, empty }, section) {
       <span class="dash-count">${count}</span>
     </div>
     ${body}
-    <button class="dash-link" type="button" data-goto="${escapeHtml(section?.href || '#')}">
+    <button class="dash-link" type="button" data-card="${escapeHtml(key)}" data-goto="${escapeHtml(section?.href || '#')}">
       Open ${escapeHtml(label.toLowerCase())}
     </button>
   </div>`;
@@ -114,7 +114,8 @@ export function renderDashboard(container, data) {
   container.querySelectorAll('[data-goto]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.goto.replace('#', '');
-      if (typeof window.showPage === 'function') window.showPage(key);
+      if (btn.dataset.card === 'due_soon' && typeof window.openDueMaintenance === 'function') window.openDueMaintenance();
+      else if (typeof window.navigatePage === 'function') window.navigatePage(key);
     });
   });
 }

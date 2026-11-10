@@ -59,7 +59,7 @@ export default {
 
     send(res, 200, {
       work_orders: section(work, work, '#work'),
-      due_soon: section(dueRows, dueRows, '#due'),
+      due_soon: section(dueRows, dueRows, '#pm'),
       low_stock: section(lowRows, lowRows, '#parts'),
       machines: section(downRows, downRows, '#equipment'),
       // The charts. Same request as the cards: one load, one error state, and no

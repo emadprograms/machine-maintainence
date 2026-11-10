@@ -869,8 +869,8 @@ ok('every header carries a purpose sentence',
 ok('no screen opens with a form',
   screenBodies.every((m) => {
     const first = m[2].trim();
-    return /^<div class="page-head"/.test(first);
-  }), screenBodies.filter((m) => !/^<div class="page-head"/.test(m[2].trim())).map((m) => m[1]).join(','));
+    return /^(?:<div class="page-head"|<div class="section-tabs")/.test(first);
+  }), screenBodies.filter((m) => !/^(?:<div class="page-head"|<div class="section-tabs")/.test(m[2].trim())).map((m) => m[1]).join(','));
 ok('no form sits on a page outside a dialog',
   screenBodies.every((m) => {
     const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
@@ -929,7 +929,7 @@ ok('rows use the shared strong/soft helpers, not bare cells',
 
 // Empty states: a sentence, and only after a successful fetch.
 ok('every list has a written empty state',
-  ['equipment', 'work', 'parts', 'due', 'pm', 'users'].every((fn) => {
+  ['equipment', 'work', 'parts', 'pm', 'users'].every((fn) => {
     // app.js keeps a one-line delegating wrapper for screens that live in their
     // own module, so every match is considered and any real body will do: a
     // wrapper has no empty state and the module's function has one.
@@ -955,7 +955,7 @@ ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0
 //
 // The invariant is about the data source: a loader that can render "nothing
 // here" must not have a catch that turns a failure into an empty array.
-const emptiers = ['Equipment', 'Work', 'Parts', 'Due', 'Pm', 'Users'];
+const emptiers = ['Equipment', 'Work', 'Parts', 'Pm', 'Users'];
 const swallowed = emptiers.filter((fn) => {
   const body = (appSrc13.match(new RegExp(`async function load${fn}[\\s\\S]*?\\n}`)) || [''])[0];
   if (!body.includes('emptyRow(')) return false;
@@ -1000,7 +1000,7 @@ const dashPageKeys = [...((appUrl.match(/const PAGES = \[[\s\S]*?\n\];/) || ['']
   .matchAll(/key: '([\w-]+)'/g)].map((m) => m[1]);
 // "Points somewhere real" is too weak: swapping two cards' links still passed.
 // Each section must lead to the screen that owns its rows.
-const expectedHrefs = { work_orders: 'work', due_soon: 'due', low_stock: 'parts', machines: 'equipment' };
+const expectedHrefs = { work_orders: 'work', due_soon: 'pm', low_stock: 'parts', machines: 'equipment' };
 ok('each card links to the screen that owns its rows',
   sections.every((k) => dash.data[k].href === '#' + expectedHrefs[k]),
   sections.map((k) => `${k}:${dash.data[k].href}`).join(' '));
@@ -1084,6 +1084,17 @@ ok('a failed load is distinguished from an empty one',
   /renderDashboardError/.test(dashSrc) && /Could not load the dashboard/.test(dashSrc)
   && /dash-empty/.test(dashSrc));
 ok('a card with more items than shown says so', /and \$\{count - items\.length\} more/.test(dashSrc));
+
+ok('maintenance and history are combined with their related sections',
+  !dashPageKeys.includes('due') && !dashPageKeys.includes('history')
+  && /id="pm-filter"[\s\S]*?value="due">Due soon/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /id="pm-days"[\s\S]*?value="7"[\s\S]*?value="14"[\s\S]*?value="30"[\s\S]*?value="90"/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /role="tab" id="machine-tab-history"/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /function openDueMaintenance/.test(appUrl));
+
+const navigationUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'navigation-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('combined navigation and maintenance interactions', navigationUiTest.status === 0,
+  navigationUiTest.stderr || navigationUiTest.stdout);
 
 console.log('\nPhase 11 — the shell');
 
@@ -1455,9 +1466,9 @@ ok('the work-order activity column shows workshop date and time and is sortable'
   /data-sort="last_activity_at"/.test(quickIndex) && /last_activity_at: \(w\) => w.last_activity_at/.test(quickWork)
   && /zoneDateTime\(w.last_activity_at\)/.test(quickWork));
 ok('the history screen is reachable and the machine row opens it',
-  appUrl.includes("{ key: 'history', label: 'History' }")
+  indexSrc.includes('id="machine-tab-history"') && !appUrl.includes("{ key: 'history', label: 'History' }")
   && /openMachineHistory\(\$\{machine\.id\}/.test(clientSrc),
-  'no sidebar entry or no way in from a machine');
+  'no history tab or no way in from a machine');
 
 console.log('\nMachines — who may edit, and where the state comes from');
 
@@ -2001,17 +2012,18 @@ ok('a machine in service can still be down — the two filters ask different que
   (await c('/api/equipment?service=active')).data.some((e) => e.id === blocked.id)
   && (await c('/api/equipment?service=retired')).data.every((e) => e.status === 'retired'));
 await c(`/api/equipment/${blocked.id}`, { method: 'DELETE' });   // takes its job with it
-ok('the dropdowns that start new work never come from the filtered table',
-  /const \[rows, inService\] = await Promise\.all/.test(appEq)
-  && /inService\.map\(\(e\) => `<option/.test(appEq)
-  && !/rows\.map\(\(e\) => `<option/.test(appEq), 'the search box still narrows the dropdowns');
+ok('new work and maintenance fetch their own in-service machine choices',
+  appSrc13.includes("api('/equipment?service=active')")
+  && appSrc13.includes('async function retryPmMachines()')
+  && readFileSync(join(root, 'public', 'work.js'), 'utf8').includes("api('/equipment?service=active')")
+  && !appEq.includes("$('#pm-equipment').innerHTML"));
 ok('the due list asks only for machines in service',
-  appSrc13.includes('service=active') && /\/pm\/due\?days=\$\{days\}&service=active/.test(appSrc13),
+  appSrc13.includes("api('/pm?service=active')") && /if \(filter === 'due'\) return p\.days_left <= days;/.test(appSrc13),
   'the due list still shows maintenance on machines that have left');
 ok('the maintenance list asks the same way',
   appSrc13.includes("api('/pm?service=active')"), 'the two lists can disagree');
 ok('and they ask for machines in service with no search term',
-  /api\('\/equipment\?service=active'\)/.test(appEq));
+  /api\('\/equipment\?service=active'\)/.test(appSrc13));
 ok('the app remembers who signed in', /window\.me = user/.test(
   readFileSync(join(root, 'public', 'app.js'), 'utf8')));
 const equipmentSrc = codeOnly(readFileSync(join(root, 'routes', 'equipment.js'), 'utf8'));
@@ -3160,7 +3172,7 @@ ok('and the API still calls the field what it always did',
 // headings and a row of buttons each. "All tables and all options should be like
 // that" is a claim about the whole page, so it is checked table by table rather than
 // by looking for a `sort(` and hoping.
-const TABLE_IDS = ['due-rows', 'equipment-rows', 'machine-history-rows', 'work-rows',
+const TABLE_IDS = ['equipment-rows', 'machine-history-rows', 'work-rows',
   'history-rows', 'parts-rows', 'pm-rows', 'users-rows', 'report-rows'];
 const headingKeys = (tbodyId) => {
   const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
@@ -3198,10 +3210,10 @@ const bareRowButtons = clientSrc.match(/<td[^>]*>\s*<button class="ghost small"/
 // `function rowMenu(` is the definition, not a seventh table.
 const menuCalls = (clientSrc.match(/(?<!function )rowMenu\(/g) || []).length;
 ok('a row never carries its own buttons, whatever the table is',
-  bareRowButtons.length === 0 && menuCalls === 6,
-  bareRowButtons.length ? bareRowButtons[0].slice(0, 80) : `${menuCalls} menus for 6 tables with actions`);
+  bareRowButtons.length === 0 && menuCalls === 5,
+  bareRowButtons.length ? bareRowButtons[0].slice(0, 80) : `${menuCalls} menus for 5 tables with actions`);
 ok('and a menu names the row it belongs to, for anyone not reading the screen',
-  (clientSrc.match(/(?<!function )rowMenu\(\s*(?:[A-Za-z_$][\w$.]*|`)/g) || []).length === 6
+  (clientSrc.match(/(?<!function )rowMenu\(\s*(?:[A-Za-z_$][\w$.]*|`)/g) || []).length === 5
   && /aria-label="Actions for \$\{esc\(what\)\}"/.test(tablesSrc),
   'a menu whose button is just three dots with no name');
 ok('the items a menu holds are real buttons, and a destructive one is marked',
@@ -3329,7 +3341,7 @@ const userDraw = (appSrc13.match(/function drawUsers\(\) \{[\s\S]*?\n}/) || ['']
 ok('the maintenance and user filters redraw, they do not refetch',
   /#pm-filter/.test(pmDraw) && !/\bapi\(/.test(pmDraw)
   && /if \(filter === 'overdue'\) return p\.days_left < 0;/.test(pmDraw)
-  && /if \(filter === 'week'\) return p\.days_left <= 7;/.test(pmDraw)
+  && /if \(filter === 'due'\) return p\.days_left <= days;/.test(pmDraw)
   && /#user-filter/.test(userDraw) && !/\bapi\(/.test(userDraw)
   && /if \(filter === 'active'\) return u\.active;/.test(userDraw)
   && /if \(filter === 'disabled'\) return !u\.active;/.test(userDraw)

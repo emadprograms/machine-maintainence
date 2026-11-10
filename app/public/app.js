@@ -171,17 +171,16 @@ async function logout() {
 // ------------------------------------------------------------------ tabs
 const PAGES = [
   { key: 'dashboard', label: 'Dashboard' },
-  { key: 'due', label: 'Due soon' },
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
-  { key: 'history', label: 'History' },
   { key: 'report', label: 'Reports' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
   { key: 'users', label: 'Admins & Technicians', adminOnly: true },
   { key: 'backup', label: 'Backup', adminOnly: true },
 ];
-let currentPage = 'due';
+let currentPage = 'dashboard';
+let machineTab = 'list';
 
 function buildTabs(user) {
   // Same PAGES array and the same adminOnly filter as before — the sidebar is a
@@ -190,8 +189,13 @@ function buildTabs(user) {
   shellReady.then((shell) => shell.renderShell({
     pages: visible,
     current: currentPage,
-    onNavigate: showPage,
+    onNavigate: navigatePage,
   }));
+}
+
+function navigatePage(key) {
+  if (key === 'equipment') selectMachineTab('list', false);
+  return showPage(key);
 }
 
 async function showPage(key) {
@@ -200,8 +204,8 @@ async function showPage(key) {
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
   const loaders = {
     dashboard: loadDashboard,
-    due: loadDue, equipment: loadEquipment, work: loadWork,
-    history: loadHistory, report: loadReportsPage,
+    equipment: () => machineTab === 'history' ? loadHistory() : loadEquipment(), work: loadWork,
+    report: loadReportsPage,
     pm: loadPm, parts: loadParts, users: loadUsers,
   };
   try { await syncTimeZone(); }
@@ -210,6 +214,34 @@ async function showPage(key) {
     return;
   }
   if (currentPage === key) await loaders[key]?.();
+}
+
+// A single Machines section contains the current list and the workshop-wide
+// closed-job history. The per-machine history dialog remains available separately.
+function selectMachineTab(tab, load = true) {
+  if (!['list', 'history'].includes(tab)) return;
+  machineTab = tab;
+  for (const name of ['list', 'history']) {
+    const selected = name === tab;
+    const button = $(`#machine-tab-${name}`);
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    $(`#machine-${name === 'list' ? 'list' : 'history'}-panel`).hidden = !selected;
+  }
+  if (load && currentPage === 'equipment') return tab === 'history' ? loadHistory() : loadEquipment();
+}
+function machineTabKey(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 'list' : event.key === 'End' ? 'history'
+    : machineTab === 'list' ? 'history' : 'list';
+  selectMachineTab(next);
+  $(`#machine-tab-${next}`).focus();
+}
+function openDueMaintenance() {
+  $('#pm-filter').value = 'due';
+  $('#pm-days').value = '7';
+  return showPage('pm');
 }
 
 // Time zone is installation-wide. Fetch before drawing a page so another
@@ -348,47 +380,21 @@ async function loadDashboard() {
   }
 }
 
-let dueCache = [];
-
-async function loadDue() {
-  await tablesReady;
-  const days = $('#due-days').value || 7;
-  // `service=active`: a machine that has left the workshop has no maintenance to
-  // do. The schedule is not deleted — park the machine and it waits; restore it
-  // and the reminders come back.
-  dueCache = await api(`/pm/due?days=${days}&service=active`);
-  drawDue();
-}
-
-function drawDue() {
-  const rows = kit.rowsFor('due-rows', dueCache);
-  $('#due-rows').innerHTML = rows.map((p) => `
-    <tr>
-      ${strong(p.equipment_name)}<td>${esc(p.task)}</td>
-      <td class="cell-num cell-muted">every ${p.interval_days} d</td>
-      <td class="cell-num">${esc(p.next_due)} ${dueKind(p.days_left)}</td>
-      ${kit.rowMenu(`${p.task} on ${p.equipment_name}`, [
-        kit.menuItem('Mark done today', `pmDone(${p.id})`),
-      ])}
-    </tr>`).join('')
-    || emptyRow(5, 'Nothing is due in this window. Widen the range above to look further ahead.');
-  kit.markTable('due-rows');
-}
-
-tablesReady.then((t) => t.register('due-rows', {
-  equipment_name: (p) => p.equipment_name,
-  task: (p) => p.task,
-  interval_days: (p) => p.interval_days,
-  next_due: (p) => p.next_due,
-}, drawDue));
-
 let pmCache = [];
+let pmLoad = 0, pmError = null;
 
 async function loadPm() {
   await tablesReady;
-  // Same rule as Due soon, asked for the same way, so the two lists cannot disagree
-  // about which machines still have maintenance.
-  pmCache = await api('/pm?service=active');
+  // Retired machines keep their schedules but do not receive reminders.
+  const request = ++pmLoad;
+  try {
+    const rows = await api('/pm?service=active');
+    if (request !== pmLoad) return;
+    pmCache = rows; pmError = null;
+  } catch (error) {
+    if (request !== pmLoad) return;
+    pmError = error.message;
+  }
   drawPm();
 }
 
@@ -397,9 +403,15 @@ function drawPm() {
   // is already in memory, so a filter change costs nothing but a redraw — the same
   // reason a heading click does not refetch.
   const filter = $('#pm-filter')?.value || 'all';
+  const days = Number($('#pm-days').value) || 7;
+  $('#pm-window-label').hidden = filter !== 'due';
+  if (pmError) {
+    $('#pm-rows').innerHTML = `<tr><td colspan="7" class="cell-say cell-error">Could not load maintenance. ${esc(pmError)}</td></tr>`;
+    return;
+  }
   const shown = pmCache.filter((p) => {
     if (filter === 'overdue') return p.days_left < 0;
-    if (filter === 'week') return p.days_left <= 7;
+    if (filter === 'due') return p.days_left <= days;
     return true;
   });
   const rows = kit.rowsFor('pm-rows', shown);
@@ -417,8 +429,8 @@ function drawPm() {
     </tr>`).join('')
     || emptyRow(7, filter === 'overdue'
       ? 'Nothing is overdue. Every schedule is inside its interval.'
-      : filter === 'week'
-        ? 'Nothing is due in the next 7 days.'
+      : filter === 'due'
+        ? `Nothing is due in the next ${days} days.`
         : 'No repeating maintenance yet. Add a schedule and it will show up here.');
   kit.markTable('pm-rows');
 }
@@ -430,6 +442,38 @@ tablesReady.then((t) => t.register('pm-rows', {
   last_done: (p) => p.last_done,
   next_due: (p) => p.next_due,
 }, drawPm));
+
+let pmMachineLoad = 0;
+function openNewPm() {
+  openForm('pm-form');
+  return retryPmMachines();
+}
+async function retryPmMachines() {
+  const request = ++pmMachineLoad;
+  const picker = $('#pm-equipment');
+  picker.disabled = true; $('#pm-create').disabled = true;
+  picker.innerHTML = '<option value="">Loading machines…</option>';
+  $('#pm-machine-status').textContent = 'Loading machines…';
+  $('#pm-machine-retry').hidden = true;
+  try {
+    const machines = await api('/equipment?service=active');
+    if (request !== pmMachineLoad || !$('#pm-form').open) return;
+    if (!machines.length) {
+      picker.innerHTML = '<option value="">No machines in service</option>';
+      $('#pm-machine-status').textContent = 'No machines in service. Add or restore a machine, then retry.';
+      $('#pm-machine-retry').hidden = false;
+      return;
+    }
+    picker.innerHTML = machines.map((machine) => `<option value="${Number(machine.id)}">${esc(machine.name)}</option>`).join('');
+    picker.disabled = false; $('#pm-create').disabled = false;
+    $('#pm-machine-status').textContent = '';
+  } catch (error) {
+    if (request !== pmMachineLoad || !$('#pm-form').open) return;
+    picker.innerHTML = '<option value="">Could not load machines</option>';
+    $('#pm-machine-status').textContent = `Could not load machines: ${error.message}`;
+    $('#pm-machine-retry').hidden = false;
+  }
+}
 
 async function addPm() {
   try {
@@ -450,10 +494,7 @@ async function pmDone(id) {
   // Send the date the technician actually chose. Sending {} was how the field
   // silently meant "today" no matter what it said.
   //
-  // The picker lives inside the Maintenance row. Due soon is a reminder list with no
-  // picker of its own, so this read used to throw on every Mark done from that
-  // screen unless the Maintenance table happened to have been drawn first — the
-  // button depended on a table the user was not looking at. No picker means today.
+  // The picker belongs to the visible maintenance row.
   const picker = $(`#pm-on-${id}`);
   const on = picker ? picker.value : today();
   try {

@@ -76,6 +76,7 @@ Check with `node --version`.
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
 | `scripts/smoke-test.js` | Starts a throwaway server and checks hundreds of behaviours | 3,645 |
+| `scripts/navigation-ui-test.js` | Exercises merged navigation, maintenance filters, picker retry and race handling | — |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
 | `scripts/print-ui-test.js` / `stage-gallery-test.js` | Test print rendering, errors, previews and cleanup | — |
@@ -144,7 +145,7 @@ photograph pushed that page past 600 lines.
 
 ### The screens
 
-`Dashboard` · `Due soon` · `Machines` · `Work orders` · `History` · `Report` · `Maintenance` ·
+`Dashboard` · `Machines` · `Work orders` · `Reports` · `Maintenance` ·
 `Spare parts` · `Admins & Technicians` (admins) · `Backup` (admins)
 
 `Admins & Technicians` has no public sign-up counterpart: accounts exist only if an admin
@@ -168,14 +169,14 @@ stored `role` values keep the word *user*, because everything else already speak
 * **Every list has a named filter, and each one opens on everything.** Machines
   (all / in service / down / retired), work orders (any status / open / in progress /
   done), spare parts (all / at or below the reorder level / out of stock), maintenance
-  (all / due within 7 days / overdue), users (all / active / disabled / administrators),
-  due soon (within N days) and the report (a month). Spare parts had a **checkbox** that
+  (all / due soon within 7, 14, 30 or 90 days / overdue), users (all / active / disabled / administrators),
+  and the report (a month). Spare parts had a **checkbox** that
   could only ever say one thing, and maintenance and users had no filter at all. Every
   filter carries an `aria-label`, every one states its "everything" answer as selected,
   and the CSV download next to a list builds its query from the same function as the
   table — so the file is the list you are looking at, never a different one.
 * **Every table sorts by any heading that holds a value.** Machines, work orders,
-  history, one machine's history, spare parts, maintenance, due soon, users and the
+  history, one machine's history, spare parts, maintenance, users and the
   report all behave the same way: one click on a heading orders that column ascending,
   the same heading again turns it round, and an arrow in a fixed slot beside it says
   which way. Nothing is sorted until someone asks, the order survives a search, a filter
@@ -183,7 +184,7 @@ stored `role` values keep the word *user*, because everything else already speak
   Where the alphabet is the wrong order the column says so: priority runs high → low,
   status runs open → done, and a barcode sorts as a number rather than as digits.
 * **Every row's actions are behind three dots.** Machines, work orders, spare parts,
-  maintenance, due soon and users: one menu per row, the destructive item red, and the
+  maintenance and users: one menu per row, the destructive item red, and the
   button names the row it belongs to for anyone using a screen reader. A table of twenty
   rows used to look like a toolbar.
 * **The machine table's photograph column is not sortable, and that is the rule
@@ -202,7 +203,7 @@ stored `role` values keep the word *user*, because everything else already speak
   photographs; in the full list its row is dimmed and its badge says *Retired*, so it is
   findable and reopenable without competing with the machines that are running. It is never
   offered in the dropdowns that start new
-  work (report a job, add maintenance). Its maintenance stops being a reminder too: parked schedules leave *Due soon*,
+  work (report a job, add maintenance). Its maintenance stops being a reminder too: parked schedules leave the *Due soon* filter in Maintenance,
   the Maintenance screen and the dashboard card, and come back when the machine does. The API
   asks for this explicitly with `?service=active` (on the machine list, `/api/pm` and
   `/api/pm/due`); with no parameter each list is everything, as it always was.
@@ -333,7 +334,7 @@ stored `role` values keep the word *user*, because everything else already speak
   using the time-zone rules built into the local runtime, with no network request. Other
   sessions pick up changes when they next load data or navigate. Stored timestamps stay UTC;
   maintenance dates entered as calendar days are never shifted.
-* **History** lists finished work, newest first, narrowable to a date range — "what did
+* **Machines → History** lists finished work across the workshop, newest first, narrowable to a date range — "what did
   we close in October".
 * **Reports** is the generation hub for a work-order printout, monthly completed work,
   an individual machine’s all-time service history, and current spare-parts inventory.
@@ -342,6 +343,7 @@ stored `role` values keep the word *user*, because everything else already speak
   selected month. Inventory value excludes items with no unit price. Machine and inventory
   filters apply to the on-screen report, its CSV and print/PDF. No sales or labour costs are
   inferred. Work-order reports are available for open and completed jobs.
+* **Maintenance** includes the Due soon filter and 7/14/30/90-day window; the dashboard maintenance card opens its seven-day view, including overdue schedules. The same rows support completion dates.
 * **The Dashboard draws two charts** — jobs closed per month and what each month cost,
   recorded parts only — for the last six months. They are drawn as SVG in the page: no
   charting library, no request to anything outside the machine.
@@ -538,10 +540,10 @@ Node itself, which is installed on the machine, not in the repository.
 node --no-warnings=ExperimentalWarning scripts/smoke-test.js
 ```
 
-It starts its own server on port 3999 with a throwaway database, checks 687 behaviours —
+It starts its own server on port 3999 with a throwaway database, checks hundreds of behaviours —
 a `kill -9` restart, a lone copy of `maintain.db` opening with the data in it, search
 composing with every filter, a month's costs adding up — then cleans up. You should see
-`687 passed, 0 failed`.
+`0 failed`.
 
 Three of those checks are about the tests themselves, because a suite that stops asking is
 the failure nobody notices:

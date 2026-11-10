@@ -136,15 +136,9 @@ register('equipment-rows', {
 export async function loadEquipment() {
   const load = ++equipmentLoad;
   const { q, view } = currentView();
-  // Two requests, deliberately. The table is the view this screen is filtered to;
-  // the dropdowns are "every machine in service", because a new job or a new
-  // maintenance schedule must not be startable on a machine that has left. They
-  // used to share one array, so typing in the search box narrowed the dropdowns
-  // too — searching "pump" left only pumps to report a fault against.
-  const [rows, inService] = await Promise.all([
-    api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
-    api('/equipment?service=active'),
-  ]);
+  // Form pickers fetch their own unfiltered, in-service machines when opened;
+  // this table's search must never constrain those choices.
+  const rows = await api(`/equipment?${view.query}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
   let nextRows = rows, unavailable = false;
   if (needsMachineCosts(rows)) {
     try { nextRows = fillMissingMachineCosts(rows, await api('/work-orders')); }
@@ -156,9 +150,6 @@ export async function loadEquipment() {
   // The chosen column survives a refresh, a filter change and a save: losing the
   // order every time the list reloads would make the arrows decorative.
   drawEquipment();
-
-  const options = inService.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
-  $('#pm-equipment').innerHTML = options;
 }
 
 export async function addEquipment() {

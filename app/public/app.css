@@ -443,3 +443,9 @@ th.sorted .sort-btn { color: var(--ink); }
   header h1 { font-size: 14px; min-width: 120px; }
   #who { order: 4; width: 100%; font-size: 11px; }
 }
+
+/* Subviews belong to Machines, not another sidebar section. */
+.section-tabs { display: flex; gap: .35rem; border-bottom: 1px solid var(--line, #ddd); margin-bottom: 1.25rem; }
+.section-tabs button { border: 0; border-bottom: 3px solid transparent; background: transparent; padding: .7rem 1rem; color: inherit; cursor: pointer; }
+.section-tabs button[aria-selected="true"] { border-bottom-color: #067647; font-weight: 700; }
+.section-tabs button:focus-visible { outline: 2px solid #067647; outline-offset: -2px; }

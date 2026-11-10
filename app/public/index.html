@@ -29,7 +29,7 @@
   <div class="layout">
     <aside id="sidebar"></aside>
     <main>
-    <!-- Due soon -->
+    <!-- Dashboard -->
     <section data-page="dashboard" class="hidden">
       <div class="page-head">
         <div>
@@ -39,30 +39,13 @@
       </div>
       <div id="dashboard-body"></div>
     </section>
-    <section data-page="due" class="hidden">
-      <div class="page-head">
-        <div>
-          <h2>Due soon</h2>
-          <p class="page-sub">Maintenance that has come due, or soon will.</p>
-        </div>
-        <div class="head-actions">
-          <label class="muted" for="due-days">Within</label>
-          <select id="due-days" onchange="loadDue()">
-            <option>7</option><option>14</option><option>30</option><option>90</option>
-          </select>
-          <span class="muted">days</span>
-        </div>
-      </div>
-      <div class="card">
-        <div class="table-wrap">
-          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Due<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
-            <tbody id="due-rows"></tbody></table>
-        </div>
-      </div>
-    </section>
-
     <!-- Machines -->
     <section data-page="equipment" class="hidden">
+      <div class="section-tabs" role="tablist" aria-label="Machines views" onkeydown="machineTabKey(event)">
+        <button type="button" role="tab" id="machine-tab-list" aria-controls="machine-list-panel" aria-selected="true" tabindex="0" onclick="selectMachineTab('list')">Machines</button>
+        <button type="button" role="tab" id="machine-tab-history" aria-controls="machine-history-panel" aria-selected="false" tabindex="-1" onclick="selectMachineTab('history')">History</button>
+      </div>
+      <div id="machine-list-panel" role="tabpanel" aria-labelledby="machine-tab-list" tabindex="0">
       <div class="page-head">
         <div>
           <h2>Machines</h2>
@@ -93,6 +76,33 @@
             <tbody id="equipment-rows"></tbody></table>
         </div>
       </div>
+      </div>
+    <div id="machine-history-panel" role="tabpanel" aria-labelledby="machine-tab-history" tabindex="0" hidden>
+      <div class="page-head">
+        <div>
+          <h2>History</h2>
+          <p class="page-sub">Everything that has been finished, and when it happened.</p>
+        </div>
+        <button class="ghost" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Closed from</span>
+            <input type="date" id="history-from" onchange="loadHistory()" /></label>
+          <label><span>Closed to</span>
+            <input type="date" id="history-to" onchange="loadHistory()" /></label>
+          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
+                 oninput="searchHistory()" />
+          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
+          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
+        </div>
+        <p id="history-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
+            <tbody id="history-rows"></tbody></table>
+        </div>
+      </div>
+    </div>
       <dialog id="equipment-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
           <div class="sheet-head">
@@ -337,34 +347,7 @@
       </dialog>
       <dialog id="stage-photo-viewer" aria-labelledby="stage-photo-title"><form method="dialog"><div class="photo-viewer-head"><h3 id="stage-photo-title">Photo preview</h3><button class="icon-btn" type="submit" aria-label="Close">&times;</button></div><img id="stage-photo-image" alt="" /><video id="stage-photo-video" controls playsinline hidden></video><p id="stage-photo-caption" role="status"></p></form></dialog>
 
-    <!-- Parts -->
-    <!-- History -->
-    <section data-page="history" class="hidden">
-      <div class="page-head">
-        <div>
-          <h2>History</h2>
-          <p class="page-sub">Everything that has been finished, and when it happened.</p>
-        </div>
-        <button class="ghost" onclick="loadHistory()">Refresh</button>
-      </div>
-      <div class="card">
-        <div class="card-toolbar">
-          <label><span>Closed from</span>
-            <input type="date" id="history-from" onchange="loadHistory()" /></label>
-          <label><span>Closed to</span>
-            <input type="date" id="history-to" onchange="loadHistory()" /></label>
-          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
-                 oninput="searchHistory()" />
-          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
-          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
-        </div>
-        <p id="history-summary" class="summary-line"></p>
-        <div class="table-wrap">
-          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
-            <tbody id="history-rows"></tbody></table>
-        </div>
-      </div>
-    </section>
+
     <section data-page="parts" class="hidden">
       <div class="page-head">
         <div>
@@ -445,15 +428,16 @@
           <h2>Maintenance</h2>
           <p class="page-sub">The repeating jobs that keep each machine running.</p>
         </div>
-        <button class="primary" onclick="openForm('pm-form')">New schedule</button>
+        <button class="primary" onclick="openNewPm()">New schedule</button>
       </div>
       <div class="card">
         <div class="card-toolbar">
           <select id="pm-filter" onchange="drawPm()" aria-label="Which schedules to show">
             <option value="all" selected>All schedules</option>
-            <option value="week">Due within 7 days</option>
+            <option value="due">Due soon</option>
             <option value="overdue">Overdue</option>
           </select>
+          <label id="pm-window-label" hidden>Within <select id="pm-days" onchange="drawPm()" aria-label="Due within days"><option value="7">7</option><option value="14">14</option><option value="30">30</option><option value="90">90</option></select> days</label>
         </div>
         <div class="table-wrap">
           <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="last_done">Last done<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Next due<span class="sort-mark" aria-hidden="true"></span></button></th><th>Mark done on</th><th></th></tr></thead>
@@ -467,8 +451,9 @@
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('pm-form')">&times;</button>
           </div>
           <p class="sheet-sub">A repeating job. Set the first due date, or it starts today.</p>
+          <p id="pm-machine-status" role="status"></p><button id="pm-machine-retry" class="ghost small" type="button" onclick="retryPmMachines()" hidden>Retry machines</button>
           <div class="form-grid form-grid-wide">
-            <label class="field"><span>Machine</span><select id="pm-equipment"></select></label>
+            <label class="field"><span>Machine</span><select id="pm-equipment" disabled></select></label>
             <label class="field"><span>Task</span><input id="pm-task" placeholder="e.g. Change hydraulic oil" /></label>
             <label class="field"><span>Repeat every (days)</span><input id="pm-interval" type="number" value="30" /></label>
             <label class="field"><span>First due</span><input id="pm-first" type="date" /></label>
@@ -476,7 +461,7 @@
           <p class="form-error"></p>
           <div class="sheet-foot">
             <button class="ghost" type="button" onclick="closeForm('pm-form')">Cancel</button>
-            <button class="primary" type="button" onclick="addPm()">Add schedule</button>
+            <button class="primary" id="pm-create" type="button" onclick="addPm()" disabled>Add schedule</button>
           </div>
         </form>
       </dialog>
