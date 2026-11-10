@@ -24,7 +24,7 @@
 
   /* ---- sidebar ---- */
   #sidebar {
-    width: 232px; flex: 0 0 232px; background: var(--card);
+    width: 196px; flex: 0 0 196px; background: var(--card);
     border-right: 1px solid var(--line); padding: 16px 12px;
     display: flex; flex-direction: column; gap: 4px;
     position: sticky; top: 57px; height: calc(100vh - 57px);
@@ -35,10 +35,10 @@
   #sidebar.collapsed .side-link { justify-content: center; padding: 10px 0; }
   #sidebar.collapsed .side-game { display: none; }
   .side-brand {
-    display: flex; align-items: center; gap: 8px; min-width: 0;
-    padding: 4px 4px 12px 8px; font-weight: 600; font-size: 14px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    padding: 4px 0 12px 4px; font-weight: 600; font-size: 12px; flex-shrink: 0;
   }
-  .side-home { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; border-radius: 9px; }
+  .side-home { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; border-radius: 9px; }
   @media (prefers-reduced-motion: no-preference) {
     .side-home { transform-origin: left center; transition: transform .16s ease; }
     .side-home:focus-visible { transform: scale(1.035); }
@@ -63,7 +63,7 @@
   .side-link svg, .side-toggle svg { width: 18px; height: 18px; flex: 0 0 18px; }
   .side-link:hover, .side-toggle:hover { background: #f2f4f7; color: var(--ink); }
   .side-link.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
-  .side-toggle { flex: 0 0 40px; width: 40px; height: 40px; justify-content: center; padding: 10px; margin-left: auto; }
+  .side-toggle { flex: 0 0 36px; width: 36px; height: 40px; justify-content: center; padding: 7px; margin-left: auto; }
   #sidebar.collapsed .side-toggle { margin: 0; }
   #sidebar.collapsed .side-chevron { transform: rotate(180deg); transform-box: fill-box; transform-origin: center; }
   :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }

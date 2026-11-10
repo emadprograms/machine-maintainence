@@ -1160,6 +1160,11 @@ ok('the current screen is announced with aria-current', /aria-current/.test(shel
 ok('every entry carries an accessible name', /aria-label="\$\{p\.label\}"/.test(shellSrc));
 ok('the toggle reports its state with aria-expanded', /aria-expanded/.test(shellSrc));
 const shellCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+const sidebarStyle = (shellCss.match(/#sidebar\s*\{([^}]*)\}/) || [])[1] || '';
+const sidebarWidth = Number((sidebarStyle.match(/width:\s*(\d+)px/) || [])[1]);
+ok('the expanded sidebar uses a compact width and keeps its collapsed rail',
+  sidebarWidth > 68 && sidebarWidth <= 200 && sidebarStyle.includes(`flex: 0 0 ${sidebarWidth}px`)
+  && /#sidebar\.collapsed\s*\{[^}]*width:\s*68px;\s*flex-basis:\s*68px/.test(shellCss));
 ok('the dashboard brand grows slightly on hover while respecting reduced motion',
   /prefers-reduced-motion:\s*no-preference/.test(shellCss)
   && /\.side-home:hover\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss)
