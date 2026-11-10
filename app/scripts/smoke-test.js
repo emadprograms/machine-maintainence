@@ -1,0 +1,3737 @@
+// Smoke test: proves the Phase 1-5 success criteria in .planning/ROADMAP.md.
+// Usage: node --no-warnings=ExperimentalWarning scripts/smoke-test.js
+// It starts its own server on a spare port with a throwaway database.
+import { spawn, spawnSync } from 'node:child_process';
+import { rmSync, existsSync, statSync, readdirSync, readFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, '..');
+const PORT = 3999;
+const DB = join(root, 'data', 'smoke.db');
+const BASE = `http://localhost:${PORT}`;
+
+let pass = 0, fail = 0;
+const ok = (name, cond, detail = '') => {
+  if (cond) { pass++; console.log(`  PASS  ${name}`); }
+  else { fail++; console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
+};
+
+// ---------------------------------------------------------------- helpers
+function start(env = {}) {
+  const child = spawn(process.execPath,
+    ['--no-warnings=ExperimentalWarning', join(root, 'server.js')],
+    { cwd: root, env: { ...process.env, PORT: String(PORT), MM_DB: DB, ...env } });
+  let log = '';
+  child.stdout.on('data', (d) => { log += d; });
+  child.stderr.on('data', (d) => { log += d; });
+
+  // Resolves once the process is truly gone. Windows releases file handles more
+  // slowly than Linux, so deleting the database right after kill() can fail with
+  // EBUSY; waiting for 'exit' avoids that.
+  const exited = new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    child.once('exit', resolve);
+  });
+  return { child, log: () => log, exited };
+}
+
+async function waitForServer(timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { await fetch(`${BASE}/api/nope`); return true; } catch { await sleep(120); }
+  }
+  return false;
+}
+
+// A server left behind by an interrupted run keeps answering on the port, so
+// every request below would talk to an old process with an old database and the
+// whole suite would report nonsense. Refusing to start is the only safe answer.
+async function portIsFree() {
+  try { await fetch(`${BASE}/api/nope`); return false; } catch { return true; }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function makeClient() {
+  let cookie = '';
+  // `rawBody` sends bytes verbatim, so a test can prove what the server does with
+  // a body it cannot parse. Without it this client can only ever send valid JSON.
+  // A photograph is bytes, not JSON, and the answer comes back as bytes too, so
+  // the client can override the content type and always keeps the raw reply.
+  return async (path, { method = 'GET', body, rawBody, contentType } = {}) => {
+    const res = await fetch(BASE + path, {
+      method,
+      headers: { 'content-type': contentType || 'application/json', cookie },
+      body: rawBody !== undefined ? rawBody : (body == null ? undefined : JSON.stringify(body)),
+    });
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) cookie = setCookie.split(';')[0];
+    const bytes = Buffer.from(await res.arrayBuffer());
+    let data = {};
+    try { data = JSON.parse(bytes.toString('utf8')); } catch { /* not JSON */ }
+    return { status: res.status, data, bytes, headers: res.headers };
+  };
+}
+
+// CSV is bytes, not JSON: the BOM, the CRLF endings and the quoting are the
+// actual deliverable, so the test has to look at the raw text rather than at a
+// parsed object that has already normalised all three away.
+function makeTextClient(credentials) {
+  let cookie = '';
+  let signedIn = null;
+  const client = async (path) => {
+    if (credentials && !signedIn) {
+      // reuse the same login contract as the JSON client; the cookie is the
+      // only state that matters and it is identical for both content types
+      signedIn = fetch(BASE + '/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(credentials),
+      }).then((r) => {
+        const setCookie = r.headers.get('set-cookie');
+        if (setCookie) cookie = setCookie.split(';')[0];
+        return r.status;
+      });
+      await signedIn;
+    }
+    const res = await fetch(BASE + path, { headers: { cookie } });
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) cookie = setCookie.split(';')[0];
+    const bytes = Buffer.from(await res.arrayBuffer());
+    // decoded as utf-8, so the BOM survives as U+FEFF and can be asserted on
+    return { status: res.status, headers: res.headers, text: bytes.toString('utf8'), bytes };
+  };
+  return client;
+}
+
+// Minimal RFC 4180 reader. Assertions about the file use this rather than
+// splitting on commas: a naive split agrees with a naive writer, so it cannot
+// tell a correctly quoted file from a broken one.
+function parseCsv(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = false;
+      } else cell += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ',') {
+      row.push(cell); cell = '';
+    } else if (ch === '\r' && text[i + 1] === '\n') {
+      row.push(cell); rows.push(row); row = []; cell = ''; i++;
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the test
+console.log('\n--- starting with a fresh database ---');
+if (!(await portIsFree())) {
+  console.log(`  REFUSING TO RUN — something is already listening on port ${PORT}.`);
+  console.log('  It is probably a server left over from an interrupted run.');
+  console.log('  Stop it and run again; testing against it would prove nothing.');
+  process.exit(1);
+}
+rmSync(DB, { force: true });
+rmSync(join(root, 'data', 'login-failures.log'), { force: true });
+let srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+
+// If an assertion throws instead of failing, the child server would outlive the
+// test and squat on the port, so the next run would silently test against it.
+// The port guard above catches that, but leaving the orphan in the first place
+// is the actual bug. Kill it on any exit path.
+const killServer = () => { try { srv.child.kill('SIGKILL'); } catch { /* already gone */ } };
+process.on('exit', killServer);
+process.on('uncaughtException', (e) => { killServer(); console.error(e); process.exit(1); });
+process.on('unhandledRejection', (e) => { killServer(); console.error(e); process.exit(1); });
+ok('server starts', await waitForServer(), srv.log());
+await sleep(300);
+
+const c = makeClient();
+
+console.log('\nPhase 2 — auth');
+ok('unauthenticated read is rejected', (await c('/api/equipment')).status === 401);
+ok('unauthenticated write is rejected',
+  (await c('/api/equipment', { method: 'POST', body: { name: 'x' } })).status === 401);
+ok('wrong password is rejected',
+  (await c('/api/login', { method: 'POST', body: { email: 'admin@local', password: 'wrong' } })).status === 401);
+
+const login = await c('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' },
+});
+ok('correct password logs in', login.status === 200 && login.data.role === 'admin');
+ok('session cookie works for reads', (await c('/api/equipment')).status === 200);
+
+console.log('\nPhase 3 — machines and work orders');
+const m1 = await c('/api/equipment', { method: 'POST', body: { name: 'Press', asset_tag: 'P-1' } });
+const m2 = await c('/api/equipment', { method: 'POST', body: { name: 'Compressor' } });
+ok('machine created', m1.status === 201 && m1.data.id > 0);
+ok('second machine created', m2.status === 201);
+ok('machine appears in list', (await c('/api/equipment')).data.length === 2);
+ok('machine can be edited',
+  (await c(`/api/equipment/${m1.data.id}`, { method: 'PUT', body: { location: 'Bay B' } }))
+    .data.location === 'Bay B');
+
+const wo = await c('/api/work-orders', {
+  method: 'POST', body: { equipment_id: m1.data.id, title: 'Oil leak', priority: 'high' },
+});
+ok('work order created', wo.status === 201 && wo.data.status === 'open');
+ok('bogus machine id gives a readable 400',
+  (await c('/api/work-orders', { method: 'POST', body: { equipment_id: 999, title: 'ghost' } }))
+    .status === 400);
+// A problem is required on creation, while assignment remains optional.
+for (const title of [undefined, '', '  ', null, 123]) {
+  const rejected = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title } });
+  ok(`blank or invalid problem is rejected (${String(title)})`, rejected.status === 400 && /problem/i.test(rejected.data.error || ''));
+}
+const refusedStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress' } });
+ok('starting an unassigned job is refused', refusedStart.status === 400 && /assign/i.test(refusedStart.data.error || ''));
+const startStillOpen = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id);
+ok('a refused start leaves the job open and unassigned', startStillOpen.status === 'open' && startStillOpen.assigned_to === null);
+const preassigned = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Assigned at creation', assigned_to: 1 } });
+ok('a job can be created already assigned but remains open', preassigned.status === 201 && preassigned.data.assigned_to === 1 && preassigned.data.status === 'open');
+const preStart = await c(`/api/work-orders/${preassigned.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25 } });
+ok('an already assigned job starts without another assignment', preStart.status === 201 && preStart.data.status === 'in_progress' && preStart.data.assigned_to === 1);
+const clearStarted = await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+ok('an in-progress job cannot be unassigned', clearStarted.status === 400);
+const afterClear = (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id);
+ok('refusing to unassign preserves the assignee and status', afterClear.assigned_to === 1 && afterClear.status === 'in_progress');
+ok('an in-progress report cannot be rewritten',
+  (await c(`/api/work-orders/${preassigned.data.id}`, { method: 'PATCH', body: { notes: 'checking' } })).status === 409
+  && (await c('/api/work-orders')).data.find((w) => w.id === preassigned.data.id).assigned_to === 1);
+const badStart = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 999999 } });
+ok('starting with an invalid assignee is refused', badStart.status === 400);
+ok('status advances open -> in_progress',
+  (await c(`/api/work-orders/${wo.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25, assigned_to: 1 } }))
+    .data.status === 'in_progress');
+ok('starting with an assignment saves both together',
+  (await c('/api/work-orders')).data.some((w) => w.id === wo.data.id && w.status === 'in_progress' && w.assigned_to === 1));
+const done = await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Replaced the seal' } });
+ok('done sets closed_at', done.data.status === 'done' && !!done.data.closed_at);
+ok('invalid status is rejected with a message',
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { status: 'nonsense' } }))
+    .status === 400);
+
+console.log('\nPhase 4 — spare parts');
+const part = await c('/api/parts', { method: 'POST', body: { name: 'Seal kit', qty: 5, unit_price: 42.5 } });
+ok('part created with stock', part.status === 201 && part.data.qty === 5);
+await c(`/api/work-orders/${wo.data.id}/parts`, { method: 'POST', body: { part_id: part.data.id, qty: 2 } });
+let stock = (await c('/api/parts')).data.find((p) => p.id === part.data.id).qty;
+ok('using 2 of 5 leaves 3', stock === 3, `stock=${stock}`);
+const over = await c(`/api/work-orders/${wo.data.id}/parts`,
+  { method: 'POST', body: { part_id: part.data.id, qty: 99 } });
+ok('over-consumption refused', over.status === 400, JSON.stringify(over.data));
+stock = (await c('/api/parts')).data.find((p) => p.id === part.data.id).qty;
+ok('stock unchanged after refusal (transaction rolled back)', stock === 3, `stock=${stock}`);
+await c(`/api/work-orders/${wo.data.id}/parts`, { method: 'POST', body: { part_id: part.data.id, qty: 1 } });
+const lines = (await c(`/api/work-orders/${wo.data.id}/parts`)).data;
+ok('same part twice merges into one line', lines.length === 1 && lines[0].qty === 3,
+  JSON.stringify(lines));
+
+console.log('\nPhase 7 — parts are maintainable');
+// The one-way ratchet: v1.0 could consume stock but never restore it.
+const restocked = await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 40 } });
+ok('stock can be raised back up', restocked.status === 200 && restocked.data.qty === 40,
+  JSON.stringify(restocked.data));
+const renamed = await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { name: 'Seal kit 35mm' } });
+ok('part can be renamed after creation',
+  renamed.status === 200 && renamed.data.name === 'Seal kit 35mm');
+ok('renaming does not disturb the stock (partial update)', renamed.data.qty === 40,
+  `qty=${renamed.data.qty}`);
+ok('negative quantity rejected, not clamped',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: -5 } })).status === 400);
+ok('non-numeric quantity rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 'abc' } })).status === 400);
+ok('fractional quantity rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { qty: 1.5 } })).status === 400);
+ok('negative unit price rejected',
+  (await c(`/api/parts/${part.data.id}`, { method: 'PUT', body: { unit_price: -1 } })).status === 400);
+
+// Deleting a part that a job consumed must explain itself, not leak SQL.
+const inUse = await c(`/api/parts/${part.data.id}`, { method: 'DELETE' });
+ok('deleting a part used on a job is refused', inUse.status === 400, JSON.stringify(inUse.data));
+ok('the refusal names the work order', String(inUse.data.error).includes(wo.data.title),
+  JSON.stringify(inUse.data.error));
+ok('the refusal does not leak SQL', !/FOREIGN KEY|constraint/i.test(inUse.data.error),
+  JSON.stringify(inUse.data.error));
+
+// A part nobody used can go, and it leaves the list.
+const spare = await c('/api/parts', { method: 'POST', body: { name: 'Unused gasket', qty: 1 } });
+const beforeCount = (await c('/api/parts')).data.length;
+ok('unused part deletes cleanly',
+  (await c(`/api/parts/${spare.data.id}`, { method: 'DELETE' })).status === 200);
+ok('deleted part disappears from the list',
+  (await c('/api/parts')).data.length === beforeCount - 1);
+ok('deleting a part that never existed is a 404',
+  (await c('/api/parts/999999', { method: 'DELETE' })).status === 404);
+
+// Reorder level: per part, migrated, inclusive at the boundary.
+ok('reorder level defaults to 5', part.data.reorder_level === 5,
+  `reorder_level=${part.data.reorder_level}`);
+const atLevel = await c('/api/parts', { method: 'POST', body: { name: 'At level', qty: 2, reorder_level: 2 } });
+ok('reorder level is stored per part',
+  atLevel.status === 201 && atLevel.data.reorder_level === 2 && atLevel.data.qty === 2);
+const otherLevel = await c('/api/parts', { method: 'POST', body: { name: 'Same qty, other level', qty: 2, reorder_level: 0 } });
+ok('two parts at the same qty carry different levels',
+  otherLevel.data.qty === atLevel.data.qty && otherLevel.data.reorder_level !== atLevel.data.reorder_level);
+// ---- the stock filter, which used to be three alternatives ------------------
+// `low` and `q` were separate early returns, so asking for low stock while typing a
+// name dropped the search: the order list showed every part in the workshop.
+const lowPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter low', qty: 1, reorder_level: 5 } });
+const fullPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter full', qty: 9, reorder_level: 5 } });
+const outPart = await c('/api/parts', { method: 'POST', body: {
+  name: 'Filter out', qty: 0, reorder_level: 5 } });
+const namesOf = (rows) => rows.map((p) => p.name);
+const lowRows = await c('/api/parts?low=1');
+ok('the low-stock filter returns the parts at or below their own level',
+  namesOf(lowRows.data).includes('Filter low') && namesOf(lowRows.data).includes('Filter out')
+  && !namesOf(lowRows.data).includes('Filter full'),
+  namesOf(lowRows.data).join(', '));
+const outRows = await c('/api/parts?out=1');
+ok('out of stock is its own answer, not a synonym for low',
+  namesOf(outRows.data).includes('Filter out') && !namesOf(outRows.data).includes('Filter low'),
+  namesOf(outRows.data).join(', '));
+const lowSearched = await c('/api/parts?low=1&q=Filter%20low');
+ok('and a filter and a search narrow each other instead of replacing each other',
+  namesOf(lowSearched.data).join() === 'Filter low',
+  namesOf(lowSearched.data).join(', '));
+// Its own text client: the shared one is created further down the file, and reaching
+// forward for it would read as undefined rather than as a test.
+const stockCsv = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const outCsv = await stockCsv('/api/export/parts.csv?out=1');
+ok('the file the download produces is the list the filter would show',
+  outCsv.text.includes('Filter out') && !outCsv.text.includes('Filter low'),
+  outCsv.text.split('\r\n').slice(0, 3).join(' / '));
+await c(`/api/parts/${lowPart.data.id}`, { method: 'DELETE' });
+await c(`/api/parts/${fullPart.data.id}`, { method: 'DELETE' });
+await c(`/api/parts/${outPart.data.id}`, { method: 'DELETE' });
+
+ok('reorder level is inclusive at the boundary (qty == level is low)',
+  atLevel.data.qty <= atLevel.data.reorder_level && !(otherLevel.data.qty <= otherLevel.data.reorder_level));
+ok('negative reorder level rejected',
+  (await c('/api/parts', { method: 'POST', body: { name: 'Bad level', reorder_level: -1 } })).status === 400);
+
+// A malformed body must be a readable 400, never a leaked TypeError. This held
+// for no handler before phase 7: readBody resolved null and handlers dereferenced it.
+const malformed = await c(`/api/parts/${part.data.id}`, {
+  method: 'PUT', rawBody: '{not json',
+});
+ok('malformed JSON is a 400', malformed.status === 400, JSON.stringify(malformed.data));
+ok('malformed JSON does not leak a TypeError',
+  !/Cannot read propert|TypeError|undefined/i.test(String(malformed.data.error)),
+  JSON.stringify(malformed.data.error));
+
+console.log('\nPhase 2b — user management');
+const users0 = await c('/api/users');
+ok('admin sees the user list', users0.status === 200 && users0.data.length === 1);
+ok('user list never includes password hashes',
+  !JSON.stringify(users0.data).includes('scrypt'));
+const created = await c('/api/users', { method: 'POST', body: {
+  name: 'Tech One', email: 'tech@local', password: 'tech-password', role: 'tech',
+} });
+ok('admin can create a technician', created.status === 201 && created.data.role === 'tech');
+ok('short password rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'X', email: 'x@local', password: 'short', role: 'tech' } })).status === 400);
+ok('email with no host part rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'X', email: 'notanemail', password: 'longenough1', role: 'tech' } })).status === 400);
+ok('duplicate email rejected',
+  (await c('/api/users', { method: 'POST', body: {
+    name: 'Dup', email: 'tech@local', password: 'longenough1', role: 'tech' } })).status === 400);
+
+// A technician must not be able to create users or delete machines.
+const tech = makeClient();
+const techLogin = await tech('/api/login', { method: 'POST', body: {
+  email: 'tech@local', password: 'tech-password' } });
+ok('created user can log in', techLogin.status === 200 && techLogin.data.role === 'tech');
+
+const techCreatedJob = await tech('/api/work-orders', { method: 'POST', body: {
+  equipment_id: m1.data.id, title: 'Technician assigned job', assigned_to: created.data.id,
+} });
+ok('technicians can create assigned work orders', techCreatedJob.status === 201 && techCreatedJob.data.assigned_to === created.data.id);
+const techStart = await tech(`/api/work-orders/${techCreatedJob.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25 } });
+ok('technicians can start assigned work orders', techStart.status === 201 && techStart.data.status === 'in_progress');
+const techOpenJob = await tech('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Technician unassigned job' } });
+const techAssignStart = await tech(`/api/work-orders/${techOpenJob.data.id}/updates`, { method: 'POST', body: { message: 'Starting', hours: 0.25, assigned_to: created.data.id } });
+ok('technicians can assign and start an unassigned job in one request',
+  techAssignStart.status === 201 && techAssignStart.data.assigned_to === created.data.id && techAssignStart.data.status === 'in_progress');
+const reassignedJob = await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Assigned at report', assigned_to: 1 } });
+const reassignStart = await tech(`/api/work-orders/${reassignedJob.data.id}/updates`, { method: 'POST', body: {
+  message: 'Taking over this job', hours: 0.5, assigned_to: created.data.id,
+} });
+ok('starting a preassigned job can change the assignee atomically',
+  reassignStart.status === 201 && reassignStart.data.assigned_to === created.data.id
+  && (await c('/api/work-orders')).data.some((w) => w.id === reassignedJob.data.id && w.assigned_to === created.data.id && w.status === 'in_progress'));
+
+
+ok('technician cannot create users',
+  (await tech('/api/users', { method: 'POST', body: {
+    name: 'Sneaky', email: 's@local', password: 'longenough1', role: 'admin' } })).status === 403);
+ok('technician cannot delete a machine',
+  (await tech(`/api/equipment/${m1.data.id}`, { method: 'DELETE' })).status === 403);
+ok('technician cannot read the staff list',
+  (await tech('/api/users')).status === 403);
+
+console.log('\nPhase 8 — work belongs to somebody');
+// WO-01: assign, reassign, unassign.
+const assigned = await c(`/api/work-orders/${wo.data.id}`, {
+  method: 'PATCH', body: { assigned_to: created.data.id },
+});
+ok('work order can be assigned', assigned.status === 200 && assigned.data.assigned_to === created.data.id,
+  JSON.stringify(assigned.data.assigned_to));
+const listed = (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id);
+ok('the list resolves the owner name',
+  listed.assignee_name === 'Tech One', `assignee_name=${listed.assignee_name}`);
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: 1 } });
+ok('work order can be reassigned',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === 'Admin');
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+ok('work order can be unassigned',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === null);
+ok('assigning a non-existent user is a readable 400',
+  (await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: 999999 } })).status === 400);
+ok('the bad-assignee refusal does not leak SQL',
+  !/FOREIGN KEY|constraint/i.test(String((await c(`/api/work-orders/${wo.data.id}`,
+    { method: 'PATCH', body: { assigned_to: 999999 } })).data.error)));
+
+// T-8-01: the narrow route must not become bug #11 through a second door.
+const assignableAsTech = await tech('/api/users/assignable');
+ok('technician can list assignable names', assignableAsTech.status === 200);
+ok('the assignable list exposes only id and name',
+  assignableAsTech.data.every((u) => Object.keys(u).sort().join(',') === 'id,name'),
+  JSON.stringify(Object.keys(assignableAsTech.data[0] || {})));
+ok('the assignable list never carries an email',
+  !JSON.stringify(assignableAsTech.data).includes('@'),
+  JSON.stringify(assignableAsTech.data).slice(0, 120));
+ok('technician still cannot read the full staff list',
+  (await tech('/api/users')).status === 403);
+
+// WO-02: a disabled owner's name must still render.
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: created.data.id } });
+ok('a disabled owner is still named on the job',
+  (await c('/api/work-orders')).data.find((w) => w.id === wo.data.id).assignee_name === 'Tech One',
+  'a departed technician must not vanish from their own history');
+await c(`/api/work-orders/${wo.data.id}`, { method: 'PATCH', body: { assigned_to: null } });
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: true } });
+
+// WO-03: reports remain editable until the first stage starts.
+const editableJob = (await c('/api/work-orders', { method: 'POST', body: { equipment_id: m1.data.id, title: 'Editable before work' } })).data;
+const statusBeforeEdit = (await c('/api/work-orders')).data.find((w) => w.id === editableJob.id).status;
+const retitled = await c(`/api/work-orders/${editableJob.id}`,
+  { method: 'PATCH', body: { title: 'Retitled job' } });
+ok('work order title can be edited', retitled.status === 200 && retitled.data.title === 'Retitled job');
+ok('editing the title leaves the status alone', retitled.data.status === statusBeforeEdit,
+  `was=${statusBeforeEdit} now=${retitled.data.status}`);
+ok('an empty title is refused',
+  (await c(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { title: '   ' } })).status === 400);
+ok('a notes-only edit does not blank the title',
+  (await c(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { notes: 'checked' } }))
+    .data.title === 'Retitled job');
+
+// WO-04: widening the writable surface must not widen the old boundaries.
+ok('technician can edit a work order before work starts',
+  (await tech(`/api/work-orders/${editableJob.id}`, { method: 'PATCH', body: { notes: 'tech edit' } })).status === 200);
+ok('technician still cannot create users',
+  (await tech('/api/users', { method: 'POST', body: {
+    name: 'Sneaky2', email: 's2@local', password: 'longenough1', role: 'admin' } })).status === 403);
+ok('technician still cannot delete a machine',
+  (await tech(`/api/equipment/${m1.data.id}`, { method: 'DELETE' })).status === 403);
+
+// Disabling takes effect immediately on the next request AND next login.
+await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { active: false } });
+ok('disabled user is rejected at login',
+  (await makeClient()('/api/login', { method: 'POST', body: {
+    email: 'tech@local', password: 'tech-password' } })).status === 403);
+// The other half of the same promise, which went unchecked for four milestones:
+// the session already open must die too. It did not — this client kept working
+// for the rest of the run, and a later assertion was quietly passing on it.
+ok('a disabled user loses the session they already had',
+  (await tech('/api/work-orders')).status === 401,
+  'disabling must end the open session, not only the next sign-in');
+// The token carries a copy of the role. It must not outlive the row it copied:
+// a demoted administrator loses the admin screens on the next request, not when
+// the cookie expires twelve hours later.
+await c('/api/users', { method: 'POST', body: {
+  name: 'Deputy', email: 'deputy@local', password: 'deputy-password', role: 'admin' } });
+const deputy = makeClient();
+await deputy('/api/login', { method: 'POST', body: {
+  email: 'deputy@local', password: 'deputy-password' } });
+const deputyId = (await c('/api/users')).data.find((u) => u.email === 'deputy@local').id;
+ok('a second admin can read the user list',
+  (await deputy('/api/users')).status === 200);
+await c(`/api/users/${deputyId}`, { method: 'PUT', body: { role: 'tech' } });
+ok('a demoted admin loses the admin screens without signing in again',
+  (await deputy('/api/users')).status === 403,
+  'the role must come from the row, not from the cookie that copied it');
+
+// The database should hold one spelling of a role. POST normalised; PUT used to
+// store whatever it was given, so the same person could be 'tech' or 'technician'
+// depending on which route last touched them.
+const roleTidy = await c(`/api/users/${created.data.id}`, { method: 'PUT', body: { role: 'technician' } });
+ok('a role is stored in one spelling only', roleTidy.data.role === 'tech',
+  `stored=${roleTidy.data.role}`);
+
+ok('admin cannot disable their own account',
+  (await c('/api/users/1', { method: 'PUT', body: { active: false } })).status === 400);
+
+console.log('\nPhase 5 — preventive maintenance');
+const pm = await c('/api/pm', {
+  method: 'POST',
+  body: { equipment_id: m1.data.id, task: 'Change oil', interval_days: 30, next_due: '2020-01-01' },
+});
+ok('schedule created', pm.status === 201);
+const due = await c('/api/pm/due?days=7');
+ok('overdue schedule appears in Due Soon', due.data.length === 1 && due.data[0].days_left < 0,
+  JSON.stringify(due.data));
+const donePm = await c(`/api/pm/${pm.data.id}/done`, { method: 'POST', body: {} });
+const expected = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+ok('mark done rolls next_due forward 30 days', donePm.data.next_due === expected,
+  `got ${donePm.data.next_due}, expected ${expected}`);
+ok('rolled-forward schedule leaves the 7-day window', (await c('/api/pm/due?days=7')).data.length === 0);
+
+console.log('\nPhase 1 — persistence and file behaviour');
+const before = statSync(DB).mtimeMs;
+await sleep(50);
+for (let i = 0; i < 5; i++) await c('/api/equipment');
+const after = statSync(DB).mtimeMs;
+ok('viewing pages does not rewrite the database', before === after,
+  `mtime moved ${after - before}ms`);
+
+const bak = await c('/api/backup', { method: 'POST' });
+ok('backup file created', bak.status === 200 && existsSync(bak.data.file));
+ok('backup is a non-empty file', bak.status === 200 && statSync(bak.data.file).size > 0);
+// Two backups in the same second are two backups, not an error. The stamp used to
+// stop at seconds, so the second click was answered with SQLite's
+// "output file already exists" — a database sentence shown to a person.
+const bak2 = await c('/api/backup', { method: 'POST' });
+ok('a second backup in the same second is a second file, not an error',
+  bak2.status === 200 && bak2.data.file !== bak.data.file && existsSync(bak2.data.file),
+  `first=${bak.data.file} second=${bak2.data.file} status=${bak2.status}`);
+
+// kill -9, restart, confirm data survived
+console.log('\nPhase 7+ — honest dates and real exports');
+
+// The CSV client needs its own session; it is a different client object, and a
+// cookie is the only thing the server uses to decide who is asking.
+const csvClient = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+
+// --- PM-01: a date the caller sends is the date that gets stored -----------
+const todayStr = new Date().toISOString().slice(0, 10);
+const pms = await c('/api/pm', {
+  method: 'POST',
+  body: { equipment_id: m1.data.id, task: 'Grease bearings', interval_days: 10, next_due: '2020-01-01' },
+});
+const sentDay = '2026-01-15';
+const honoured = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: sentDay } });
+// The old code returned 200 with the value thrown away. Asserting only the
+// status would have passed against that code, so assert the stored value.
+ok('a completion date sent by the caller is the date stored',
+  honoured.status === 200 && honoured.data.last_done === sentDay,
+  `status=${honoured.status} last_done=${honoured.data.last_done}`);
+ok('the completion date drives next_due, not today',
+  honoured.data.next_due === '2026-01-25',
+  `got ${honoured.data.next_due}, expected 2026-01-25 (2026-01-15 + 10 days)`);
+
+// --- PM-02: the date is validated, and a refused date changes nothing ------
+const beforeBad = (await c('/api/pm')).data.find((p) => p.id === pms.data.id).last_done;
+const badDays = [
+  ['2026-02-30', 'a day that does not exist'],
+  ['2026-13-01', 'a month that does not exist'],
+  ['15/01/2026', 'a day in the local format'],
+  ['2026-1-5', 'an unpadded date'],
+  ['tomorrow', 'a word'],
+];
+for (const [value, what] of badDays) {
+  const bad = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: value } });
+  ok(`${what} is refused with 400`, bad.status === 400, `status=${bad.status} for ${value}`);
+}
+const afterBad = (await c('/api/pm')).data.find((p) => p.id === pms.data.id);
+ok('a refused date leaves last_done untouched', afterBad.last_done === beforeBad,
+  `${beforeBad} became ${afterBad.last_done}`);
+ok('a refused date leaves next_due untouched', afterBad.next_due === honoured.data.next_due);
+
+// --- PM-03: a date the calendar has not reached yet -----------------------
+const future = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+const futureRes = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: future } });
+ok('a future completion date is refused with 400', futureRes.status === 400,
+  `status=${futureRes.status} for ${future}`);
+ok('a future date leaves last_done untouched',
+  (await c('/api/pm')).data.find((p) => p.id === pms.data.id).last_done === beforeBad);
+
+const earlier = await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: '2025-06-01' } });
+ok('a date before the previous completion is refused with 400', earlier.status === 400,
+  `status=${earlier.status}`);
+ok('today is accepted for a schedule last done long ago', 
+  (await c(`/api/pm/${pms.data.id}/done`, { method: 'POST', body: { on: todayStr } })).status === 200);
+
+// --- CSV-01/02: quoting, line endings, encoding ---------------------------
+// A title built to break a naive writer: comma, quote, newline, and a value
+// that a spreadsheet would execute as a formula.
+const nasty = 'Belt "A" snapped, 3rd time';
+await c('/api/work-orders', {
+  method: 'POST',
+  body: { equipment_id: m2.data.id, title: nasty, priority: 'high' },
+});
+const csv = await csvClient('/api/export/work-orders.csv');
+ok('export returns 200 with the CSV content type',
+  csv.status === 200 && /text\/csv/.test(csv.headers.get('content-type')),
+  `${csv.status} ${csv.headers.get('content-type')}`);
+ok('export is offered as a download with a filename',
+  /attachment/.test(csv.headers.get('content-disposition') || '')
+  && /work-orders\.csv/.test(csv.headers.get('content-disposition') || ''),
+  csv.headers.get('content-disposition'));
+ok('export starts with a UTF-8 byte-order mark', csv.text.charCodeAt(0) === 0xFEFF,
+  `first char code ${csv.text.charCodeAt(0)}`);
+ok('lines end with CRLF, not bare LF', !/[^\r]\n/.test(csv.text.slice(1)),
+  JSON.stringify(csv.text.slice(0, 80)));
+ok('a field containing a comma and a quote is quoted and its quotes doubled',
+  csv.text.includes('"Belt ""A"" snapped, 3rd time"'), csv.text.split('\r\n')[1]);
+// It used to compare the file against a second hard-coded string, which is not what
+// the name of the check says and not what would catch a screen and a file drifting
+// apart. The columns that exist on both are read from the page now.
+const csvHead = csv.text.slice(1).split('\r\n')[0].split(',');
+// Read here rather than reused from the block further down: this check runs first,
+// and reaching forward for `indexEq` would be a temporal dead zone, not a test.
+const pageNow = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const beforeWorkRows = pageNow.slice(0, pageNow.indexOf('<tbody id="work-rows">'));
+const workHead = ([...beforeWorkRows.matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+const screenLabels = [...workHead.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)]
+  .map((m) => m[1].replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+ok('the header names the columns the way the screen names them',
+  ['Machine', 'Problem', 'Assigned to', 'Priority', 'Status']
+    .every((label) => screenLabels.includes(label) && csvHead.includes(label)),
+  `screen: ${screenLabels.join(' | ')}\nfile:   ${csvHead.join(' | ')}`);
+const rowCount = csv.text.slice(1).trim().split('\r\n').length - 1;
+ok('every work order is in the file', rowCount === (await c('/api/work-orders')).data.length,
+  `${rowCount} rows`);
+
+const partsCsv = await csvClient('/api/export/parts.csv');
+ok('the parts export downloads as a separate file',
+  partsCsv.status === 200 && /spare-parts\.csv/.test(partsCsv.headers.get('content-disposition') || ''),
+  partsCsv.headers.get('content-disposition'));
+ok('the parts export has the parts header',
+  partsCsv.text.slice(1).split('\r\n')[0] === 'ID,Name,Reference,In stock,Reorder at,Unit price,Supplier',
+  partsCsv.text.slice(1).split('\r\n')[0]);
+
+// A CSV is read column by column, so every cell in a column must share a format.
+const table = parseCsv(csv.text);
+const header = table[0];
+const col = (name) => table.slice(1).map((r) => r[header.indexOf(name)]).filter(Boolean);
+const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
+ok('created timestamps share one format', col('Created').every((t) => STAMP.test(t)),
+  col('Created').join(' | '));
+ok('closed timestamps use the same format as created',
+  col('Closed').length > 0 && col('Closed').every((t) => STAMP.test(t)),
+  col('Closed').join(' | '));
+ok('a quoted field is read back as one value by a real parser',
+  col('Problem').includes('Belt "A" snapped, 3rd time'), col('Problem').join(' | '));
+ok('the parsed file has as many columns as the header',
+  table.every((r) => r.length === header.length),
+  JSON.stringify(table.map((r) => r.length)));
+
+// --- CSV-03: the file matches the filter that is on screen ----------------
+const filtered = await csvClient('/api/export/work-orders.csv?status=done');
+const filteredTable = parseCsv(filtered.text);
+const filteredStatuses = filteredTable.slice(1).map((r) => r[filteredTable[0].indexOf('Status')]);
+ok('a filtered export contains only the filtered rows',
+  filteredStatuses.length === (await c('/api/work-orders?status=done')).data.length
+  && filteredStatuses.every((s) => s === 'done'),
+  `${filteredStatuses.length} rows: ${filteredStatuses.join(',')}`);
+ok('the filter is applied to the list too, not just the file',
+  (await c('/api/work-orders?status=open')).data.every((w) => w.status === 'open'));
+
+// formula injection: a spreadsheet runs a cell beginning =, +, - or @
+await c('/api/parts', { method: 'POST', body: { name: '=1+1', reference: '+SUM(A1)' } });
+const formulaCsv = await csvClient('/api/export/parts.csv');
+const partsTable = parseCsv(formulaCsv.text);
+const partNames = partsTable.slice(1).map((r) => r[partsTable[0].indexOf('Name')]);
+const partRefs = partsTable.slice(1).map((r) => r[partsTable[0].indexOf('Reference')]);
+ok('a value a spreadsheet would execute is neutralised',
+  partNames.includes("'=1+1") && partRefs.includes("'+SUM(A1)"),
+  `names=${partNames.join('|')} refs=${partRefs.join('|')}`);
+
+console.log('\nPhase 10 — failed sign-ins are logged, not blocked');
+
+// Locking a workshop out of its own app is worse than letting an attacker try
+// again, so there is no attempt limit and no delay. That is a decision, not an
+// omission — so it is asserted rather than left to be rediscovered as a bug by
+// someone who assumes a login screen must throttle.
+const loginAs = (email, password, extraHeaders = {}) => fetch(BASE + '/api/login', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...extraHeaders },
+  body: JSON.stringify({ email, password }),
+}).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})), headers: r.headers }));
+
+// Repeated failures: every one is an ordinary 401 for as long as anyone cares
+// to keep trying. The count is deliberately well past any plausible threshold.
+let sawSomethingElse = null;
+const started = Date.now();
+for (let i = 0; i < 40; i++) {
+  const r = await loginAs('admin@local', 'wrong-password');
+  if (r.status !== 401) { sawSomethingElse = `attempt ${i + 1} returned ${r.status} ${JSON.stringify(r.data)}`; break; }
+}
+const elapsed = Date.now() - started;
+ok('forty wrong passwords are all rejected the same way, with no limit reached',
+  sawSomethingElse === null, sawSomethingElse || '');
+ok('the attempts were not slowed down', elapsed < 40 * 200, `${elapsed}ms for 40 attempts`);
+
+// The shape of a failed sign-in is unchanged: one message, no hint about
+// whether the address exists, no retry-after header.
+const one = await loginAs('admin@local', 'wrong-password');
+const madeUp = await loginAs('nobody@nowhere.invalid', 'wrong-password');
+ok('a real address and an invented one fail identically',
+  one.status === madeUp.status && one.data.error === madeUp.data.error,
+  `${one.status}/${madeUp.status} ${JSON.stringify(one.data)} vs ${JSON.stringify(madeUp.data)}`);
+ok('a failed sign-in sends no Retry-After header', one.headers.get('retry-after') === null,
+  String(one.headers.get('retry-after')));
+ok('the error states no delay',
+  !/wait|seconds|too many/i.test(one.data.error || ''), one.data.error);
+
+// And a correct password works immediately, straight after all that.
+const recovered = await loginAs('admin@local', 'smoke-test-password');
+ok('the right password works straight after forty failures', recovered.status === 200,
+  `status ${recovered.status} ${JSON.stringify(recovered.data)}`);
+
+// --- the record itself -----------------------------------------------------
+// Visibility is the whole justification for not blocking, so the record has to
+// actually exist and say something useful.
+const logFile = join(root, 'data', 'login-failures.log');
+ok('failed sign-ins are written to a log', existsSync(logFile), logFile);
+
+const logText = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+const logLines = logText.trim().split('\n').filter(Boolean);
+ok('the log has an entry per failure', logLines.length >= 40, `${logLines.length} lines`);
+
+const fields = logLines[0] ? logLines[0].split('\t') : [];
+ok('each entry carries a timestamp', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(fields[0] || ''), fields[0]);
+ok('each entry carries the source address', !!fields[1] && fields[1] !== 'unknown', fields[1]);
+ok('each entry carries the address that was attempted', fields[2] === 'admin@local', fields[2]);
+ok('each entry says why it failed', /wrong password|no such account/.test(fields[3] || ''), fields[3]);
+
+// The one thing a failure log must never contain.
+ok('the password is never written to the log',
+  !logText.includes('wrong-password') && !logText.includes('smoke-test-password'),
+  'a password fragment leaked into the log');
+
+// An invented address is recorded too, and the record does not distinguish it
+// in a way that would tell an attacker which accounts exist.
+const inventedLines = logLines.filter((l) => l.includes('nobody@nowhere.invalid'));
+ok('an invented address is recorded like any other', inventedLines.length >= 1,
+  `${inventedLines.length} entries`);
+
+// A successful attempt is not a failure and must not be logged as one.
+const beforeSuccessCount = (() => {
+  const t = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+  return t.trim().split('\n').filter(Boolean).length;
+})();
+await loginAs('admin@local', 'smoke-test-password');
+const afterSuccessCount = (() => {
+  const t = existsSync(logFile) ? readFileSync(logFile, 'utf8') : '';
+  return t.trim().split('\n').filter(Boolean).length;
+})();
+ok('a successful sign-in adds no failure entry', afterSuccessCount === beforeSuccessCount,
+  `${beforeSuccessCount} -> ${afterSuccessCount}`);
+
+// A spoofed forwarding header is irrelevant now, but it must not break anything.
+const spoofed = await loginAs('admin@local', 'wrong-password', { 'x-forwarded-for': '9.9.9.9' });
+ok('a spoofed X-Forwarded-For changes nothing', spoofed.status === 401, `status ${spoofed.status}`);
+
+// An existing session is unaffected by any of this.
+const sessionAfterFailures = await c('/api/equipment');
+ok('repeated failures do not disturb an existing session', sessionAfterFailures.status === 200,
+  `status ${sessionAfterFailures.status}`);
+
+// Snapshot the row counts now. The persistence checks below used to hardcode
+// the numbers the earlier phases happened to leave behind, so any later phase
+// that added a row broke them for the wrong reason (this is exactly what
+// happened when the export tests added a work order).
+const countsBeforeKill = {
+  equipment: (await c('/api/equipment')).data.length,
+  workOrders: (await c('/api/work-orders')).data.length,
+  pm: (await c('/api/pm')).data.length,
+};
+
+console.log('\n  killing the server with SIGKILL...');
+srv.child.kill('SIGKILL');
+await srv.exited;
+await sleep(100);
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server restarts on the same database', await waitForServer(), srv.log());
+await sleep(300);
+const c2 = makeClient();
+const relogin = await c2('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' },
+});
+ok('can log in again after restart', relogin.status === 200, JSON.stringify(relogin.data));
+const survived = await c2('/api/equipment');
+ok('machines survived kill -9', survived.data.length === countsBeforeKill.equipment,
+  `${survived.data.length} now vs ${countsBeforeKill.equipment} before`);
+const woAfter = await c2('/api/work-orders');
+ok('work orders survived kill -9', woAfter.data.length === countsBeforeKill.workOrders,
+  `${woAfter.data.length} now vs ${countsBeforeKill.workOrders} before`);
+const pmAfter = await c2('/api/pm');
+ok('maintenance schedule survived kill -9', pmAfter.data.length === countsBeforeKill.pm,
+  `${pmAfter.data.length} now vs ${countsBeforeKill.pm} before`);
+ok('first-run admin password is NOT re-seeded',
+  !srv.log().includes('Created the first account'));
+
+console.log('\nPhase 7+ — the page is wired to the server');
+// The UI was checked end-to-end in a headless DOM during development, but that
+// needs a dependency this project does not have. These two static checks catch
+// the failure that actually happens: a button whose handler was renamed or
+// never written, so it silently does nothing when clicked.
+const html = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const appUrl = readFileSync(join(root, 'public', 'app.js'), 'utf8');
+
+// Every shipped client file, not just app.js: the shell, dashboard and history
+// are modules now, and a handler in a module is still a handler.
+const clientSrc = readdirSync(join(root, 'public'))
+  .filter((f) => f.endsWith('.js'))
+  .map((f) => readFileSync(join(root, 'public', f), 'utf8'))
+  .join('\n');
+const handlers = [...html.matchAll(/on(?:click|change|input)="([A-Za-z_$][\w$]*)\(/g)]
+  .map((m) => m[1]);
+const missingHandlers = [...new Set(handlers)]
+  .filter((fn) => !new RegExp(`(?:async\\s+)?function\\s+${fn}\\b`).test(clientSrc)
+    && !new RegExp(`(?:const|let|var)\\s+${fn}\\s*=`).test(clientSrc)
+    && !new RegExp(`${fn}\\s*[:=]\\s*(?:async\\s*)?(?:function|\\()`).test(clientSrc));
+ok('every button in the page calls a function that exists',
+  missingHandlers.length === 0, `missing: ${missingHandlers.join(', ')}`);
+
+// Only literal ids can be checked statically; templated ones (pm-on-1) are
+// built and queried in the same function and cannot drift silently.
+const literalIds = [...new Set([...clientSrc.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]))];
+const missingIds = literalIds.filter((id) => !html.includes(`id="${id}"`));
+ok('every element the page looks up by id exists in the markup',
+  missingIds.length === 0, `missing: ${missingIds.join(', ')}`);
+
+// Named, not counted: a count passes when a third export is added and says
+// nothing about which file you get.
+const exportHandlers = [...new Set(handlers.filter((h) => h.startsWith('download')))];
+ok('every filtered list can also be written to a file',
+  ['downloadWorkOrders', 'downloadParts', 'downloadHistory']
+    .every((h) => exportHandlers.includes(h)),
+  exportHandlers.join(', '));
+ok('both exports read a filter that is on the page',
+  html.includes('id="wo-status-filter"') && html.includes('id="part-filter"')
+  && !html.includes('low-stock-filter'));
+
+// A login form shows the server's message and nothing else. With no wait to
+// count, no cooldown machinery should be left behind — dead timer code is how a
+// removed feature comes back half-wired.
+const loginFn = (appUrl.match(/async function login\(\)[\s\S]*?\n}/) || [''])[0];
+ok('the login form shows the server message verbatim',
+  /\$\('#login-error'\)\.textContent = e\.message/.test(loginFn),
+  'login() must surface the error rather than interpret it');
+ok('no countdown or retry machinery remains in the client',
+  !/startCooldown|stopCooldown|loginCooldown|retryAfter|retry_after/.test(appUrl),
+  'leftover cooldown code suggests the removal was incomplete');
+ok('the client has no login timer at all',
+  !/setInterval/.test(loginFn.replace(/\/\/[^\n]*/g, '')));
+
+console.log('\nPhase 13 — one visual language');
+
+// The stylesheet is its own file since 261106-eqs: index.html passed 600 lines
+// when the machine photograph was added.
+const uiCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+ok('the page loads its stylesheet from the app itself, not the internet',
+  /<link rel="stylesheet" href="\/app\.css" \/>/.test(html));
+const appSrc13 = readFileSync(join(root, 'public', 'app.js'), 'utf8');
+// The spare parts screen moved out of app.js when app.js crossed the split signal
+// for the third time. These checks follow the code to its own file.
+const partsSrc = readFileSync(join(root, 'public', 'parts.js'), 'utf8');
+
+// Every screen opens with a header: name, purpose, and its action.
+const screenBodies = [...html.matchAll(/<section data-page="([\w-]+)"[^>]*>([\s\S]*?)<\/section>/g)];
+ok('every screen has a page header',
+  screenBodies.length > 0 && screenBodies.every((m) => /class="page-head"/.test(m[2])),
+  screenBodies.filter((m) => !/class="page-head"/.test(m[2])).map((m) => m[1]).join(',') || 'none');
+ok('every header carries a purpose sentence',
+  screenBodies.every((m) => /class="page-sub"[^>]*>[^<]{20,}</.test(m[2])),
+  screenBodies.filter((m) => !/class="page-sub"[^>]*>[^<]{20,}</.test(m[2])).map((m) => m[1]).join(','));
+
+// The complaint was a data-entry form above a table. That must not come back.
+ok('no screen opens with a form',
+  screenBodies.every((m) => {
+    const first = m[2].trim();
+    return /^(?:<div class="page-head"|<div class="section-tabs")/.test(first);
+  }), screenBodies.filter((m) => !/^(?:<div class="page-head"|<div class="section-tabs")/.test(m[2].trim())).map((m) => m[1]).join(','));
+ok('no form sits on a page outside a dialog',
+  screenBodies.every((m) => {
+    const withoutDialogs = m[2].replace(/<dialog[\s\S]*?<\/dialog>/g, '');
+    return !/class="form-grid/.test(withoutDialogs);
+  }));
+// The five screens that create something each own one dialog. This used to be a
+// count of five, which said nothing about *which* five and failed the moment a
+// sixth form (the machine editor) was added — the same mistake as counting export
+// buttons. The names are checked instead, and the editor is checked separately.
+const allDialogs = html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [];
+const dialogId = (d) => (d.match(/id="([\w-]+)"/) || [])[1];
+const CREATING_DIALOGS = ['work-form', 'equipment-form', 'parts-form', 'pm-form', 'users-form'];
+// A dialog that closes a job has a form grid too, but it creates nothing: it is
+// filtered by name rather than by hoping it looks different.
+const creatingIds = allDialogs
+  .filter((d) => /class="form-grid/.test(d) && !/-edit$/.test(dialogId(d))
+    && !/-close$/.test(dialogId(d)) && !/-assign$/.test(dialogId(d)))
+  .map(dialogId);
+ok('each creating screen has its own dialog',
+  CREATING_DIALOGS.every((id) => creatingIds.includes(id))
+  && creatingIds.length === CREATING_DIALOGS.length,
+  `expected ${CREATING_DIALOGS.join(',')} — got ${creatingIds.join(',')}`);
+ok('the machine editor is a dialog too, and it is not a creating form',
+  allDialogs.some((d) => dialogId(d) === 'equipment-edit'));
+// A fixed character budget was a proxy for the real rule, and the photograph
+// preview pushed the dialog past it. The rule is order: fill, then open.
+{
+  const src = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
+  const body = (src.match(/export function editEquipment[\s\S]*?\n\}/) || [''])[0];
+  ok('an editing dialog is filled before it is shown, never used to create',
+    body.includes('#ee-name') && body.includes('#ee-photo-preview')
+    && body.indexOf("openForm('equipment-edit')") > body.indexOf('#ee-name'),
+    body ? 'prefill after open, or missing' : 'editEquipment() is not defined');
+}
+// One close button per dialog, counted rather than hard-coded, so a dialog
+// added later cannot ship without a way to close it.
+const dialogCount = (html.match(/<dialog id="[\w-]+"/g) || []).length;
+ok('every dialog can be closed without JavaScript',
+  (html.match(/<button class="icon-btn" type="(?:button|submit)" aria-label="Close"/g) || []).length === dialogCount,
+  `${dialogCount} dialogs`);
+ok('a create action is behind a button, not on the page',
+  /onclick="openForm\('/.test(html) && /function openForm/.test(appSrc13));
+
+// Row treatment, asserted as CSS rules rather than by eye.
+ok('rows respond to hover', /tbody tr:hover td/.test(uiCss));
+ok('numeric columns are right-aligned and tabular',
+  /\.cell-num\s*\{[^}]*text-align:\s*right/.test(uiCss) && /\.cell-num\s*\{[^}]*tabular-nums/.test(uiCss));
+ok('the first column is heavier', /\.cell-strong\s*\{[^}]*font-weight/.test(uiCss));
+ok('secondary text is muted', /\.cell-muted\s*\{[^}]*color:/.test(uiCss));
+ok('row padding is set once for every table', /th, td \{[^}]*padding/.test(uiCss));
+// `strong(e.name)` grew an optional second line in 261106-eqs, so the match allows
+// the comma: the point of the check is the shared helper, not the argument count.
+ok('rows use the shared strong/soft helpers, not bare cells',
+  /strong\(e\.name[,)]/.test(clientSrc) && clientSrc.includes('strong(w.equipment_name)')
+  && clientSrc.includes('strong(p.name)') && clientSrc.includes('strong(u.name)'));
+
+// Empty states: a sentence, and only after a successful fetch.
+ok('every list has a written empty state',
+  ['equipment', 'work', 'parts', 'pm', 'users'].every((fn) => {
+    // app.js keeps a one-line delegating wrapper for screens that live in their
+    // own module, so every match is considered and any real body will do: a
+    // wrapper has no empty state and the module's function has one.
+    const N = `${fn[0].toUpperCase()}${fn.slice(1)}`;
+    const bodies = [...clientSrc.matchAll(
+      new RegExp(`async function load${N}[\\s\\S]*?\\n}`, 'g'))].map((m) => m[0]);
+    // Every table is drawn by a drawX() now, so sorting can redraw without asking the
+    // server again; the sentence therefore lives one call away from loadX rather than
+    // inside it. Both facts are required: the drawer says something when there is
+    // nothing, and the loader is what puts it on the screen. A detached drawX() that
+    // nothing calls would not be enough.
+    const drawers = [...clientSrc.matchAll(new RegExp(`function draw${N}\\(\\)[\\s\\S]*?\\n}`, 'g'))]
+      .map((m) => m[0]);
+    return drawers.some((d) => /emptyRow\(/.test(d))
+      && bodies.some((b) => new RegExp(`draw${N}\\(\\)`).test(b));
+  }));
+ok('an empty state is escaped, not interpolated raw', /function emptyRow[\s\S]{0,160}esc\(sentence\)/.test(appSrc13));
+// Two earlier versions of this assertion were wrong, and a mutation proved it
+// both times. The first matched the word "catch" inside emptyRow's own comment
+// and reported a bug that did not exist. The second inspected the catch body,
+// but the defect is a catch that swallows the error and lets execution fall
+// through to the empty render — the catch body itself is innocent.
+//
+// The invariant is about the data source: a loader that can render "nothing
+// here" must not have a catch that turns a failure into an empty array.
+const emptiers = ['Equipment', 'Work', 'Parts', 'Pm', 'Users'];
+const swallowed = emptiers.filter((fn) => {
+  const body = (appSrc13.match(new RegExp(`async function load${fn}[\\s\\S]*?\\n}`)) || [''])[0];
+  if (!body.includes('emptyRow(')) return false;
+  // Only a catch that guards the *list* fetch can turn a failure into "nothing
+  // here". A catch inside the assignee lookup is a different question, and
+  // loadWork legitimately has one: a technician may not read that list.
+  const guarded = body
+    .replace(/try \{ assignable = await api\('\/users\/assignable'\); \} catch \{ assignable = \[\]; \}/, '')
+    // Strip comments before matching. Twice now this assertion has been fooled by
+    // the word "catch" in prose — the first time when it was written, the second
+    // time when I documented the very thing it was looking for.
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  return /catch[^{]*\{/.test(guarded);
+});
+ok('a failed load cannot fall through to an empty list', swallowed.length === 0,
+  `swallows errors: ${swallowed.map((f) => 'load' + f).join(', ')}`);
+
+// Destructive actions name the record and the consequence.
+ok('deleting a machine names it and says what happens',
+  clientSrc.includes('Delete ${machine.name}?')
+  && clientSrc.includes('Deleting this machine deletes')
+  && clientSrc.includes('its photograph')
+  && /This cannot be undone\./.test(html),
+  'the destructive dialog no longer says what it destroys');
+ok('deleting a part names it and says what happens', /Delete "\$\{label\}"/.test(partsSrc));
+
+console.log('\nPhase 12 — the dashboard');
+
+// --- the endpoint ---------------------------------------------------------
+const dash = await c2('/api/dashboard');
+ok('the dashboard endpoint answers', dash.status === 200, `status ${dash.status}`);
+const sections = ['work_orders', 'due_soon', 'low_stock', 'machines'];
+ok('it carries four sections', sections.every((k) => dash.data[k]), Object.keys(dash.data).join(','));
+ok('each section has a count, items and a link',
+  sections.every((k) => typeof dash.data[k].count === 'number'
+    && Array.isArray(dash.data[k].items) && /^#[a-z]+$/.test(dash.data[k].href)),
+  JSON.stringify(dash.data.work_orders).slice(0, 120));
+
+// Every href must name a screen that exists, or the card navigates nowhere.
+const dashPageKeys = [...((appUrl.match(/const PAGES = \[[\s\S]*?\n\];/) || [''])[0])
+  .matchAll(/key: '([\w-]+)'/g)].map((m) => m[1]);
+// "Points somewhere real" is too weak: swapping two cards' links still passed.
+// Each section must lead to the screen that owns its rows.
+const expectedHrefs = { work_orders: 'work', due_soon: 'pm', low_stock: 'parts', machines: 'equipment' };
+ok('each card links to the screen that owns its rows',
+  sections.every((k) => dash.data[k].href === '#' + expectedHrefs[k]),
+  sections.map((k) => `${k}:${dash.data[k].href}`).join(' '));
+ok('every dashboard link points at a real screen',
+  sections.every((k) => dashPageKeys.includes(dash.data[k].href.slice(1))),
+  sections.map((k) => dash.data[k].href).join(','));
+
+// The count must be the true total while the list is capped. Seeding six
+// low-stock parts is the only way to tell "count" from "items.length".
+for (let i = 0; i < 6; i++) {
+  await c2('/api/parts', { method: 'POST', body: { name: `Dash part ${i}`, qty: 0, reorder_level: 3 } });
+}
+const capped = await c2('/api/dashboard');
+ok('items are capped at five', sections.every((k) => capped.data[k].items.length <= 5),
+  sections.map((k) => `${k}=${capped.data[k].items.length}`).join(' '));
+ok('the count is the true total, not the number of items shown',
+  capped.data.low_stock.count > capped.data.low_stock.items.length
+  && capped.data.low_stock.count >= 6,
+  `count=${capped.data.low_stock.count} items=${capped.data.low_stock.items.length}`);
+
+// A card that disagrees with its screen is worse than no card.
+const openList = (await c2('/api/work-orders')).data.filter((w) => w.status !== 'done');
+ok('the work-order count matches the list it links to',
+  capped.data.work_orders.count === openList.length,
+  `card=${capped.data.work_orders.count} list=${openList.length}`);
+
+// Close one work order. Without this, "open work orders" is never tested against
+// a closed row — every seeded order is open, so a count that forgot the filter
+// would still be right. A mutation proved exactly that.
+const openListForClose = (await c2('/api/work-orders')).data
+  .filter((w) => w.status !== 'done');
+const beforeClose = (await c2('/api/dashboard')).data.work_orders.count;
+if (openListForClose.length) {
+  await c2(`/api/work-orders/${openListForClose[0].id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Belt re-tensioned' } });
+}
+const afterClose = (await c2('/api/dashboard')).data.work_orders.count;
+ok('closing a work order drops it from the open count',
+  openListForClose.length === 0 || afterClose === beforeClose - 1,
+  `${beforeClose} -> ${afterClose}`);
+
+
+// --- the payload carries no user data ------------------------------------
+const dashText = JSON.stringify(capped.data);
+ok('the dashboard never carries an email address', !/@/.test(dashText.replace(/[^@]*$/, '')),
+  'a user field leaked into the payload');
+ok('the dashboard carries no password field', !/password/i.test(dashText));
+// This used to scan the text for the words email/role/active, which was a
+// value-level test: the machine rows now carry service_status 'active' and it
+// failed on a payload with no user in it at all. A leaked user record is
+// recognised by its *keys*.
+const dashKeys = [];
+(function walk(v) {
+  if (Array.isArray(v)) v.forEach(walk);
+  else if (v && typeof v === 'object') {
+    for (const [k, x] of Object.entries(v)) { dashKeys.push(k); walk(x); }
+  }
+}(capped.data));
+ok('the dashboard carries no user records',
+  !dashKeys.some((k) => /^(email|password|password_hash|role|active|salt)$/.test(k)),
+  `user-shaped keys present: ${dashKeys.join(',')}`);
+ok('an anonymous dashboard request is refused',
+  (await fetch(BASE + '/api/dashboard')).status === 401);
+
+// --- the screen ----------------------------------------------------------
+const dashSrc = readFileSync(join(root, 'public', 'dashboard.js'), 'utf8');
+ok('the dashboard lives in its own file', !/function renderDashboard/.test(appUrl));
+// Counting calls was not enough: deleting two of them still passed, because the
+// threshold was loose. Each user-controlled field is now named.
+const escapedFields = ['title', 'equipment_name', 'task', 'name', 'status'];
+const unescaped = escapedFields.filter((f) => !new RegExp(`escapeHtml\\([^)]*\\b${f}\\b`).test(dashSrc));
+ok('every user-supplied field is escaped', unescaped.length === 0,
+  unescaped.map((f) => `unescaped: ${f}`).join(', '));
+ok('no user-supplied field reaches innerHTML unescaped',
+  !/\$\{[^}]*\b(item\.(title|name|task|equipment_name|status))[^}]*\}/.test(
+    dashSrc.replace(/escapeHtml\([^)]*\)/g, 'ESC')),
+  'a raw item field is interpolated');
+ok('signing in lands on the dashboard, not due soon',
+  /showPage\('dashboard'\)/.test(appUrl), 'landing page not changed');
+ok('the dashboard is in the page list', dashPageKeys.includes('dashboard'));
+ok('a failed load is distinguished from an empty one',
+  /renderDashboardError/.test(dashSrc) && /Could not load the dashboard/.test(dashSrc)
+  && /dash-empty/.test(dashSrc));
+ok('a card with more items than shown says so', /and \$\{count - items\.length\} more/.test(dashSrc));
+
+ok('maintenance and history are combined with their related sections',
+  !dashPageKeys.includes('due') && !dashPageKeys.includes('history')
+  && /id="pm-filter"[\s\S]*?value="due">Due soon/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /id="pm-days"[\s\S]*?value="7"[\s\S]*?value="14"[\s\S]*?value="30"[\s\S]*?value="90"/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /role="tab" id="machine-tab-history"/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))
+  && /function openDueMaintenance/.test(appUrl));
+
+const navigationUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'navigation-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('combined navigation and maintenance interactions', navigationUiTest.status === 0,
+  navigationUiTest.stderr || navigationUiTest.stdout);
+
+const settingsUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'settings-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('settings navigation preserves sidebar order and role restrictions', settingsUiTest.status === 0,
+  settingsUiTest.stderr || settingsUiTest.stdout);
+
+console.log('\nPhase 11 — the shell');
+
+const shellSrc = readFileSync(join(root, 'public', 'shell.js'), 'utf8');
+const indexSrc = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+
+ok('the tab row is gone', !/id="tabs"/.test(indexSrc) && !/id="tabs"/.test(appUrl));
+ok('the sidebar exists in the markup', /id="sidebar"/.test(indexSrc));
+ok('the sidebar brand opens the dashboard without a separate dashboard link',
+  /p\.key !== 'dashboard'/.test(appUrl) && /class="side-home/.test(shellSrc)
+  && /onNavigate\('dashboard'\)/.test(shellSrc) && /class="side-mark"[^>]*><svg/.test(shellSrc)
+  && !/>MM<\/span>/.test(shellSrc));
+ok('the shell lives in its own file, not in app.js',
+  existsSync(join(root, 'public', 'shell.js')) && !/function renderShell/.test(appUrl));
+
+// The sidebar and the screens must come from one list, or the navigation will
+// eventually offer a screen that does not exist.
+const pagesBlock = (appUrl.match(/const PAGES = \[[\s\S]*?\n\];/) || [''])[0];
+const pageKeys = [...pagesBlock.matchAll(/key: '([\w-]+)'/g)].map((m) => m[1]);
+const sectionKeys = [...indexSrc.matchAll(/<section data-page="([\w-]+)"/g)].map((m) => m[1]);
+ok('every page has a matching section', pageKeys.every((k) => sectionKeys.includes(k)),
+  `pages=${pageKeys.join(',')} sections=${sectionKeys.join(',')}`);
+ok('every section has a matching page', sectionKeys.every((k) => pageKeys.includes(k)),
+  `sections=${sectionKeys.join(',')}`);
+// The sidebar draws its icons from ICONS in shell.js, keyed by page. A page with
+// no entry renders an empty <svg> — a blank column where the icon should be, and
+// nothing anywhere says so. This is exactly what happened to History and Report.
+const iconsBlock = (shellSrc.match(/const ICONS = \{[\s\S]*?\n\};/) || [''])[0];
+const iconKeys = [...iconsBlock.matchAll(/\n  ([\w-]+):/g)].map((m) => m[1]);
+const pagesWithoutIcons = pageKeys.filter((k) => !iconKeys.includes(k));
+ok('every screen in the sidebar has an icon', pagesWithoutIcons.length === 0,
+  `blank icons: ${pagesWithoutIcons.join(', ')} — pages=${pageKeys.join(',')} icons=${iconKeys.join(',')}`);
+ok('every icon belongs to a screen that exists',
+  iconKeys.every((k) => pageKeys.includes(k)),
+  `orphaned icons: ${iconKeys.filter((k) => !pageKeys.includes(k)).join(',')}`);
+ok('every icon is drawn with a path, not left as a stub',
+  [...iconsBlock.matchAll(/\n  [\w-]+: '([^']*)'/g)].every((m) => m[1].includes('<path') || m[1].includes('<circle')),
+  'an icon entry with no drawing renders as nothing at all');
+
+ok('the sidebar filters on the same adminOnly flag',
+  /adminOnly/.test(appUrl) && /p\.adminOnly/.test(appUrl),
+  'role filtering must reuse PAGES, not a second list');
+
+ok('the collapsed state is read defensively', /try \{[\s\S]{0,120}localStorage\.getItem/.test(shellSrc));
+ok('the collapsed state is written defensively', /try \{[\s\S]{0,140}localStorage\.setItem/.test(shellSrc));
+ok('the current screen is announced with aria-current', /aria-current/.test(shellSrc));
+ok('every entry carries an accessible name', /aria-label="\$\{p\.label\}"/.test(shellSrc));
+ok('the toggle reports its state with aria-expanded', /aria-expanded/.test(shellSrc));
+const shellCss = readFileSync(join(root, 'public', 'app.css'), 'utf8');
+ok('the dashboard brand grows slightly on hover while respecting reduced motion',
+  /prefers-reduced-motion:\s*no-preference/.test(shellCss)
+  && /\.side-home:hover\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss)
+  && /\.side-home:focus-visible\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss));
+ok('the sidebar toggle is above navigation and does not get pushed to the bottom',
+  shellSrc.indexOf('class="side-brand"') < shellSrc.indexOf('class="side-toggle"')
+  && shellSrc.indexOf('class="side-toggle"') < shellSrc.indexOf('class="side-nav"')
+  && !/\.side-toggle \{[^}]*margin-top:\s*auto/.test(shellCss)
+  && /\.side-nav \{[^}]*overflow-y:\s*auto/.test(shellCss));
+const sidebarButton = (shellSrc.match(/<button class="side-toggle"[\s\S]*?<\/button>/) || [''])[0];
+ok('the sidebar uses an icon-only panel control with accessible action names',
+  /<rect /.test(sidebarButton) && /class="side-chevron"/.test(sidebarButton)
+  && /<div class="side-brand">[\s\S]*?class="side-toggle"[\s\S]*?<\/div>/.test(shellSrc)
+  && sidebarButton.replace(/<[^>]*>/g, '').trim() === ''
+  && sidebarButton.includes('aria-label=') && sidebarButton.includes('title=')
+  && shellCss.includes('#sidebar.collapsed .side-chevron'));
+const shellUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'shell-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('the sidebar control works, persists and stays accessible', shellUiTest.status === 0,
+  (shellUiTest.stderr || shellUiTest.stdout).slice(0, 500));
+ok('icons are inline svg, not files or a font',
+  /<svg/.test(shellSrc) && !/\.(png|svg|woff)\b/.test(shellSrc));
+ok('no external URL was added to the shell',
+  !/https?:\/\//.test(shellSrc.replace(/\/\/[^\n]*/g, '')));
+
+console.log('\nStructure — the readability rule');
+
+// The project's stated rule: anything past ~600 lines is a signal to split.
+// server.js reached 814 and nothing noticed, so the rule is checked rather than
+// remembered. Test code is exempt: smoke-test.js is long because coverage is
+// long, and nobody reads it to learn how the app works.
+const LIMIT = 600;
+const APP_FILES = [
+  ...readdirSync(root).filter((f) => f.endsWith('.js')),
+  ...readdirSync(join(root, 'routes')).map((f) => `routes/${f}`),
+  ...readdirSync(join(root, 'public')).filter((f) => f.endsWith('.js')).map((f) => `public/${f}`),
+  'public/index.html',
+];
+const tooLong = APP_FILES
+  .map((f) => ({ f, lines: readFileSync(join(root, f), 'utf8').split('\n').length }))
+  .filter((x) => x.lines > LIMIT);
+ok('no application file is past the split signal', tooLong.length === 0,
+  tooLong.map((x) => `${x.f} is ${x.lines} lines`).join('; '));
+ok('every route module is small enough to read in one sitting',
+  readdirSync(join(root, 'routes')).every((f) =>
+    readFileSync(join(root, 'routes', f), 'utf8').split('\n').length <= 200),
+  'a route file past 200 lines is probably two screens sharing a file');
+
+console.log('\nPhase 6 — offline audit');
+// Pure JavaScript on purpose: the first version of this check shelled out to
+// `grep ... || true`, which does not exist on Windows (found by the Windows UAT,
+// see WINDOWS_UAT_FINDINGS.md). No shell, no child process, same answer everywhere.
+const SHIPPED = ['server.js', 'db.js', 'auth.js', 'public/index.html', 'public/app.js'];
+let externalHits = [];
+for (const rel of SHIPPED) {
+  const text = readFileSync(join(root, rel), 'utf8');
+  const hits = [...text.matchAll(/https?:\/\/[^\s'"`)]+/g)]
+    .map((m) => m[0])
+    .filter((u) => !u.includes('localhost') && !u.includes('127.0.0.1'))
+    // `new URL(req.url, http://${req.headers.host})` parses a path; it opens no socket.
+    .filter((u) => !u.includes('${'));
+  for (const h of hits) externalHits.push(`${rel}: ${h}`);
+}
+ok('no external URLs in shipped app code', externalHits.length === 0, externalHits.join(' | '));
+
+// Catch the usual offenders explicitly, so a failure names the cause.
+const allSource = SHIPPED.map((f) => readFileSync(join(root, f), 'utf8')).join('\n');
+ok('no Google Fonts / CDN / remote fetch',
+  !/fonts\.(googleapis|gstatic)\.com/.test(allSource)
+  && !/<script[^>]+src=["']https?:/.test(allSource)
+  && !/<link[^>]+href=["']https?:/.test(allSource)
+  && !/fetch\(\s*["'`]https?:/.test(allSource));
+
+// --------------------------------------- what the owner's machine taught us
+// Four failures, one per section below. Each assertion is written so that it
+// fails again if the fix is taken out — a green run here means something.
+console.log('\nPhase 15 — find it');
+
+// A machine and two jobs whose words nothing else in the database uses, so a
+// search assertion cannot pass on somebody else's row.
+const press = await c2('/api/equipment', {
+  method: 'POST',
+  body: { name: 'Searchable Press', asset_tag: 'SRCH-77', location: 'Bay 9', category: 'Pressing' },
+});
+const hose = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: press.data.id, title: 'Hydraulic hose burst' },
+});
+const flywheel = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: press.data.id, title: 'Noise from flywheel' },
+});
+await c2(`/api/work-orders/${flywheel.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Flywheel balanced' } });
+
+// FIND-01 — one box over the problem, the notes and the machine's name.
+const byProblem = await c2('/api/work-orders?q=hose');
+ok('search finds a job by a word in its title',
+  byProblem.data.length === 1 && byProblem.data[0].title === 'Hydraulic hose burst',
+  JSON.stringify(byProblem.data.map((w) => w.title)));
+const byMachineName = await c2('/api/work-orders?q=Searchable');
+ok('search finds jobs through the machine they belong to',
+  byMachineName.data.length === 2, `${byMachineName.data.length} rows`);
+const shouting = await c2('/api/work-orders?q=HYDRAULIC');
+ok('search ignores case', shouting.data.length === 1, `${shouting.data.length} rows`);
+const wildcard = await c2('/api/work-orders?q=%25');
+ok('a percent sign searches for a percent sign, not for everything',
+  wildcard.data.length === 0, `${wildcard.data.length} rows matched a wildcard`);
+
+const machineByTag = await c2('/api/equipment?q=SRCH-77');
+ok('machines can be found by asset tag', machineByTag.data.length === 1,
+  `${machineByTag.data.length} rows`);
+const machineByPlace = await c2('/api/equipment?q=Bay%209');
+ok('machines can be found by where they are', machineByPlace.data.length === 1,
+  `${machineByPlace.data.length} rows`);
+
+// FIND-02 — search composes with the filters that already existed.
+const composed = await c2('/api/work-orders?q=hose&status=done');
+ok('search composes with the status filter',
+  composed.data.length === 0, `${composed.data.length} rows: the hose job is still open`);
+const historySearch = await c2('/api/history?status=done&q=flywheel');
+ok('search composes with the history screen',
+  historySearch.data.rows.length === 1 && historySearch.data.rows[0].title === 'Noise from flywheel',
+  JSON.stringify(historySearch.data.rows.map((r) => r.title)));
+const historyBoth = await c2('/api/history?status=done&q=flywheel&from=2020-01-01&to=2020-12-31');
+ok('search and a date range narrow together',
+  historyBoth.data.total === 0, `${historyBoth.data.total} rows`);
+
+// FIND-03 — the file is the screen's query with another output.
+const searchedScreen = await c2('/api/work-orders?q=hose');
+// A text client of our own: makeTextClient signs in and keeps the cookie, which
+// is the only way to fetch a file endpoint from here.
+const csvForSearch = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const searchedCsvText = (await csvForSearch('/api/export/work-orders.csv?q=hose')).text;
+const csvRows = parseCsv(searchedCsvText).slice(1);
+ok('the work-order export applies the same search as the screen',
+  csvRows.length === searchedScreen.data.length && searchedCsvText.includes('Hydraulic hose burst')
+  && !searchedCsvText.includes('Noise from flywheel'),
+  `${csvRows.length} csv rows vs ${searchedScreen.data.length} on screen`);
+
+// FIND-04 — "nothing matched" is not "there is nothing".
+ok('a search with no hits says so instead of showing an empty list',
+  /Nothing matches "/.test(clientSrc)
+  && /Nothing in this filter matches "/.test(readFileSync(join(root, 'public', 'machines.js'), 'utf8'))
+  && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
+  'one of the three search empty states is missing');
+
+console.log('\nPhase 16 — what it cost');
+
+const month = new Date().toISOString().slice(0, 7);
+
+// COST-01 — hours are recorded, and nonsense is refused with a sentence.
+const pump = await c2('/api/equipment', { method: 'POST', body: { name: 'Costed pump' } });
+const pumpJob = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: pump.data.id, title: 'Seal replacement' },
+});
+const negativeHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: -2 },
+});
+ok('negative hours are refused in words',
+  negativeHours.status === 400 && /cannot be negative/.test(negativeHours.data.error || ''),
+  JSON.stringify(negativeHours.data));
+const sillyHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: 'ages' },
+});
+ok('hours that are not a number are refused',
+  sillyHours.status === 400 && /must be a number/.test(sillyHours.data.error || ''),
+  JSON.stringify(sillyHours.data));
+const withHours = await c2(`/api/work-orders/${pumpJob.data.id}`, {
+  method: 'PATCH', body: { labour_hours: 2.5 },
+});
+ok('hours are stored and come back', Number(withHours.data.labour_hours) === 2.5,
+  JSON.stringify(withHours.data.labour_hours));
+
+// A fresh technician for subsequent permission and stage checks.
+await c('/api/users', { method: 'POST', body: {
+  name: 'Ratechecker', email: 'rate@local', password: 'rate-password', role: 'technician' } });
+const rateTech = makeClient();
+await rateTech('/api/login', { method: 'POST', body: {
+  email: 'rate@local', password: 'rate-password' } });
+ok('only an admin can change the workshop time zone',
+  (await rateTech('/api/settings', { method: 'PUT', body: { time_zone: 'UTC' } })).status === 403);
+ok('hourly rate is not an application setting',
+  (await c2('/api/settings', { method: 'PUT', body: { hourly_rate: 40 } })).status === 400
+  && !('hourly_rate' in (await c2('/api/settings')).data));
+
+// COST-02 — a job costs only the recorded parts.
+const costedPart = await c2('/api/parts', {
+  method: 'POST', body: { name: 'Seal kit', qty: 10, unit_price: 12.5 },
+});
+await c2(`/api/work-orders/${pumpJob.data.id}/parts`, {
+  method: 'POST', body: { part_id: costedPart.data.id, qty: 2 },
+});
+await c2(`/api/work-orders/${pumpJob.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Impeller cleaned' } });
+const costedList = await c2('/api/work-orders');
+const costed = costedList.data.find((w) => w.id === pumpJob.data.id);
+// 2.5 service hours are separate; 2 x 12.5 = 25 of parts.
+ok('a job costs recorded parts only',
+  costed && Number(costed.cost) === 25 && costed.cost_basis === 'parts', `cost ${costed && costed.cost}, expected 25`);
+
+// COST-03 — one month, added up.
+const report = await c2(`/api/report?month=${month}`);
+ok('the report answers for a month',
+  report.status === 200 && report.data.month === month, JSON.stringify(report.data).slice(0, 120));
+ok('the report counts jobs, hours and parts-only cost',
+  report.data.jobs >= 1 && report.data.hours >= 2.5 && report.data.parts_cost >= 25
+  && report.data.total === report.data.parts_cost && !('labour_cost' in report.data),
+  JSON.stringify(report.data).slice(0, 200));
+ok('the report names the machines that took the most work',
+  report.data.machines.some((m) => m.name === 'Costed pump'),
+  JSON.stringify(report.data.machines.map((m) => m.name)));
+const badMonth = await c2('/api/report?month=November');
+ok('a month that is not YYYY-MM is a readable 400',
+  badMonth.status === 400 && /YYYY-MM/.test(badMonth.data.error || ''),
+  JSON.stringify(badMonth.data));
+const emptyMonth = await c2('/api/report?month=1990-01');
+ok('a month with nothing in it is zeroes, not an error',
+  emptyMonth.status === 200 && emptyMonth.data.jobs === 0 && emptyMonth.data.total === 0,
+  JSON.stringify(emptyMonth.data).slice(0, 120));
+
+// COST-04 — the file is the screen's numbers.
+const reportCsv = (await csvForSearch(`/api/export/report.csv?month=${month}`)).text;
+const reportRows = parseCsv(reportCsv).slice(1);
+const totalRow = reportRows.find((r) => r[1] === 'All machines');
+ok('the report exports with a total row that matches the screen',
+  Boolean(totalRow) && Number(totalRow[2]) === report.data.jobs
+  && Number(totalRow[4]) === Number(report.data.parts_cost),
+  `csv total row: ${JSON.stringify(totalRow)}`);
+ok('the report is a screen with its own export',
+  appUrl.includes("{ key: 'report', label: 'Reports' }")
+  && /downloadReport/.test(readFileSync(join(root, 'public', 'report.js'), 'utf8')),
+  'no sidebar entry or no export');
+
+console.log('\nPhase 14 — the record');
+
+// A machine and two jobs of our own, so nothing here depends on what earlier
+// phases happened to leave behind.
+const histMachine = await c2('/api/equipment', {
+  method: 'POST', body: { name: 'History lathe' },
+});
+const histId = histMachine.data.id;
+const stillOpen = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: histId, title: 'Spindle noise' },
+});
+const toClose = await c2('/api/work-orders', {
+  method: 'POST', body: { equipment_id: histId, title: 'Oil leak' },
+});
+await c2(`/api/work-orders/${toClose.data.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Greased and tested' } });
+
+// HIST-01 — a machine's own history includes the job that is still running.
+const machineHistory = await c2(`/api/history?equipment_id=${histId}`);
+ok('a machine lists every job against it, open ones included',
+  machineHistory.status === 200 && machineHistory.data.rows.length === 2,
+  `got ${machineHistory.data.rows?.length} rows`);
+ok('the history row carries the machine name and the dates',
+  machineHistory.data.rows.every((r) => r.equipment_name === 'History lathe' && r.created_at)
+  && machineHistory.data.rows.some((r) => r.closed_at),
+  JSON.stringify(machineHistory.data.rows?.[0]));
+
+// Work-order activity is a sortable timestamp from saved data, not a browser clock.
+const activityMachine = (await c2('/api/equipment', { method: 'POST', body: { name: 'Activity test machine' } })).data;
+const activityJob = (await c2('/api/work-orders', { method: 'POST', body: { equipment_id: activityMachine.id, title: 'Activity test', assigned_to: 1 } })).data;
+const activityDb = new DatabaseSync(DB);
+activityDb.prepare('UPDATE work_orders SET created_at=? WHERE id=?').run('2000-01-01 08:00:00', activityJob.id);
+const getActivity = async () => (await c2(`/api/work-orders?equipment_id=${activityMachine.id}`)).data.find((w) => w.id === activityJob.id);
+ok('last activity starts with the report date and time when no stage exists', (await getActivity()).last_activity_at === '2000-01-01 08:00:00');
+const activityStage = await c2(`/api/work-orders/${activityJob.id}/updates`, { method: 'POST', body: { message: 'Work', hours: 1, machine_running: true } });
+activityDb.prepare('UPDATE work_order_updates SET created_at=? WHERE id=?').run('2001-02-03 09:10:11', activityStage.data.id);
+ok('last activity advances to the stage timestamp', (await getActivity()).last_activity_at === '2001-02-03 09:10:11');
+await c2(`/api/work-orders/${activityJob.id}/updates/${activityStage.data.id}`, { method: 'PUT', body: { message: 'Corrected work' } });
+activityDb.prepare('UPDATE work_order_updates SET edited_at=? WHERE id=?').run('2002-03-04 11:12:13', activityStage.data.id);
+ok('a later stage correction advances last activity', (await getActivity()).last_activity_at === '2002-03-04 11:12:13');
+const activityClose = await c2(`/api/work-orders/${activityJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+ok('closure advances last activity without changing recorded stage time', activityClose.status === 200 && (await getActivity()).last_activity_at === activityClose.data.closed_at);
+activityDb.prepare('UPDATE work_order_updates SET edited_at=? WHERE id=?').run('2999-04-05 12:13:14', activityStage.data.id);
+ok('a stage correction after closure takes precedence over the closure timestamp', (await getActivity()).last_activity_at === '2999-04-05 12:13:14');
+await c2(`/api/work-orders/${activityJob.id}/updates/${activityStage.data.id}`, { method: 'DELETE' });
+ok('deleting a stage returns activity to the most recent surviving event', (await getActivity()).last_activity_at === activityClose.data.closed_at);
+activityDb.close();
+await c2(`/api/equipment/${activityMachine.id}`, { method: 'DELETE' });
+ok('machine history includes work-order numbers for open and closed jobs', machineHistory.data.rows.every((row) => /^WO-\d{4}-\d{4}$/.test(row.code)));
+
+// HIST-02 — the screen asks for closed work only, and gets it.
+const closedOnly = await c2(`/api/history?status=done&equipment_id=${histId}`);
+ok('the History screen shows closed jobs only',
+  closedOnly.data.rows.length === 1 && closedOnly.data.rows[0].title === 'Oil leak',
+  JSON.stringify(closedOnly.data.rows));
+
+// HIST-03 — a date range narrows the list, and a bad date is a sentence.
+const excluding = await c2(`/api/history?status=done&equipment_id=${histId}&from=2020-01-01&to=2020-12-31`);
+ok('a range that excludes the job returns nothing, and says the total is zero',
+  excluding.data.total === 0 && excluding.data.rows.length === 0,
+  JSON.stringify(excluding.data));
+const including = await c2(`/api/history?status=done&equipment_id=${histId}&from=2020-01-01&to=2999-12-31`);
+ok('a range that includes the job returns it',
+  including.data.total === 1 && including.data.rows.length === 1,
+  JSON.stringify(including.data));
+ok('the response says how many were shown as well as how many exist',
+  including.data.shown === including.data.rows.length
+  && typeof including.data.total === 'number');
+const badDate = await c2('/api/history?from=yesterday');
+ok('a malformed date is a readable 400, not a 500',
+  badDate.status === 400 && /YYYY-MM-DD/.test(badDate.data.error || ''),
+  `${badDate.status} ${JSON.stringify(badDate.data)}`);
+const impossible = await c2('/api/history?from=2026-02-30');
+ok('an impossible date is refused rather than rolled into March',
+  impossible.status === 400 && /real calendar date/.test(impossible.data.error || ''),
+  JSON.stringify(impossible.data));
+const reversed = await c2('/api/history?from=2026-12-01&to=2026-01-01');
+ok('a range that ends before it starts is refused',
+  reversed.status === 400 && /after its end/.test(reversed.data.error || ''),
+  JSON.stringify(reversed.data));
+const unknownMachine = await c2('/api/history?equipment_id=999999');
+ok('a machine with nothing in it is an empty list, not an error',
+  unknownMachine.status === 200 && unknownMachine.data.rows.length === 0
+  && unknownMachine.data.total === 0);
+
+// HIST-04 — three different situations, three different sentences. A screen
+// that says "nothing closed" when the request failed is lying.
+const histSrc = readFileSync(join(root, 'public', 'history.js'), 'utf8');
+ok('an empty machine, an empty range and a failed load read differently',
+  /Nothing has been reported against/.test(histSrc)
+  && /Nothing was closed between those dates/.test(histSrc)
+  && /Could not load the history/.test(histSrc),
+  'one of the three empty states is missing');
+const quickIndex = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const quickWork = readFileSync(join(root, 'public', 'work.js'), 'utf8');
+ok('machine history shows a sortable work-order number and an accessible timeline action',
+  /data-sort="code">Number/.test(quickIndex)
+  && /openMachineHistoryJob/.test(histSrc) && /View timeline for/.test(histSrc));
+ok('the work-order activity column shows workshop date and time and is sortable',
+  /data-sort="last_activity_at"/.test(quickIndex) && /last_activity_at: \(w\) => w.last_activity_at/.test(quickWork)
+  && /zoneDateTime\(w.last_activity_at\)/.test(quickWork));
+ok('the history screen is reachable and the machine row opens it',
+  indexSrc.includes('id="machine-tab-history"') && !appUrl.includes("{ key: 'history', label: 'History' }")
+  && /openMachineHistory\(\$\{machine\.id\}/.test(clientSrc),
+  'no history tab or no way in from a machine');
+
+console.log('\nMachines — who may edit, and where the state comes from');
+
+// Until 261106-eqs a machine's state was a field on an edit form, so two things
+// could be true at once: a job saying "being replaced" and a badge saying "down"
+// because nobody went back to the second screen. The state is now derived from
+// the work orders (app/status.js), an administrator is the only person who may
+// correct what is recorded, and the photograph is a real file beside the database.
+
+const machineById = async (machineId) =>
+  (await c('/api/equipment')).data.find((e) => e.id === machineId) || {};
+
+// ---- the record itself ----------------------------------------------------
+const fixable = await c('/api/equipment', { method: 'POST', body: {
+  name: 'Forklift typo', asset_tag: 'FL-9', category: 'forklift', location: 'Bay 9' } });
+ok('a new machine is running — nothing has gone wrong with it yet',
+  fixable.data.status === 'active', `status=${fixable.data.status}`);
+
+const fixed = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: {
+  name: 'Forklift A', asset_tag: 'FL-001', category: 'Handling', location: 'Bay 1',
+  manufacturer: 'Toyota', notes: 'Mast repaired in March' } });
+ok('a machine can be renamed', fixed.data.name === 'Forklift A', String(fixed.data.name));
+ok('the whole record is corrected, not just the name',
+  fixed.data.asset_tag === 'FL-001' && fixed.data.category === 'Handling'
+  && fixed.data.location === 'Bay 1' && fixed.data.notes === 'Mast repaired in March',
+  JSON.stringify(fixed.data));
+ok('the barcode is stored and comes back', fixed.data.asset_tag === 'FL-001',
+  String(fixed.data.asset_tag));
+ok('the manufacturer is stored and comes back',
+  fixed.data.manufacturer === 'Toyota', String(fixed.data.manufacturer));
+ok('the search sees the new name at once',
+  (await c('/api/equipment?q=Forklift')).data.some((e) => e.name === 'Forklift A'));
+ok('the response says what is stored and what is derived',
+  fixed.data.service_status === 'active' && fixed.data.status === 'active',
+  JSON.stringify({ service_status: fixed.data.service_status, status: fixed.data.status }));
+
+const nameless = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { name: '   ' } });
+ok('a machine cannot be renamed to nothing',
+  nameless.status === 400 && /required/i.test(nameless.data.error || ''), JSON.stringify(nameless));
+ok('editing a machine that is gone is a 404',
+  (await c('/api/equipment/999999', { method: 'PUT', body: { name: 'Ghost' } })).status === 404);
+
+// ---- the state cannot be typed -------------------------------------------
+const typed = await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'down' } });
+ok('a machine cannot simply be marked down', typed.status === 400, JSON.stringify(typed.data));
+ok('the refusal sends the reader to the work order, not the field',
+  /work order/i.test(typed.data.error || ''), String(typed.data.error));
+ok('an unknown state is refused too',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'broken' } })).status === 400);
+ok('retiring is still an administrator decision',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } }))
+    .data.status === 'retired');
+await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
+
+// ---- the state follows the work orders ------------------------------------
+const statusOf = async (machineId) => (await machineById(machineId)).status;
+const whyOf = async (machineId) => String((await machineById(machineId)).status_reason || '');
+const job = async (body) => (await c('/api/work-orders', { method: 'POST', body })).data;
+const setJob = (jobId, body) => c(`/api/work-orders/${jobId}`, { method: 'PATCH', body });
+
+// The ticket says whether the machine stops. Until 261106-ere a high priority or a job
+// somebody had started was enough on its own, which is how reporting a fault took a
+// running machine out of service without anybody deciding to.
+const urgent = await job({ equipment_id: fixable.data.id, title: 'Mast cracked', priority: 'high' });
+ok('a high-priority job does not put the machine down by itself',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { stops_machine: true });
+ok('the ticket that says it stops the machine does',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+ok('and the list says which job did it, by its number',
+  /Mast cracked/.test(await whyOf(fixable.data.id))
+  && /WO-\d{4}-\d{4}/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+ok('the dashboard counts the same machine as down',
+  (await c('/api/dashboard')).data.machines.items.some((m) => m.id === fixable.data.id),
+  'the card and the list disagree about a machine');
+
+await setJob(urgent.id, { status: 'done', machine_running: true, resolution: 'Motor rewound' });
+ok('closing a job records the confirmed running machine state',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(urgent.id, { stops_machine: false });
+
+const routine = await job({ equipment_id: fixable.data.id, title: 'Vent filter change', priority: 'low' });
+const routineStarted = await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { message: 'Starting routine work', hours: 0.25, assigned_to: 1 } });
+ok('routine job really started before checking the machine', routineStarted.data.status === 'in_progress');
+ok('a job somebody is working on does not stop the machine either, unless it says so',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await c(`/api/work-orders/${routine.id}/updates`, { method: 'POST', body: { message: 'Machine stopped', hours: 0, machine_running: false } });
+ok('and then it does, and the reason names the job',
+  (await statusOf(fixable.data.id)) === 'down'
+  && /Vent filter change/.test(await whyOf(fixable.data.id)), await whyOf(fixable.data.id));
+await setJob(routine.id, { status: 'done', machine_running: true, resolution: 'Filters changed' });
+ok('the flag can be taken off again without closing the job',
+  (await setJob(urgent.id, { stops_machine: true })).data.stops_machine === 1
+  && (await setJob(urgent.id, { stops_machine: false })).data.stops_machine === 0);
+const reopenedUrgent = await job({ equipment_id: fixable.data.id, title: 'Been replaced', priority: 'high',
+  stops_machine: true });
+ok('a retired machine reads retired, not down, even with a job on it',
+  (await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } }))
+    .data.status === 'retired');
+await c(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'active' } });
+ok('restoring it does not hide the job that is still holding it down',
+  (await statusOf(fixable.data.id)) === 'down', `status=${await statusOf(fixable.data.id)}`);
+await setJob(reopenedUrgent.id, { status: 'done', machine_running: true, resolution: 'Shaft aligned' });
+ok('closing records a fresh running state',
+  (await statusOf(fixable.data.id)) === 'active', `status=${await statusOf(fixable.data.id)}`);
+await setJob(reopenedUrgent.id, { stops_machine: false });
+await setJob(urgent.id, { status: 'done', machine_running: true, resolution: 'Motor rewound' });
+
+// ---- a technician keeps the doors they need ------------------------------
+await c('/api/users', { method: 'POST', body: {
+  name: 'Shop floor', email: 'shop@local', password: 'shop-password', role: 'tech' } });
+const shop = makeClient();
+await shop('/api/login', { method: 'POST', body: { email: 'shop@local', password: 'shop-password' } });
+
+const techEdit = await shop(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { name: 'Nope' } });
+ok('a technician cannot edit a machine', techEdit.status === 403, `status ${techEdit.status}`);
+ok('a technician cannot upload a photograph — the route is shut before the bytes are read',
+  (await shop(`/api/equipment/${fixable.data.id}/photo`, {
+    method: 'POST', contentType: 'image/jpeg',
+    rawBody: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]) })).status === 403);
+ok('a technician cannot remove a photograph',
+  (await shop(`/api/equipment/${fixable.data.id}/photo`, { method: 'DELETE' })).status === 403);
+ok('a technician cannot retire a machine',
+  (await shop(`/api/equipment/${fixable.data.id}`, { method: 'PUT', body: { status: 'retired' } })).status === 403);
+const techAdded = await shop('/api/equipment', { method: 'POST', body: { name: 'Press 3' } });
+ok('but a technician can still add a machine', techAdded.status === 201, `status ${techAdded.status}`);
+const techJob = await shop('/api/work-orders', { method: 'POST', body: {
+  equipment_id: techAdded.data.id, title: 'Guard loose', priority: 'high' } });
+ok('and can still report a job on it', techJob.status === 201, JSON.stringify(techJob.data));
+// A high priority used to be enough on its own. It is not any more: the person who
+// reports the fault says whether the machine stops, and a technician is that person.
+ok('a high priority alone no longer takes the machine out of service',
+  (await machineById(techAdded.data.id)).status === 'active',
+  `status=${(await machineById(techAdded.data.id)).status}`);
+await shop(`/api/work-orders/${techJob.data.id}`, { method: 'PATCH', body: { stops_machine: true } });
+ok('saying it stops the machine does',
+  (await machineById(techAdded.data.id)).status === 'down',
+  `status=${(await machineById(techAdded.data.id)).status}`);
+
+// ---- the photograph is a file, and the server decides what it is ----------
+const photosDir = join(root, 'data', 'photos');
+const photoCount = () => (existsSync(photosDir) ? readdirSync(photosDir).length : 0);
+const jpegBytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+  Buffer.alloc(600, 7), Buffer.from([0xff, 0xd9])]);
+
+ok('a machine with no photograph says so',
+  (await c(`/api/equipment/${fixable.data.id}/photo`)).status === 404);
+const beforePhoto = photoCount();
+const shot = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph can be attached', shot.status === 200, JSON.stringify(shot.data));
+ok('the stored name is not the one the client would have sent',
+  Boolean(shot.data.photo) && !/jpegBytes|photo\.jpg/.test(shot.data.photo), String(shot.data.photo));
+const fetched = await c(`/api/equipment/${fixable.data.id}/photo`);
+ok('it comes back byte for byte', fetched.status === 200 && fetched.bytes.equals(jpegBytes),
+  `${fetched.status}, ${fetched.bytes.length} bytes`);
+ok('it comes back as an image, not as JSON',
+  /^image\//.test(String(fetched.headers.get('content-type'))), String(fetched.headers.get('content-type')));
+ok('the list now says the machine has a photograph',
+  Boolean((await machineById(fixable.data.id)).photo));
+
+const replaced = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/png',
+  rawBody: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 1)]) });
+ok('replacing it is allowed', replaced.status === 200, JSON.stringify(replaced.data));
+ok('and leaves one file behind, not two', photoCount() === beforePhoto + 1,
+  `${beforePhoto} -> ${photoCount()}`);
+
+const textAsJpeg = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.from('this is not an image, whatever the header says') });
+ok('text sent as a JPEG is refused on its bytes, not its header',
+  textAsJpeg.status === 400 && /JPEG, PNG, WebP/.test(textAsJpeg.data.error || ''),
+  JSON.stringify(textAsJpeg.data));
+
+const huge = await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
+ok('a photograph over 2 MB is accepted',
+  huge.status === 200, `status ${huge.status}`);
+
+ok('the photograph can be removed without touching the record',
+  (await c(`/api/equipment/${fixable.data.id}/photo`, { method: 'DELETE' })).status === 200
+  && !(await machineById(fixable.data.id)).photo);
+ok('and the file goes with it', photoCount() === beforePhoto, String(photoCount()));
+
+await c(`/api/equipment/${fixable.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+const storedName = (await machineById(fixable.data.id)).photo;
+await c(`/api/equipment/${fixable.data.id}`, { method: 'DELETE' });
+ok('deleting a machine deletes its photograph',
+  !storedName || !existsSync(join(photosDir, storedName)), String(storedName));
+await c(`/api/equipment/${techAdded.data.id}`, { method: 'DELETE' });
+
+// The delete dialog tells the reader that the work orders, the maintenance and the
+// photograph go with the machine. That promise is checked here, because a dialog
+// that overstates what it destroys is worse than no dialog at all.
+const doomed = (await c('/api/equipment', { method: 'POST', body: { name: 'Doomed press' } })).data;
+const doomedJob = (await c('/api/work-orders', { method: 'POST', body: {
+  equipment_id: doomed.id, title: 'Scrap it', priority: 'low' } })).data;
+const doomedPm = (await c('/api/pm', { method: 'POST', body: {
+  equipment_id: doomed.id, task: 'Last grease', interval_days: 30 } })).data;
+ok('a machine can have a job and a schedule before it is deleted',
+  Boolean(doomedJob.id) && Boolean(doomedPm.id));
+await c(`/api/equipment/${doomed.id}`, { method: 'DELETE' });
+ok('deleting a machine deletes its work orders — as the dialog promises',
+  (await c('/api/work-orders')).data.every((w) => w.equipment_id !== doomed.id));
+ok('and its maintenance schedules',
+  (await c('/api/pm')).data.every((p) => p.equipment_id !== doomed.id));
+
+// ---- retired machines stay out of the way ---------------------------------
+// Retiring used to be a label. It is still not deletion — every job, photograph
+// and history entry stays — but a machine that has left is no longer offered when
+// new work is started, and the everyday list stops showing it.
+const scrapped = (await c('/api/equipment', { method: 'POST', body: {
+  name: 'Old press (scrapped)', asset_tag: 'OP-1', category: 'Pressing' } })).data;
+// The maintenance schedule is created *before* the machine leaves, on purpose. The
+// first version created it afterwards, which meant a retirement that deleted the
+// schedule would have been invisible — the mutation run proved it could not fail.
+const parked = await c('/api/pm', { method: 'POST', body: {
+  equipment_id: scrapped.id, task: 'Grease the ways', interval_days: 30, next_due: '2020-01-01' } });
+ok('a machine in service carries a maintenance schedule', parked.status === 201,
+  `status ${parked.status}`);
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
+
+const everyMachine = (await c('/api/equipment')).data;
+const inService = (await c('/api/equipment?service=active')).data;
+ok('a retired machine is not offered as a machine in service',
+  !inService.some((e) => e.id === scrapped.id), 'it was still in the list new work is started from');
+ok('but it has not been deleted: it is still in the full list',
+  everyMachine.some((e) => e.id === scrapped.id));
+ok('the two lists differ by exactly the retired machines',
+  everyMachine.length - inService.length === everyMachine.filter((e) => e.status === 'retired').length,
+  `${everyMachine.length} - ${inService.length}`);
+ok('?service=all means everything, like no parameter at all',
+  (await c('/api/equipment?service=all')).data.length === everyMachine.length);
+// "contains the machine" was not enough: the unfiltered list contains it too, so
+// the check passed with the clause deleted. It has to be the retired ones *only*.
+const onlyRetired = (await c('/api/equipment?service=retired')).data;
+ok('?service=retired answers with the ones that left, and only those',
+  onlyRetired.length > 0 && onlyRetired.every((e) => e.status === 'retired')
+  && onlyRetired.some((e) => e.id === scrapped.id),
+  onlyRetired.map((e) => `${e.name}:${e.status}`).join(', '));
+ok('the service filter composes with the search box',
+  !(await c('/api/equipment?service=active&q=scrapped')).data.some((e) => e.id === scrapped.id)
+  && (await c('/api/equipment?service=all&q=scrapped')).data.some((e) => e.id === scrapped.id));
+ok('the retired machine keeps its history',
+  (await c(`/api/history?equipment_id=${scrapped.id}`)).status === 200);
+
+// Maintenance stops too. A machine that has left must not keep generating "grease
+// it on Tuesday" tasks — the schedule is parked, not deleted, so restoring the
+// machine brings the reminders back.
+const dueAll = (await c('/api/pm/due?days=45')).data;
+const dueActive = (await c('/api/pm/due?days=45&service=active')).data;
+ok('but it is not on the list of what is due',
+  !dueActive.some((p) => p.id === parked.data.id) && dueAll.some((p) => p.id === parked.data.id),
+  `${dueAll.length} due in total, ${dueActive.length} in service`);
+ok('nor on the maintenance list',
+  !(await c('/api/pm?service=active')).data.some((p) => p.id === parked.data.id)
+  && (await c('/api/pm')).data.some((p) => p.id === parked.data.id));
+const cardAfterParking = (await c('/api/dashboard')).data.due_soon;
+ok('nor in the dashboard due-soon card',
+  !cardAfterParking.items.some((p) => p.equipment_name === 'Old press (scrapped)'),
+  cardAfterParking.items.map((p) => p.equipment_name).join(', '));
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'active' } });
+ok('restoring it puts it back in service',
+  (await c('/api/equipment?service=active')).data.some((e) => e.id === scrapped.id));
+ok('and its maintenance comes back with it — nothing was deleted',
+  (await c('/api/pm/due?days=45&service=active')).data.some((p) => p.id === parked.data.id)
+  && (await c('/api/dashboard')).data.due_soon.items
+    .some((p) => p.equipment_name === 'Old press (scrapped)'));
+await c(`/api/equipment/${scrapped.id}`, { method: 'PUT', body: { status: 'retired' } });
+await c(`/api/pm/${parked.data.id}/done`, { method: 'POST', body: { on: '2020-01-02' } });
+
+// ---- what the screen does, read as text (no browser exists here) ---------
+const appEq = readFileSync(join(root, 'public', 'machines.js'), 'utf8');
+const indexEq = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const editFn = (appEq.match(/export function editEquipment\([\s\S]*?\n\}/) || [''])[0];
+const saveFn = (appEq.match(/export async function saveEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+const actionsFn = (appEq.match(/function actions\(machine\) \{[\s\S]*?\n\}/) || [''])[0];
+// Sorting and the row menu moved into one shared module once every table wanted
+// them; these checks follow the code rather than staying where it used to live.
+const tablesSrc = readFileSync(join(root, 'public', 'tables.js'), 'utf8');
+
+// Prose is not behaviour: an assertion that reads raw source cannot tell a rule
+// from a comment describing it, and one of the checks below failed on exactly
+// that. Comments come out before the code assertions run.
+const codeOnly = (text) => text
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+ok('every machine row offers Edit',
+  /menuItem\('Edit machine details', `editEquipment\(\$\{machine\.id\}\)`, \{ icon: 'edit' \}\)/.test(appEq),
+  'no control, no edit');
+ok('the edit form carries every field a machine has',
+  ['ee-name', 'ee-tag', 'ee-maker', 'ee-cat', 'ee-loc', 'ee-notes', 'ee-id', 'ee-photo']
+    .every((f) => indexEq.includes(`id="${f}"`)),
+  'a field missing from the form is a field nobody can correct');
+// Scoped to the dialog: the Machines toolbar legitimately offers a "Down right now"
+// filter now, and a page-wide search for `<option value="down">` would call that a
+// status field. The question is what the editor can set.
+{
+  const editor = (indexEq.match(/<dialog id="equipment-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+  // One field, one name, one example. The creating form called it "Asset tag" and the
+// editor called it "Barcode" — the same column, described two ways in two dialogs a
+// click apart; and both showed MM-014 while the labels on machines are numbers.
+ok('both machine forms call the same field a barcode and show the same example',
+  (indexEq.match(/<span>Barcode<\/span><input id="e-tag" placeholder="e\.g\. 101220054"/g) || []).length === 1
+  && (indexEq.match(/<span>Barcode<\/span><input id="ee-tag" placeholder="e\.g\. 101220054"/g) || []).length === 1
+  && !/Asset tag/.test(indexEq),
+  'the two dialogs describe the same column differently');
+ok('machine forms show model and serial examples without the introductory section',
+  ['e', 'ee'].every((prefix) => indexEq.includes(`id="${prefix}-model" placeholder="e.g. QT-250"`)
+    && indexEq.includes(`id="${prefix}-serial" placeholder="e.g. SN-123456"`))
+  && !indexEq.includes('Only the name is required; the rest can be filled in later'));
+ok('the machine editor carries no status control at all',
+    editor.length > 0 && !editor.includes('id="ee-status"')
+    && !/<select/.test(editor) && !/<option/.test(editor),
+    editor ? 'the editor can still set a status' : 'the editor dialog is gone');
+}
+ok('the editor says where the state comes from', /work orders/i.test(indexEq));
+ok('the form is filled from the row that was clicked, not from a second request',
+  editFn.includes('equipmentRows.find') && editFn.includes('#ee-name')
+  && editFn.includes('#ee-maker') && editFn.includes("openForm('equipment-edit')"),
+  editFn ? 'prefill missing' : 'editEquipment() is not defined');
+ok('saving sends a PUT for that machine, without a status',
+  /method: 'PUT'/.test(saveFn) && /\/equipment\/\$\{machineId\}/.test(saveFn)
+  && !/\bstatus\s*:/.test(codeOnly(saveFn)),
+  saveFn ? 'wrong verb, wrong URL, or a status still being sent' : 'no saveEquipment()');
+ok('saving refuses an empty name before it reaches the server',
+  /formError\('equipment-edit'/.test(saveFn) && /!name/.test(saveFn));
+ok('saving sends the photograph when one was chosen',
+  /uploadPhoto\(machineId, file\)/.test(saveFn), saveFn ? 'chosen file dropped' : 'no saveEquipment()');
+// The refusal moved to app.js when work orders got a fault photograph: one
+// uploader serves both forms now, so the claim is about the client, not one file.
+ok('media uploader does not impose the old 2 MB browser limit',
+  !/file\.size > 2 \* 1024 \* 1024/.test(clientSrc) && /postPhoto/.test(appEq),
+  'the old size limit remains or the shared uploader is missing');
+ok('the photograph is uploaded as bytes to the machine\'s own route',
+  /\/api\/equipment\/\$\{machineId\}\/photo/.test(appEq));
+ok('the row shows a thumbnail from the photo route', /\/photo/.test(appEq) && /class="thumb"/.test(appEq));
+ok('the row explains why a machine is down', appEq.includes('status_reason'));
+// Category, location and the photograph are columns now, not a smaller line under
+// the name. The header is read once and every claim is made against it, including
+// the one that can silently break: the empty row's colspan.
+const eqHead = (indexEq.match(/<thead><tr><th class="cell-thumb">Photo<\/th>[\s\S]*?<\/tr><\/thead>/) || [''])[0];
+// Six of the headings carry a sort button, so the text is no longer the last thing
+// before `</th>`; the cell's own text is what matters, tags stripped.
+const eqHeadings = [...eqHead.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)]
+  .map((m) => m[1].replace(/<[^>]+>/g, '').trim());
+ok('the machine table names every column it shows',
+  ['Photo', 'Name', 'Barcode', 'Manufacturer', 'Category', 'Location', 'Status']
+    .every((name) => eqHeadings.includes(name)),
+  eqHeadings.join(' | ') || 'the machines header is not where it was');
+// With real columns, a second line under the name would print the same fact twice.
+// A mutation that restored it passed every other check, so the name cell is named.
+// ---- sorting the machine table --------------------------------------------
+// The ordering rule is imported and run on rows, not searched for in the source: a
+// regex can find `sort(` and tell you nothing about whether "9" lands before "10".
+const { sortRows } = await import(pathToFileURL(join(root, 'public', 'sort.js')).href);
+const sortByFn = (tablesSrc.match(/export function sortBy\(tbodyId, key\) \{[\s\S]*?\n}/) || [''])[0];
+// Counted from the page rather than written down: a table that gains a column must
+// not fail a check that was really about the arrows.
+const SORTABLE_HEADINGS = (indexEq.match(/aria-sort="none"/g) || []).length;
+const drawFn = (appEq.match(/function drawEquipment\(\) \{[\s\S]*?\n}/) || [''])[0];
+const sortable = [...eqHead.matchAll(/<button[^>]*class="sort-btn" data-sort="([a-z_]+)"/g)]
+  .map((m) => m[1]);
+ok('every column heading but the photograph and the menu can be clicked',
+  sortable.join() === 'name,asset_tag,manufacturer,category,location,status,total_hours,total_service_cost',
+  `sortable: ${sortable.join(', ') || 'none'}`);
+ok('and the headings are real buttons, so Tab and Enter work without extra code',
+  (eqHead.match(/<button type="button" class="sort-btn"/g) || []).length === 8
+  && !/<th[^>]*>\s*Photo<\/th>[\s\S]*?data-sort="photo"/.test(eqHead));
+ok('a new heading starts ascending, and the same heading again turns it round',
+  /const sorted = new Map\(\)/.test(tablesSrc)
+  && /dir: key === state\.key \? -state\.dir : 1/.test(sortByFn)
+  && /if \(!entry\?\.columns\[key\]\) return false;/.test(sortByFn),
+  'a first click that sorts the wrong way, no way back, or an unknown column being sorted anyway');
+const byName = (dir) => sortRows(
+  [{ name: 'bravo' }, { name: 'Alpha' }, { name: 'Charlie' }], (m) => m.name, dir).map((m) => m.name);
+ok('ascending really is ascending, and descending is the reverse',
+  byName(1).join() === 'Alpha,bravo,Charlie' && byName(-1).join() === 'Charlie,bravo,Alpha',
+  `${byName(1).join()} / ${byName(-1).join()}`);
+// A barcode is a number that happens to be stored as text. Sorted as text, 101220054
+// comes before 9, which is exactly the list nobody wants when they click Barcode.
+const byTag = (dir) => sortRows(
+  [{ tag: '10' }, { tag: '101220054' }, { tag: '9' }], (m) => m.tag, dir).map((m) => m.tag);
+ok('a barcode sorts as a number, not as a row of digits',
+  byTag(1).join() === '9,10,101220054' && byTag(-1).join() === '101220054,10,9',
+  `${byTag(1).join()} / ${byTag(-1).join()}`);
+// Nobody sorting by Barcode descending wants a screenful of machines that have none.
+const blanks = (dir) => sortRows(
+  [{ tag: 'B' }, { tag: null }, { tag: 'A' }, { tag: '  ' }], (m) => m.tag, dir)
+  .map((m) => String(m.tag));
+ok('a machine with nothing in the column goes last, whichever way it is sorted',
+  blanks(1).slice(0, 2).join() === 'A,B' && blanks(-1).slice(0, 2).join() === 'B,A'
+  && blanks(1).slice(2).join() === 'null,  ' && blanks(-1).slice(2).join() === 'null,  ',
+  `${blanks(1).join(' | ')} / ${blanks(-1).join(' | ')}`);
+const ties = (dir) => sortRows(
+  [{ name: 'Same', id: 1 }, { name: 'Other', id: 2 }, { name: 'same', id: 3 }],
+  (m) => m.name, dir).map((m) => m.id);
+ok('machines with the same value keep the order they arrived in',
+  ties(1).join() === '2,1,3' && ties(-1).join() === '1,3,2',
+  `${ties(1).join()} / ${ties(-1).join()}`);
+const sourceRows = [{ name: 'b' }, { name: 'a' }];
+sortRows(sourceRows, (m) => m.name, 1);
+ok('sorting leaves the list the server sent alone',
+  sourceRows[0].name === 'b' && sourceRows[1].name === 'a', 'the sort reordered its input');
+ok('the arrow says which way, and the heading says so out loud',
+  /aria-sort/.test(tablesSrc) && /\\u25B2/.test(tablesSrc) && /\\u25BC/.test(tablesSrc)
+  && /heading\.setAttribute\('aria-sort'/.test(tablesSrc) && /markTable\('equipment-rows'\)/.test(drawFn)
+  && (indexEq.match(/aria-sort="none"/g) || []).length === SORTABLE_HEADINGS,
+  `no arrow, one that is never drawn, or ${(indexEq.match(/aria-sort="none"/g) || []).length
+    } heading slots instead of ${SORTABLE_HEADINGS}`);
+ok('status sorts by the word the row shows, not by its internal value',
+  /status: \(machine\) => STATUS_WORD\[machine\.status\] \|\| machine\.status/.test(appEq),
+  'the badge says Down and the sort heard "down"');
+ok('the table turns over without asking the server again',
+  drawFn.length > 0 && !/\bapi\(/.test(drawFn) && !/\bfetch\(/.test(drawFn)
+  && /entry\.redraw\(\)/.test(sortByFn),
+  'a click that refetches, or a sort that never redraws');
+ok('and the order survives a filter change, a save or a retry',
+  /drawEquipment\(\)/.test(appEq.match(/export async function loadEquipment[\s\S]*?\n}/)?.[0] || ''),
+  'every reload quietly puts the list back in the server order');
+ok('everything about a machine sits behind three dots',
+  tablesSrc.includes('<details class="row-menu">') && tablesSrc.includes('aria-label="Actions for')
+  && tablesSrc.includes('&#8943;') && /rowMenu\(machine\.name/.test(appEq),
+  'the row still shows a row of buttons');
+ok('machine row actions have distinct icons including retire, restore and delete',
+  ['edit', 'history', 'retire', 'restore', 'delete'].every((icon) => actionsFn.includes(`'${icon}'`))
+  && /menu-icon/.test(tablesSrc));
+ok('and the menu holds edit, history, retire and delete',
+  ['editEquipment', 'openMachineHistory', 'toggleStatus', 'openEquipmentDelete']
+    .every((fn) => actionsFn.includes(fn))
+  && ['Edit machine details', 'History', 'Retire machine', 'Delete machine']
+    .every((label) => appEq.includes(label)), 'an action went missing from the menu');
+ok('delete is the red item in it',
+  /menuItem\('Delete machine', `openEquipmentDelete\(\$\{machine\.id\}\)`, \{ danger: true, icon: 'delete' \}\)/.test(appEq)
+  && /danger \? ' class="danger"'/.test(tablesSrc)
+  && /\.row-menu \.menu button\.danger\s*\{[^}]*var\(--red\)/.test(uiCss),
+  'a destructive item that looks like the others');
+// A menu in the last row sits inside `.table-wrap`, which scrolls sideways and
+// therefore clips its children. Fixed positioning is the fix; this checks the fix
+// and the code that places it.
+ok('the menu is not clipped by the table it lives in',
+  /\.row-menu \.menu \{[^}]*position: fixed/.test(uiCss)
+  && /getBoundingClientRect\(\)/.test(tablesSrc) && /style\.top =/.test(tablesSrc),
+  'an absolutely positioned menu is clipped by the scrolling table');
+ok('and it closes when the page moves under it',
+  /addEventListener\('scroll', closeMenus, true\)/.test(tablesSrc));
+// The History dialog used to read the machine's name from the row\'s first cell.
+// Since the photograph has that cell, it titled itself "A" for a pictureless machine.
+ok('the history dialog reads the name column, not the first cell',
+  /querySelector\('\.cell-strong'\)/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
+  'the dialog is named after the photo cell');
+ok('a menu closes when it is used and when you click away',
+  /closest\('\.row-menu \.menu button'\)/.test(tablesSrc)
+  && /closest\('\.row-menu'\)/.test(tablesSrc));
+
+// ---- the sentence you have to type
+const confirmFn = (appEq.match(/export async function confirmEquipmentDelete[\s\S]*?\n\}/) || [''])[0];
+ok('deleting asks for a typed sentence, not just a click',
+  indexEq.includes('id="equipment-delete"') && indexEq.includes('id="equipment-delete-confirm"')
+  && indexEq.includes('id="equipment-delete-phrase"'),
+  'the dialog cannot ask for what it does not have');
+ok('the button is disabled until the sentence is typed',
+  /id="equipment-delete-go"[^>]*disabled/.test(indexEq)
+  && /\$\('#equipment-delete-go'\)\.disabled = true/.test(appEq));
+ok('the sentence names the machine that will go',
+  appEq.includes('delete machine ${machine.name}'), 'the sentence is not about this machine');
+ok('typing is compared case- and space-insensitively, so the sentence still has to be the sentence',
+  (appEq.match(/replace\(\/\\s\+\/g, ' '\)/g) || []).length >= 2,
+  'one of the two comparisons is missing');
+ok('confirming checks the sentence again before calling the server',
+  confirmFn.includes("typed !== pendingDelete.phrase")
+  && confirmFn.indexOf('removeEquipment(') > confirmFn.indexOf("typed !== pendingDelete.phrase"),
+  confirmFn ? 'the server call comes first' : 'confirmEquipmentDelete() is not defined');
+ok('the dialog counts what is about to be destroyed',
+  appEq.includes('work order${jobs.length === 1') && appEq.includes('maintenance task${mine.length === 1'),
+  'it says "everything" without saying how much');
+ok('the name column includes model and serial without duplicating category or location',
+  /strong\(e\.name,/.test(appEq) && appEq.includes('e.model') && appEq.includes('e.serial_number'),
+  'model or serial is missing');
+ok('the row fills the category and location columns',
+  appEq.includes('${soft(e.category)}${soft(e.location)}'),
+  'the columns exist and the row leaves them empty');
+ok('an empty table spans exactly the columns the header names',
+  /emptyRow\(\d+,/.test(appEq)
+  && appEq.includes(`emptyRow(${(eqHead.match(/<th[\s>]/g) || []).length},`),
+  `header has ${(eqHead.match(/<th[\s>]/g) || []).length} columns`);
+ok('Edit, Retire and Delete are drawn only for an admin',
+  /const admin = window\.me\?\.role === 'admin'/.test(actionsFn)
+  && actionsFn.includes('editEquipment') && actionsFn.includes('toggleStatus')
+  && actionsFn.includes('openEquipmentDelete'), actionsFn ? 'no gate' : 'actions() is not defined');
+ok('History is offered to everybody',
+  !/admin \? `<button[^`]*openMachineHistory/.test(actionsFn) && actionsFn.includes('openMachineHistory'));
+ok('the Machines screen filters by a named view, not a hidden-retired checkbox',
+  /<select id="eq-filter" onchange="loadEquipment\(\)"/.test(indexEq)
+  && !indexEq.includes('eq-show-retired'));
+// `<option value="all">` no longer matches: the default is marked, so the test has
+// to allow attributes after the value rather than assume an empty tag.
+ok('the four views are in service, down, retired and everything',
+  ['in', 'down', 'retired', 'all'].every((v) =>
+    new RegExp(`<option value="${v}"[ >]`).test(indexEq)));
+// It used to open on "In service", which meant a machine that had been retired was
+// indistinguishable from a machine that had been deleted — and the machine somebody
+// is asking about is exactly the one that stopped.
+ok('it opens on every machine, not only the ones in service',
+  /<select id="eq-filter"[^>]*>\s*<option value="all" selected>All machines<\/option>/.test(indexEq),
+  (indexEq.match(/<select id="eq-filter"[^>]*>[\s\S]{0,200}/) || [''])[0].replace(/\s+/g, ' '));
+ok('a view the select cannot name falls back to everything, not to in-service',
+  appEq.includes('?? VIEWS.all'), 'the fallback is the old default');
+ok('a retired machine is dimmed in the list rather than missing from it',
+  appEq.includes("class=\"row-quiet\"") && /<tr\$\{/.test(appEq)
+  && /\.row-quiet td \{ opacity/.test(uiCss),
+  appEq.includes('row-quiet') ? 'no styling for the dimmed row' : 'retired rows are not marked');
+ok('each view asks the server for the machines it names',
+  ["in: { query: 'service=active'", "down: { query: 'service=active&status=down'",
+    "retired: { query: 'service=retired'", "all: { query: 'service=all'"]
+    .every((frag) => appEq.includes(frag)), 'a view with no query is a view that lies');
+// The table of views is easy to assert and easy to leave unused: a mutation that
+// replaced the lookup with `VIEWS.in` passed every check above. This one reads the
+// lookup itself.
+ok('the chosen view is the one that is used',
+  appEq.includes("VIEWS[$('#eq-filter')?.value]"), 'the filter is defined and then ignored');
+ok('a view that finds nothing says which view found nothing',
+  ['Nothing is down right now.', 'No machines have been retired.']
+    .every((line) => appEq.includes(line)));
+// `status=down` on an empty database passes vacuously, so this makes a machine
+// down first and checks it is found — and that the answer is not everything.
+const blocked = (await c('/api/equipment', { method: 'POST', body: { name: 'Grinder (blocked)' } })).data;
+await c('/api/work-orders', { method: 'POST', body: {
+  equipment_id: blocked.id, title: 'Wheel guard missing', priority: 'high', stops_machine: true } });
+const downList = (await c('/api/equipment?status=down')).data;
+ok('the API can be asked for the machines that are down',
+  downList.some((e) => e.id === blocked.id) && downList.every((e) => e.status === 'down'),
+  downList.map((e) => `${e.name}:${e.status}`).join(', '));
+ok('and that answer is not the whole list',
+  downList.length < (await c('/api/equipment')).data.length);
+ok('a machine in service can still be down — the two filters ask different questions',
+  (await c('/api/equipment?service=active')).data.some((e) => e.id === blocked.id)
+  && (await c('/api/equipment?service=retired')).data.every((e) => e.status === 'retired'));
+await c(`/api/equipment/${blocked.id}`, { method: 'DELETE' });   // takes its job with it
+ok('new work and maintenance fetch their own in-service machine choices',
+  appSrc13.includes("api('/equipment?service=active')")
+  && appSrc13.includes('async function retryPmMachines()')
+  && readFileSync(join(root, 'public', 'work.js'), 'utf8').includes("api('/equipment?service=active')")
+  && !appEq.includes("$('#pm-equipment').innerHTML"));
+ok('the due list asks only for machines in service',
+  appSrc13.includes("api('/pm?service=active')") && /if \(filter === 'due'\) return p\.days_left <= days;/.test(appSrc13),
+  'the due list still shows maintenance on machines that have left');
+ok('the maintenance list asks the same way',
+  appSrc13.includes("api('/pm?service=active')"), 'the two lists can disagree');
+ok('and they ask for machines in service with no search term',
+  /api\('\/equipment\?service=active'\)/.test(appSrc13));
+ok('the app remembers who signed in', /window\.me = user/.test(
+  readFileSync(join(root, 'public', 'app.js'), 'utf8')));
+const equipmentSrc = codeOnly(readFileSync(join(root, 'routes', 'equipment.js'), 'utf8'));
+const dashboardSrc = codeOnly(readFileSync(join(root, 'routes', 'dashboard.js'), 'utf8'));
+ok('no route decides what "down" means for itself',
+  !/['"]down['"]/.test(equipmentSrc) && !/["']down["']/.test(dashboardSrc)
+  && /downMachines\(\)/.test(dashboardSrc),
+  'a route still has its own opinion about what down means');
+
+// ---- a database written by the old form ----------------------------------
+// The engine of this test is the migration itself: put a machine back into the
+// state the previous version could store, start the app against that file, and
+// look at the row again.
+{
+  const legacyDb = join(root, 'data', 'legacy.db');
+  rmSync(legacyDb, { force: true });
+  const env = { ...process.env, MM_DB: legacyDb };
+  spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"],
+    { cwd: root, env });
+  const seed = new DatabaseSync(legacyDb);
+  seed.prepare(`INSERT INTO equipment (name, status) VALUES ('Old press', 'down')`).run();
+  seed.close();
+  const started = spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"], { cwd: root, env });
+  const after = new DatabaseSync(legacyDb);
+  const row = after.prepare(`SELECT status FROM equipment WHERE name = 'Old press'`).get();
+  after.close();
+  ok('a machine left "down" by the old form is released on start-up',
+    row && row.status === 'active', row ? String(row.status) : 'row missing');
+  ok('and the log says how many it fixed',
+    /migrated: \d+ machine status/.test(String(started.stdout)),
+    String(started.stdout).trim().split('\n').pop());
+  const rerun = spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"], { cwd: root, env });
+  const again = new DatabaseSync(legacyDb);
+  const stillThere = again.prepare(`SELECT status FROM equipment WHERE name = 'Old press'`).get();
+  again.close();
+  ok('running the migration again changes nothing and says nothing',
+    stillThere.status === 'active' && !/machine status/.test(String(rerun.stdout)),
+    String(rerun.stdout).trim());
+  rmSync(legacyDb, { force: true });
+}
+
+console.log('\nDashboard — the last six months');
+
+const chartPayload = await c('/api/dashboard');
+const trend = chartPayload.data?.charts?.trend ?? [];
+ok('the dashboard carries six months of history', trend.length === 6, `got ${trend.length}`);
+const monthKeys = trend.map((m) => m.month);
+ok('the months run oldest first',
+  monthKeys.every((m, i) => i === 0 || m > monthKeys[i - 1]), monthKeys.join(','));
+const currentMonth = new Date().toISOString().slice(0, 7);
+ok('the last bar is the month we are in', monthKeys.at(-1) === currentMonth, monthKeys.at(-1));
+
+// A bar and the Report screen must be the same arithmetic, or the dashboard is a
+// second opinion about the owner's money. report.js builds both; this checks it.
+const reportNow = await c(`/api/report?month=${currentMonth}`);
+const barNow = trend.at(-1) || {};
+ok('a bar equals the report for that month',
+  Number(barNow.total) === Number(reportNow.data.total)
+  && Number(barNow.closed) === Number(reportNow.data.jobs),
+  `bar=${JSON.stringify(barNow)} report=${reportNow.data.total}/${reportNow.data.jobs}`);
+ok('the month where a job was closed shows a bar above zero',
+  Number(barNow.closed) > 0 && Number(barNow.total) > 0, JSON.stringify(barNow));
+
+// The chart module builds strings and touches no DOM, so it can be checked here
+// rather than hoped about. Geometry and escaping are the two ways a chart fails.
+const charts = await import(pathToFileURL(join(root, 'public', 'charts.js')).href);
+const sample = charts.stackedBars({
+  labels: ['A', 'B'],
+  series: [{ name: 'Jobs', values: [1, 4], tone: 'brand' }],
+  title: 'sample',
+});
+const barHeights = [...sample.matchAll(/<rect[^>]*height="([\d.]+)"/g)].map((m) => Number(m[1]));
+ok('a chart draws one bar per value', barHeights.length === 2, barHeights.join(','));
+ok('the taller value draws the taller bar',
+  barHeights.length === 2 && Math.abs(barHeights[1] / barHeights[0] - 4) < 0.02,
+  barHeights.join(','));
+ok('a month with nothing in it draws no bar',
+  !/<rect/.test(charts.stackedBars({ labels: ['A'], series: [{ name: 'Jobs', values: [0] }] })));
+const sneaky = charts.stackedBars({
+  labels: ['<script>alert(1)</script>'],
+  series: [{ name: '<b>name</b>', values: [1], tone: 'brand' }],
+  title: '<img onerror=x>',
+});
+ok('a chart escapes every label it draws',
+  !sneaky.includes('<script>') && !sneaky.includes('<b>') && !sneaky.includes('<img')
+  && sneaky.includes('&lt;script&gt;'),
+  sneaky.slice(0, 160));
+ok('every bar names its own value for a screen reader',
+  /<title>A — Jobs: 1<\/title>/.test(sample), 'a bar without a title is a rectangle');
+
+const chartsSrc = readFileSync(join(root, 'public', 'charts.js'), 'utf8');
+const dashClient = readFileSync(join(root, 'public', 'dashboard.js'), 'utf8');
+ok('the chart module fetches nothing and ships no library',
+  !/https?:\/\//.test(chartsSrc.replace(/\/\/[^\n]*/g, '')) && chartsSrc.split('\n').length < 200);
+ok('the dashboard draws its charts from that module',
+  /from '\.\/charts\.js'/.test(dashClient) && /stackedBars\(/.test(dashClient));
+
+console.log('\nPersistence — a restart, a file copy, and a forgotten password');
+
+// 1. Sessions are rows in the database. They used to be a Map in memory, so a
+//    restart silently signed everybody out, and the owner read that as "the
+//    password changed again".
+const persistent = makeClient();
+const beforeRestart = await persistent('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'smoke-test-password' },
+});
+ok('admin is signed in before the restart', beforeRestart.status === 200,
+  JSON.stringify(beforeRestart.data));
+srv.child.kill('SIGKILL');
+await srv.exited;
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server is back up', await waitForServer(), srv.log());
+const stillIn = await persistent('/api/me');
+ok('a signed-in session survives a hard restart', stillIn.status === 200,
+  `got ${stillIn.status}: the browser is back on the login screen`);
+
+// 2. maintain.db on its own must be a complete database. The owner's was 4,096
+//    bytes with 78,312 bytes sitting in the side file, so copying it — to a USB
+//    stick, a backup folder, anywhere — produced an empty database.
+const marker = `Copy-me-${Date.now()}`;
+await persistent('/api/equipment', { method: 'POST', body: { name: marker } });
+const walSize = existsSync(DB + '-wal') ? statSync(DB + '-wal').size : 0;
+ok('a save is merged into maintain.db, not left in the side file', walSize === 0,
+  `${DB}-wal is ${walSize} bytes: a copy of maintain.db alone would be incomplete`);
+const copiedAlone = join(root, 'data', 'copied-alone.db');
+copyFileSync(DB, copiedAlone);
+const alone = new DatabaseSync(copiedAlone, { readOnly: true });
+const foundInCopy = alone.prepare('SELECT COUNT(*) AS n FROM equipment WHERE name = ?')
+  .get(marker).n;
+alone.close();
+rmSync(copiedAlone, { force: true });
+ok('a copy of maintain.db alone still contains the data', foundInCopy === 1,
+  'the copy was empty, which is exactly what a naive backup used to produce');
+
+// 3. The first password is written beside the database, so closing the console
+//    window cannot lose it. It was printed once and never stored anywhere.
+const note = join(root, 'data', 'first-password.txt');
+ok('the first password is kept beside the database',
+  existsSync(note) && readFileSync(note, 'utf8').includes('smoke-test-password'),
+  existsSync(note) ? 'the file exists but does not hold the password' : 'no first-password.txt');
+const changed = await persistent('/api/users/1', {
+  method: 'PUT', body: { password: 'chosen-by-the-admin-1' },
+});
+ok('an admin can change their own password', changed.status === 200, JSON.stringify(changed.data));
+ok('changing it deletes the now-stale note', !existsSync(note),
+  'a file holding a password that no longer works is worse than no file');
+
+// 4. A forgotten password has a way back. This is the bug that actually locked
+//    the owner out: the only route to a new password needs an admin already in.
+function resetPassword(password) {
+  return spawnSync(process.execPath,
+    ['--no-warnings=ExperimentalWarning', 'reset-password.js', '--password', password],
+    { cwd: root, env: { ...process.env, MM_DB: DB }, encoding: 'utf8' });
+}
+srv.child.kill('SIGKILL');
+await srv.exited;
+const reset = resetPassword('recovered-pass-1');
+ok('reset-password.js runs with the app stopped', reset.status === 0,
+  reset.stderr || reset.stdout);
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server runs again after a reset', await waitForServer(), srv.log());
+const afterReset = await makeClient()('/api/login', {
+  method: 'POST', body: { email: 'admin@local', password: 'recovered-pass-1' },
+});
+ok('the password set by reset-password.js works', afterReset.status === 200,
+  JSON.stringify(afterReset.data));
+const tooShort = resetPassword('short');
+ok('reset-password.js refuses a password under 8 characters', tooShort.status !== 0,
+  'it accepted a password the login form would also reject');
+
+// Put the account back the way the rest of the run expects to find it.
+resetPassword('smoke-test-password');
+
+// 5. Upgrading from v2.0 copies the old database into %LOCALAPPDATA%. A v2.0
+//    folder keeps its recent writes in the side file (the owner's held 78 KB),
+//    so a copy that takes only maintain.db is an empty database. This builds a
+//    real pending side file and copies it the way the upgrade does.
+const legacyFrom = join(root, 'data', 'legacy-from');
+const legacyTo = join(root, 'data', 'legacy-to');
+for (const dir of [legacyFrom, legacyTo]) {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir);
+}
+const legacy = new DatabaseSync(join(legacyFrom, 'maintain.db'));
+legacy.exec('PRAGMA journal_mode = WAL');
+legacy.exec('CREATE TABLE equipment (id INTEGER PRIMARY KEY, name TEXT)');
+legacy.exec("INSERT INTO equipment (name) VALUES ('Left in the side file')");
+// Deliberately left open: the row is still in the -wal, exactly like v2.0.
+// db.js is imported here, not at the top, so opening it cannot disturb the
+// server's database: the test process gets its own throw-away one.
+process.env.MM_DB = join(root, 'data', 'test-process.db');
+const { copyDataFiles } = await import('../db.js');
+const copiedNames = copyDataFiles(legacyFrom, legacyTo);
+ok('the upgrade copies the side files with the database',
+  copiedNames.includes('maintain.db') && copiedNames.includes('maintain.db-wal'),
+  `copied: ${copiedNames.join(', ') || 'nothing'}`);
+legacy.close();
+const adopted = new DatabaseSync(join(legacyTo, 'maintain.db'), { readOnly: true });
+const keptRecent = adopted.prepare('SELECT COUNT(*) AS n FROM equipment').get().n;
+adopted.close();
+ok('a database adopted from v2.0 keeps its recent writes', keptRecent === 1,
+  'the recent write lived in the side file and did not come across');
+for (const dir of [legacyFrom, legacyTo]) rmSync(dir, { recursive: true, force: true });
+
+// Everything below signs in for itself. By this point in the run the client the rest
+// of the suite was using is no longer valid — an earlier restart rotated the signing
+// key — so a test appended here would get 401 and could "pass" for the wrong reason.
+// That was the first thing this block found, before it had asserted anything.
+const late = makeClient();
+const lateIn = await late('/api/login', { method: 'POST', body: {
+  email: 'admin@local', password: 'smoke-test-password' } });
+ok('the end of the suite can still sign in and be answered', lateIn.status === 200,
+  `status ${lateIn.status}`);
+
+// ---- what a fault report carries ------------------------------------------
+// A title is a headline. It cannot hold "only above 20 m/min", cannot say who saw
+// it, and cannot show what it looked like at 3am — so the report carries notes, a
+// name and a photograph, and all three are optional.
+const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const pngBytes = Buffer.concat([PNG_HEAD, Buffer.alloc(64, 3)]);
+
+// Stages must survive the whole lifecycle, including a restart, and photos belong
+// to their own stage rather than replacing the ticket's original fault photo.
+const stageMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage test machine' } })).data;
+const stageJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: stageMachine.id, title: 'Stage test' } })).data;
+const stageUrl = `/api/work-orders/${stageJob.id}/updates`;
+const stagePost = (body) => late(stageUrl, { method: 'POST', body });
+const emptyStages = await late(stageUrl);
+ok('a new ticket returns a successful empty update list', emptyStages.status === 200 && Array.isArray(emptyStages.data) && emptyStages.data.length === 0);
+const rawStageStart = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'in_progress', assigned_to: 1 } });
+ok('a direct status patch cannot skip the first stage', rawStageStart.status === 400 && /stage/i.test(rawStageStart.data.error || ''));
+ok('a stage without a description cannot start a ticket', (await stagePost({ message: '  ', hours: 1, assigned_to: 1 })).status === 400);
+ok('a stage requires a person', (await stagePost({ message: 'Inspecting', hours: 1 })).status === 400);
+ok('a stage requires time spent', (await stagePost({ message: 'Inspecting', assigned_to: 1 })).status === 400);
+ok('negative stage time is rejected', (await stagePost({ message: 'Inspecting', hours: -1, assigned_to: 1 })).status === 400);
+ok('invalid stage photos are rejected without starting the job',
+  (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: ['data:image/png;base64,dGV4dA=='] })).status === 400
+  && (await late('/api/work-orders')).data.find((w) => w.id === stageJob.id).status === 'open');
+ok('a signed-out person cannot see the update history', (await makeClient()(stageUrl)).status === 401);
+const stagePhoto = `data:image/png;base64,${pngBytes.toString('base64')}`;
+ok('updates reject more than five photos', (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: Array(6).fill(stagePhoto) })).status === 400);
+ok('updates reject unknown assignees', (await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 999999 })).status === 400);
+ok('updates reject overly long descriptions', (await stagePost({ message: 'x'.repeat(2001), hours: 1, assigned_to: 1 })).status === 400);
+const filesBeforeBadStage = readdirSync(photosDir).length;
+const mixedBadStage = await stagePost({ message: 'Inspecting', hours: 1, assigned_to: 1, photos: [stagePhoto, 'data:image/png;base64,dGV4dA=='] });
+ok('a failed multi-photo update cleans up already saved photos', mixedBadStage.status === 400 && readdirSync(photosDir).length === filesBeforeBadStage);
+
+const stageOne = await stagePost({ message: '  Inspected the bearing  ', hours: 0.5, assigned_to: 1, photos: [stagePhoto, stagePhoto] });
+ok('stage one atomically assigns and starts the job', stageOne.status === 201 && stageOne.data.stage === 1 && stageOne.data.assigned_to === 1);
+const stageTwo = await stagePost({ message: 'Replaced the bearing', hours: 1.25 });
+ok('another update adds stage two while the job stays in progress', stageTwo.status === 201 && stageTwo.data.stage === 2 && stageTwo.data.status === 'in_progress');
+let stages = (await late(stageUrl)).data;
+ok('the ordered timeline retains descriptions, time, author and timestamps', stages.length === 2
+  && stages[0].stage === 1 && stages[0].message === 'Inspected the bearing' && stages[0].hours === 0.5
+  && stages[0].author === 'Admin' && !!stages[0].created_at && stages[1].stage === 2 && stages[1].hours === 1.25);
+ok('a stage can carry multiple photos', stages[0].photos.length === 2 && stages[1].photos.length === 0);
+const stagePhotoUrl = `${stageUrl}/${stages[0].id}/photos/${stages[0].photos[0]}`;
+const stagePhotoResult = await late(stagePhotoUrl);
+ok('a stage photo can be opened', stagePhotoResult.status === 200 && stagePhotoResult.bytes.equals(pngBytes));
+ok('a stage photo cannot be read through a different ticket',
+  (await late(`/api/work-orders/${stageJob.id + 9999}/updates/${stages[0].id}/photos/${stages[0].photos[0]}`)).status === 404);
+const stageDb = new DatabaseSync(DB, { readOnly: true });
+const stagePhotoFiles = stageDb.prepare('SELECT filename FROM work_update_photos WHERE update_id = ?').all(stages[0].id).map((p) => p.filename);
+stageDb.close();
+srv.child.kill('SIGKILL');
+await srv.exited;
+srv = start({ MM_ADMIN_PASSWORD: 'smoke-test-password' });
+ok('server restarts after stage updates', await waitForServer());
+stages = (await late(stageUrl)).data;
+ok('stage history and its photos survive a restart', stages.length === 2 && stages[0].photos.length === 2 && (await late(stagePhotoUrl)).bytes.equals(pngBytes));
+const stageClosed = await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Bearing replaced', labour_hours: 1.75 } });
+ok('closing records the final total without deleting stages', stageClosed.status === 200 && stageClosed.data.labour_hours === 1.75 && (await late(stageUrl)).data.length === 2);
+ok('a closed ticket refuses new updates', (await stagePost({ message: 'Too late', hours: 1 })).status === 400);
+await late(`/api/work-orders/${stageJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+const reopenedStage = await stagePost({ message: 'Follow-up', hours: 0.25 });
+ok('a reopened ticket continues the timeline rather than replacing it', reopenedStage.status === 201 && reopenedStage.data.stage === 3);
+const parallelStages = await Promise.all([
+  stagePost({ message: 'Parallel A', hours: 0.5 }), stagePost({ message: 'Parallel B', hours: 0.75 }),
+]);
+ok('concurrent updates get distinct consecutive stage numbers', parallelStages.every((r) => r.status === 201)
+  && parallelStages.map((r) => r.data.stage).sort().join(',') === '4,5');
+ok('all stage descriptions remain available after reopening', (await late(stageUrl)).data.length === 5);
+
+await late(`/api/equipment/${stageMachine.id}`, { method: 'DELETE' });
+ok('deleting a machine also removes its stage records and image files',
+  (await late(stageUrl)).status === 404 && stagePhotoFiles.length === 2
+  && stagePhotoFiles.every((f) => !existsSync(join(photosDir, f))));
+
+
+// Live stage hours, actual part prices and explicit machine state. These values
+// must change before closure, and neither stock nor photos may be half-saved.
+const liveMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Live stage machine' } })).data;
+const liveJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: liveMachine.id, title: 'Belt broken', stops_machine: true,
+} })).data;
+const motor = (await late('/api/parts', { method: 'POST', body: { name: 'Stage motor', qty: 3, unit_price: 100 } })).data;
+const belt = (await late('/api/parts', { method: 'POST', body: { name: 'Stage belt', qty: 5, unit_price: 10 } })).data;
+const liveUrl = `/api/work-orders/${liveJob.id}/updates`;
+const livePost = (body) => late(liveUrl, { method: 'POST', body });
+const liveRow = async () => (await late('/api/work-orders')).data.find((w) => w.id === liveJob.id);
+const liveEquipment = async () => (await late('/api/equipment')).data.find((e) => e.id === liveMachine.id);
+const partStock = async (id) => (await late('/api/parts')).data.find((p) => p.id === id).qty;
+const liveOne = await livePost({ message: 'Replaced motor; belt still needs work', hours: 2, assigned_to: 1,
+  machine_running: true, parts: [{ part_id: motor.id, qty: 1, unit_price: 75 }] });
+let live = await liveRow();
+let machineNow = await liveEquipment();
+ok('stage one records an actual part price and live labour before closure', liveOne.status === 201
+  && live.status === 'in_progress' && live.effective_hours === 2 && live.cost === 75
+  && await partStock(motor.id) === 2, JSON.stringify(live));
+ok('a running answer restores the machine without closing the job', machineNow.status === 'active'
+  && machineNow.total_hours === 2 && machineNow.total_service_cost === live.cost && live.stops_machine === 0);
+let liveHistory = (await late(liveUrl)).data;
+ok('the timeline remembers the stage part and machine answer', liveHistory[0].machine_running === 1
+  && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].qty === 1
+  && liveHistory[0].parts[0].unit_price === 75);
+const blocker = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: liveMachine.id, title: 'Another stoppage', stops_machine: true,
+} })).data;
+ok('a newer reported stoppage takes the previously running machine out of service', (await liveEquipment()).status === 'down');
+await rateTech('/api/login', { method: 'POST', body: { email: 'rate@local', password: 'rate-password' } });
+const liveTwo = await rateTech(liveUrl, { method: 'POST', body: { message: 'Fitted the belt', hours: 1.5, machine_running: true,
+  parts: [{ part_id: belt.id, qty: 2, unit_price: 6.25 }, { part_id: motor.id, qty: 1, unit_price: 50 }] } });
+live = await liveRow();
+machineNow = await liveEquipment();
+ok('a technician can add hours and multiple actual-cost parts to the running total', liveTwo.status === 201
+  && live.effective_hours === 3.5 && live.cost === 137.5
+  && await partStock(motor.id) === 1 && await partStock(belt.id) === 3, JSON.stringify(live));
+ok('a newer running answer overrides an older stopping job', machineNow.status === 'active' && machineNow.total_hours === 3.5 && machineNow.total_service_cost === live.cost);
+await late(`/api/work-orders/${blocker.id}`, { method: 'PATCH', body: { stops_machine: false } });
+ok('clearing the other stopping job makes the machine running again', (await liveEquipment()).status === 'active');
+await late(`/api/parts/${motor.id}`, { method: 'PUT', body: { unit_price: 999, name: 'Renamed motor' } });
+liveHistory = (await late(liveUrl)).data;
+ok('catalog price and name changes do not rewrite recorded stage costs or history', (await liveRow()).cost === 137.5
+  && liveHistory[0].parts[0].part_name === 'Stage motor' && liveHistory[0].parts[0].unit_price === 75);
+const liveNo = await livePost({ message: 'Stopped for safety', hours: 0, machine_running: false });
+const liveUnchanged = await livePost({ message: 'Waiting for a part', hours: 0.5,
+  parts: [{ part_id: belt.id, qty: 1, unit_price: 0 }] });
+ok('the stopped answer and an omitted answer keep the machine down', liveNo.status === 201 && liveUnchanged.status === 201
+  && (await liveEquipment()).status === 'down' && (await liveRow()).effective_hours === 4);
+const beforeInvalid = (await late(liveUrl)).data.length;
+const badRunning = await livePost({ message: 'Bad state', hours: 1, machine_running: 'yes' });
+const badCost = await livePost({ message: 'Bad cost', hours: 1, parts: [{ part_id: belt.id, qty: 1, unit_price: -2 }] });
+const badQty = await livePost({ message: 'Bad quantity', hours: 1, parts: [{ part_id: belt.id, qty: 0, unit_price: 1 }] });
+const missingCost = await livePost({ message: 'No cost', hours: 1, parts: [{ part_id: belt.id, qty: 1 }] });
+const boolCost = await livePost({ message: 'Boolean cost', hours: 1, parts: [{ part_id: belt.id, qty: 1, unit_price: true }] });
+const unknownPart = await livePost({ message: 'Unknown part', hours: 1, parts: [{ part_id: 999999, qty: 1, unit_price: 1 }] });
+ok('missing, boolean and unknown part data are refused', missingCost.status === 400 && boolCost.status === 400
+  && unknownPart.status === 400 && (await late(liveUrl)).data.length === beforeInvalid);
+ok('invalid machine answers, unit prices and quantities are rejected', badRunning.status === 400 && badCost.status === 400
+  && badQty.status === 400 && (await late(liveUrl)).data.length === beforeInvalid);
+const stockBeforeFailure = await partStock(belt.id);
+const photosBeforeFailure = readdirSync(photosDir).length;
+const stockFail = await livePost({ message: 'Insufficient stock', hours: 1, machine_running: true,
+  photos: [stagePhoto], parts: [{ part_id: belt.id, qty: 1, unit_price: 7 }, { part_id: belt.id, qty: 50, unit_price: 8 }] });
+ok('a failed stage rolls back all part uses, hours, machine state and photos', stockFail.status === 400
+  && await partStock(belt.id) === stockBeforeFailure && (await late(liveUrl)).data.length === beforeInvalid
+  && (await liveEquipment()).status === 'down' && readdirSync(photosDir).length === photosBeforeFailure);
+const liveClose = await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: {
+  status: 'done', machine_running: true, resolution: 'Fixed', labour_hours: 10,
+} });
+live = await liveRow();
+ok('the reviewed final hours replace the running total, without double counting', liveClose.status === 200
+  && live.effective_hours === 10 && live.cost === 137.5 && (await liveEquipment()).total_hours === 10
+  && (await liveEquipment()).total_service_cost === live.cost);
+let liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
+ok('the monthly report uses recorded actual part cost and reviewed hours', liveReport.hours === 10
+  && liveReport.parts_cost === 137.5 && liveReport.total === 137.5, JSON.stringify(liveReport));
+await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+await livePost({ message: 'Follow-up after reopening', hours: 0.5, machine_running: true });
+live = await liveRow();
+ok('after reopening, new stage hours add to the reviewed total exactly once', live.effective_hours === 10.5
+  && live.cost === 137.5 && (await liveEquipment()).total_hours === 10.5
+  && (await liveEquipment()).total_service_cost === live.cost);
+await late(`/api/work-orders/${liveJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Checked again', labour_hours: 10.5 } });
+live = await liveRow();
+liveReport = (await late(`/api/report?month=${month}`)).data.machines.find((m) => m.id === liveMachine.id);
+ok('reclosing keeps the combined total and report consistent', live.effective_hours === 10.5 && liveReport.hours === 10.5
+  && liveReport.parts_cost === 137.5);
+await late(`/api/equipment/${liveMachine.id}`, { method: 'DELETE' });
+ok('deleting the machine cascades its stage-specific part records', (await late(liveUrl)).status === 404
+  && (await late(`/api/parts/${motor.id}`, { method: 'DELETE' })).status === 200);
+await late(`/api/parts/${belt.id}`, { method: 'DELETE' });
+
+// Repeated part-and-price lines are one stage row; different prices and
+// different parts stay separate, without weakening stock/cost reconciliation.
+const groupedMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Grouped parts machine' } })).data;
+const groupedJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: groupedMachine.id, title: 'Grouped parts' } })).data;
+const groupedPart = (await late('/api/parts', { method: 'POST', body: { name: 'Grouped bearing', qty: 20, unit_price: 12 } })).data;
+const groupedOther = (await late('/api/parts', { method: 'POST', body: { name: 'Other bearing', qty: 5, unit_price: 12 } })).data;
+const groupedUrl = `/api/work-orders/${groupedJob.id}/updates`;
+const groupPost = await late(groupedUrl, { method: 'POST', body: { message: 'Installed parts', hours: 0, assigned_to: 1, parts: [
+  { part_id: groupedPart.id, qty: 2, unit_price: 12 }, { part_id: groupedPart.id, qty: 3, unit_price: 12 },
+  { part_id: groupedPart.id, qty: 1, unit_price: 13 }, { part_id: groupedOther.id, qty: 1, unit_price: 12 }] } });
+let groupHistory = (await late(groupedUrl)).data[0];
+let groupWork = (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id);
+ok('same stage part and price combine, while different prices and parts stay distinct', groupPost.status === 201
+  && groupHistory.parts.length === 3 && groupHistory.parts[0].qty === 5 && groupHistory.parts[0].unit_price === 12
+  && groupHistory.parts[1].qty === 1 && groupHistory.parts[1].unit_price === 13 && groupHistory.parts[2].part_id === groupedOther.id);
+ok('combining parts retains exact costs and consumes the correct stock', groupWork.cost === 85
+  && await partStock(groupedPart.id) === 14 && await partStock(groupedOther.id) === 4);
+const groupedStageUrl = `${groupedUrl}/${groupPost.data.id}`;
+const groupEdit = await late(groupedStageUrl, { method: 'PUT', body: { parts: [
+  { part_id: groupedPart.id, qty: 2, unit_price: 12 }, { part_id: groupedPart.id, qty: 1, unit_price: 12 },
+  { part_id: groupedPart.id, qty: 1, unit_price: 14 }] } });
+groupHistory = (await late(groupedUrl)).data[0];
+groupWork = (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id);
+ok('editing a stage also combines matching prices and returns removed stock', groupEdit.status === 200
+  && groupHistory.parts.length === 2 && groupHistory.parts[0].qty === 3 && groupHistory.parts[1].unit_price === 14
+  && groupWork.cost === 50 && await partStock(groupedPart.id) === 16 && await partStock(groupedOther.id) === 5);
+const groupFail = await late(groupedStageUrl, { method: 'PUT', body: { parts: [
+  { part_id: groupedPart.id, qty: 3, unit_price: 12 }, { part_id: groupedPart.id, qty: 30, unit_price: 12 }] } });
+ok('insufficient stock during grouped corrections leaves the old stage intact', groupFail.status === 400
+  && await partStock(groupedPart.id) === 16 && (await late(groupedUrl)).data[0].parts[0].qty === 3);
+await late(groupedStageUrl, { method: 'DELETE' });
+ok('deleting a grouped stage restores all its quantities', await partStock(groupedPart.id) === 20
+  && (await late('/api/work-orders')).data.find((w) => w.id === groupedJob.id).cost === 0);
+const preciseGroup = await late(groupedUrl, { method: 'POST', body: { message: 'Exact prices', hours: 0, assigned_to: 1, parts: [
+  { part_id: groupedPart.id, qty: 1, unit_price: 12.001 }, { part_id: groupedPart.id, qty: 1, unit_price: 12.002 },
+  { part_id: groupedPart.id, qty: 1, unit_price: '12.001' }] } });
+const preciseLines = (await late(groupedUrl)).data[0].parts;
+ok('prices differing below a cent stay separate; numerically equal prices merge', preciseGroup.status === 201
+  && preciseLines.length === 2 && preciseLines[0].qty === 2 && preciseLines[0].unit_price === 12.001
+  && preciseLines[1].qty === 1 && preciseLines[1].unit_price === 12.002);
+await late(`${groupedUrl}/${preciseGroup.data.id}`, { method: 'DELETE' });
+await late(`/api/equipment/${groupedMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${groupedPart.id}`, { method: 'DELETE' });
+await late(`/api/parts/${groupedOther.id}`, { method: 'DELETE' });
+
+// Report locking and a complete, authenticated print snapshot.
+const printMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Print pump', asset_tag: '101220054', category: 'Pump', location: 'Bay 3', manufacturer: 'ACME' } })).data;
+const printPart = (await late('/api/parts', { method: 'POST', body: { name: 'Print bearing', reference: 'BR-1', qty: 5, unit_price: 9 } })).data;
+const printJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: printMachine.id, title: 'Original fault', notes: 'Original notes', reported_by: 'Alice', assigned_to: 1, stops_machine: true } })).data;
+const printUrl = `/api/work-orders/${printJob.id}`;
+ok('original report can be edited before its first stage', (await late(printUrl, { method: 'PATCH', body: { title: 'Corrected fault' } })).data.title === 'Corrected fault');
+const unreportedJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: printMachine.id, title: 'No state supplied' } })).data;
+const unreportedPrint = (await late(`/api/work-orders/${unreportedJob.id}/print`)).data;
+ok('an unreported machine state is not misrepresented as running in print', unreportedPrint.job.last_reported_running === null);
+ok('fault photo can be added before work starts', (await late(`${printUrl}/photo`, { method: 'POST', contentType: 'image/png', rawBody: pngBytes })).status === 200);
+const printStage = await late(`${printUrl}/updates`, { method: 'POST', body: { message: 'Replaced bearing', hours: 2, machine_running: true, photos: [stagePhoto], parts: [{ part_id: printPart.id, qty: 2, unit_price: 8.005 }] } });
+const lockedBefore = (await late('/api/work-orders')).data.find((w) => w.id === printJob.id);
+for (const change of [{ title: 'Different problem' }, { priority: 'high' }, { notes: 'Changed notes' }, { reported_by: 'Bob' }, { stops_machine: true }]) {
+  const refused = await late(printUrl, { method: 'PATCH', body: change });
+  ok(`stage locks original report field ${Object.keys(change)[0]}`, refused.status === 409 && /cannot be edited/i.test(refused.data.error || ''));
+}
+const mixed = await late(printUrl, { method: 'PATCH', body: { title: 'Changed', status: 'done', machine_running: true, resolution: 'Must not close' } });
+const lockedAfter = (await late('/api/work-orders')).data.find((w) => w.id === printJob.id);
+ok('a mixed report edit and closure is rejected atomically', mixed.status === 409 && lockedAfter.title === lockedBefore.title && lockedAfter.status === 'in_progress' && lockedAfter.resolution === lockedBefore.resolution);
+const filesBeforeLock = photoCount();
+ok('original fault photo cannot be replaced or removed after work starts',
+  (await late(`${printUrl}/photo`, { method: 'POST', contentType: 'image/png', rawBody: pngBytes })).status === 409
+  && (await late(`${printUrl}/photo`, { method: 'DELETE' })).status === 409
+  && (await late(`${printUrl}/photo`)).bytes.equals(pngBytes) && photoCount() === filesBeforeLock);
+ok('report lock applies to technicians as well', (await rateTech(printUrl, { method: 'PATCH', body: { title: 'No' } })).status === 409);
+const snapshot = await late(`${printUrl}/print`);
+ok('print snapshot has the original report, machine, stage parts and photo identifiers', snapshot.status === 200
+  && snapshot.data.job.title === 'Corrected fault' && snapshot.data.job.notes === 'Original notes'
+  && snapshot.data.job.reported_by === 'Alice' && snapshot.data.job.barcode === '101220054'
+  && snapshot.data.job.equipment_location === 'Bay 3' && !!snapshot.data.job.photo
+  && snapshot.data.updates.length === 1 && snapshot.data.updates[0].message === 'Replaced bearing'
+  && snapshot.data.updates[0].photos.length === 1 && snapshot.data.updates[0].parts[0].unit_price === 8.005
+  && snapshot.data.parts[0].qty === 2 && Math.abs(snapshot.data.parts[0].cost_total - 16.01) < 1e-8);
+ok('print snapshot uses reviewed live hours and the same total as the job list', snapshot.data.job.effective_hours === lockedAfter.effective_hours
+  && snapshot.data.job.total_cost === lockedAfter.cost && !('rate' in snapshot.data));
+ok('print snapshot is available to technicians, but not anonymous visitors, and unknown jobs are 404',
+  (await rateTech(`${printUrl}/print`)).status === 200 && (await makeClient()(`${printUrl}/print`)).status === 401
+  && (await late('/api/work-orders/99999999/print')).status === 404);
+ok('latest stage remains correctable after report lock',
+  (await late(`${printUrl}/updates/${printStage.data.id}`, { method: 'PUT', body: { message: 'Corrected stage' } })).status === 200);
+const lockedClose = await late(printUrl, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Bearing replaced', labour_hours: 3, verified_by: 'Inspector' } });
+const closedPrint = await late(`${printUrl}/print`);
+ok('closure and reviewed totals stay available, including in print', lockedClose.status === 200
+  && closedPrint.data.job.resolution === 'Bearing replaced' && closedPrint.data.job.verified_by === 'Inspector' && closedPrint.data.job.effective_hours === 3);
+ok('closed report remains locked while its stage exists', (await late(printUrl, { method: 'PATCH', body: { notes: 'No' } })).status === 409);
+await late(printUrl, { method: 'PATCH', body: { status: 'open' } });
+ok('reopening does not unlock the report', (await late(printUrl, { method: 'PATCH', body: { title: 'No' } })).status === 409);
+await late(`${printUrl}/updates/${printStage.data.id}`, { method: 'DELETE' });
+ok('permanently removing every stage restores report editing', (await late(printUrl, { method: 'PATCH', body: { notes: 'Editable again' } })).status === 200);
+await late(`/api/equipment/${printMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${printPart.id}`, { method: 'DELETE' });
+const precisionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Print precision' } })).data;
+const precisionPart = (await late('/api/parts', { method: 'POST', body: { name: 'Fractional cost', qty: 1 } })).data;
+const precisionJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: precisionMachine.id, title: 'Precise cost', assigned_to: 1 } })).data;
+await late(`/api/work-orders/${precisionJob.id}/updates`, { method: 'POST', body: { message: 'Precise cost', hours: 0, parts: [{ part_id: precisionPart.id, qty: 1, unit_price: 1.005 }] } });
+const precisionPrint = (await late(`/api/work-orders/${precisionJob.id}/print`)).data;
+const precisionList = (await late('/api/work-orders')).data.find((w) => w.id === precisionJob.id);
+ok('print rounds half-cent costs the same way as the work-order list', precisionPrint.job.parts_cost === 1.005
+  && precisionPrint.job.total_cost === precisionList.cost && precisionPrint.job.parts_cost_display === precisionList.cost
+  && precisionPrint.parts[0].display_cost === precisionList.cost, JSON.stringify(precisionPrint));
+await late(`/api/equipment/${precisionMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${precisionPart.id}`, { method: 'DELETE' });
+
+// Admin corrections operate only on the newest stage and reconcile every effect.
+const correctionMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Stage correction machine' } })).data;
+const correctionJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: correctionMachine.id, title: 'Correction job', stops_machine: true,
+} })).data;
+const correctionMotor = (await late('/api/parts', { method: 'POST', body: { name: 'Correction motor', qty: 5, unit_price: 12 } })).data;
+const correctionBelt = (await late('/api/parts', { method: 'POST', body: { name: 'Correction belt', qty: 5, unit_price: 4 } })).data;
+const correctionUrl = `/api/work-orders/${correctionJob.id}/updates`;
+const correctionPost = (body) => late(correctionUrl, { method: 'POST', body });
+const correctionRow = async () => (await late('/api/work-orders')).data.find((w) => w.id === correctionJob.id);
+const correctionState = async () => (await late('/api/equipment')).data.find((m) => m.id === correctionMachine.id);
+const correctionOne = await correctionPost({ message: 'First repair', hours: 1, assigned_to: 1, machine_running: true,
+  photos: [stagePhoto], parts: [{ part_id: correctionMotor.id, qty: 2, unit_price: 5 }] });
+const correctionTwo = await correctionPost({ message: 'Second repair', hours: 2, machine_running: false,
+  photos: [stagePhoto, stagePhoto], parts: [{ part_id: correctionMotor.id, qty: 1, unit_price: 8 },
+    { part_id: correctionBelt.id, qty: 2, unit_price: 3 }] });
+const correctionOneUrl = `${correctionUrl}/${correctionOne.data.id}`;
+const correctionTwoUrl = `${correctionUrl}/${correctionTwo.data.id}`;
+const correctionHistory = (await late(correctionUrl)).data;
+const oldPhotos = correctionHistory[1].photos;
+const photoFileDb = new DatabaseSync(DB, { readOnly: true });
+const deletedPhotoFiles = oldPhotos.map((photo) => photoFileDb.prepare('SELECT filename FROM work_update_photos WHERE id = ?').get(photo).filename);
+photoFileDb.close();
+const newerJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: correctionMachine.id, title: 'Newer stoppage', stops_machine: true,
+} })).data;
+ok('a newer report immediately changes the overall machine state', (await correctionState()).status === 'down');
+ok('technicians cannot edit or delete even the latest stage',
+  (await rateTech(correctionTwoUrl, { method: 'PUT', body: { hours: 9 } })).status === 403
+  && (await rateTech(correctionTwoUrl, { method: 'DELETE' })).status === 403);
+ok('signed-out people cannot edit or delete stages',
+  (await makeClient()(correctionTwoUrl, { method: 'PUT', body: { hours: 9 } })).status === 401
+  && (await makeClient()(correctionTwoUrl, { method: 'DELETE' })).status === 401);
+const malformedEdit = await late(correctionTwoUrl, { method: 'PUT', rawBody: 'null' });
+const negativeEdit = await late(correctionTwoUrl, { method: 'PUT', body: { hours: -1 } });
+const invalidPhotoEdit = await late(correctionTwoUrl, { method: 'PUT', body: { photos: ['data:image/png;base64,dGV4dA=='] } });
+const duplicateKeep = await late(correctionTwoUrl, { method: 'PUT', body: { keep_photos: [oldPhotos[0], oldPhotos[0]] } });
+ok('invalid corrections are refused without altering the stage', malformedEdit.status === 400 && negativeEdit.status === 400
+  && invalidPhotoEdit.status === 400 && duplicateKeep.status === 400 && (await late(correctionUrl)).data[1].hours === 2);
+ok('admins cannot edit or delete an older stage',
+  (await late(correctionOneUrl, { method: 'PUT', body: { hours: 9 } })).status === 400
+  && (await late(correctionOneUrl, { method: 'DELETE' })).status === 400
+  && (await late(correctionUrl)).data.length === 2);
+ok('a stage cannot be edited through another work order',
+  (await late(`/api/work-orders/${newerJob.id}/updates/${correctionTwo.data.id}`, { method: 'DELETE' })).status === 400
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 200);
+await late(`/api/parts/${correctionMotor.id}`, { method: 'PUT', body: { name: 'Renamed correction motor', unit_price: 99 } });
+const revisedStage = await late(correctionTwoUrl, { method: 'PUT', body: {
+  message: 'Corrected repair', hours: 4, machine_running: true, keep_photos: [oldPhotos[0]], photos: [stagePhoto],
+  parts: [{ part_id: correctionMotor.id, qty: 2, unit_price: 7 }, { part_id: correctionBelt.id, qty: 1, unit_price: 4 }],
+} });
+let correctedHistory = (await late(correctionUrl)).data;
+let correctionCurrent = await correctionRow();
+ok('admin edits latest stage time, description and actual-cost parts', revisedStage.status === 200
+  && correctedHistory[1].message === 'Corrected repair' && correctedHistory[1].hours === 4
+  && correctedHistory[1].edited_by === 'Admin' && correctedHistory[1].parts[0].part_name === 'Correction motor'
+  && correctionCurrent.effective_hours === 5 && correctionCurrent.cost === 28, JSON.stringify(correctionCurrent));
+ok('editing parts adjusts stock by the difference, not the whole quantity twice',
+  await partStock(correctionMotor.id) === 1 && await partStock(correctionBelt.id) === 4);
+ok('editing keeps selected photos, removes unchecked ones, and adds a new photo',
+  correctedHistory[1].photos.length === 2 && correctedHistory[1].photos.includes(oldPhotos[0])
+  && !correctedHistory[1].photos.includes(oldPhotos[1]) && !existsSync(join(photosDir, deletedPhotoFiles[1]))
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 200
+  && (await late(`${correctionTwoUrl}/photos/${oldPhotos[1]}`)).status === 404);
+ok('correcting an older state does not override a newer report on another work order',
+  correctedHistory[1].machine_running === 1 && (await correctionState()).status === 'down');
+const optionalEdit = await late(correctionTwoUrl, { method: 'PUT', body: { message: 'Only corrected text' } });
+correctedHistory = (await late(correctionUrl)).data;
+ok('a partial correction keeps existing time, status, parts and photos', optionalEdit.status === 200
+  && correctedHistory[1].hours === 4 && correctedHistory[1].machine_running === 1
+  && correctedHistory[1].parts.length === 2 && correctedHistory[1].photos.length === 2);
+const beforeCorrectionFailureFiles = readdirSync(photosDir).length;
+const correctionFailure = await late(correctionTwoUrl, { method: 'PUT', body: {
+  message: 'Must roll back', hours: 8, machine_running: false, keep_photos: [], photos: [stagePhoto],
+  parts: [{ part_id: correctionMotor.id, qty: 99, unit_price: 1 }],
+} });
+correctedHistory = (await late(correctionUrl)).data;
+ok('an insufficient-stock edit rolls back description, hours, state, parts and photos', correctionFailure.status === 400
+  && correctedHistory[1].message === 'Only corrected text' && correctedHistory[1].hours === 4
+  && correctedHistory[1].machine_running === 1 && correctedHistory[1].parts.length === 2
+  && correctedHistory[1].photos.length === 2 && await partStock(correctionMotor.id) === 1
+  && readdirSync(photosDir).length === beforeCorrectionFailureFiles && (await correctionState()).status === 'down');
+ok('an edit cannot keep another stage photo',
+  (await late(correctionTwoUrl, { method: 'PUT', body: { keep_photos: [correctionHistory[0].photos[0]] } })).status === 400);
+const removeLatest = await late(correctionTwoUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting the latest stage restores its stock, hours and cost without touching earlier stages', removeLatest.status === 200
+  && (await late(correctionUrl)).data.length === 1 && correctionCurrent.effective_hours === 1
+  && correctionCurrent.cost === 10 && await partStock(correctionMotor.id) === 3 && await partStock(correctionBelt.id) === 5);
+ok('deleting a stage removes its photos and preserves a newer machine-state report',
+  (await late(`${correctionTwoUrl}/photos/${oldPhotos[0]}`)).status === 404
+  && !existsSync(join(photosDir, deletedPhotoFiles[0])) && (await correctionState()).status === 'down');
+await late(correctionOneUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting the only remaining stage returns an in-progress job to open and restores stock', correctionCurrent.status === 'open'
+  && correctionCurrent.effective_hours === null && await partStock(correctionMotor.id) === 5
+  && (await late(correctionUrl)).data.length === 0);
+const correctionAgain = await correctionPost({ message: 'Retried fix', hours: 1, machine_running: true });
+const correctionAgainUrl = `${correctionUrl}/${correctionAgain.data.id}`;
+ok('a later stage answer controls the whole machine despite an earlier stopping job',
+  correctionAgain.status === 201 && (await correctionState()).status === 'active');
+await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Fixed', labour_hours: 0.5 } });
+const editClosed = await late(correctionAgainUrl, { method: 'PUT', body: { hours: 2, machine_running: false } });
+ok('an admin may correct the latest stage after closure and its hours adjust the reviewed total', editClosed.status === 200
+  && (await correctionRow()).effective_hours === 1.5 && (await correctionState()).status === 'active');
+await late(correctionAgainUrl, { method: 'DELETE' });
+correctionCurrent = await correctionRow();
+ok('deleting a reviewed stage cannot produce negative hours and keeps the closed job closed', correctionCurrent.status === 'done'
+  && correctionCurrent.effective_hours === 0 && (await correctionState()).status === 'active');
+await late(`/api/work-orders/${correctionJob.id}`, { method: 'PATCH', body: { status: 'open' } });
+await correctionPost({ message: 'More work after correction', hours: 0.25, machine_running: true });
+ok('new time after a zero-clamped correction is not swallowed by the old baseline',
+  (await correctionRow()).effective_hours === 0.25 && (await correctionState()).status === 'active');
+const unchangedStage = await correctionPost({ message: 'Legacy client supplied no state', hours: 0.5 });
+ok('an unanswered stage leaves the last reported state unchanged', unchangedStage.status === 201 && (await correctionState()).status === 'active');
+const unchangedUrl = `${correctionUrl}/${unchangedStage.data.id}`;
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: false } });
+ok('correcting an unanswered latest stage updates its recorded state', (await correctionState()).status === 'down');
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: null } });
+ok('clearing that state reveals the preceding explicit answer', (await correctionState()).status === 'active');
+await late('/api/work-orders', { method: 'POST', body: { equipment_id: correctionMachine.id, title: 'Later stoppage', stops_machine: true } });
+const amendUnanswered = await late(unchangedUrl, { method: 'PUT', body: { machine_running: true } });
+ok('correcting a formerly unanswered stage does not override a newer report', amendUnanswered.status === 200 && (await correctionState()).status === 'down');
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: null } });
+await late(unchangedUrl, { method: 'PUT', body: { machine_running: true } });
+await late(unchangedUrl, { method: 'DELETE' });
+ok('clearing, re-correcting and deleting that older answer keeps the newer report', (await correctionState()).status === 'down');
+await late(`/api/equipment/${correctionMachine.id}`, { method: 'DELETE' });
+await late(`/api/parts/${correctionMotor.id}`, { method: 'DELETE' });
+await late(`/api/parts/${correctionBelt.id}`, { method: 'DELETE' });
+
+const reportMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Press (reporting)' } })).data;
+
+const reportJob = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Bearing noise', priority: 'high',
+  reported_by: '  Ada on line 2  ', notes: '  Only above 20 m/min  ' } });
+ok('a work order carries who reported it and what was seen', reportJob.status === 201
+  && reportJob.data.reported_by === 'Ada on line 2' && reportJob.data.notes === 'Only above 20 m/min',
+  JSON.stringify({ reported_by: reportJob.data.reported_by, notes: reportJob.data.notes }));
+
+const bareJob = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Vibration' } });
+ok('both are optional, and nothing is invented when they are left out',
+  bareJob.status === 201 && bareJob.data.reported_by === null && bareJob.data.notes === null,
+  JSON.stringify({ reported_by: bareJob.data.reported_by, notes: bareJob.data.notes }));
+
+const blankReporter = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Oil leak', reported_by: '   ' } });
+ok('a reporter typed as spaces is nobody, not a blank name',
+  blankReporter.data.reported_by === null, JSON.stringify(blankReporter.data.reported_by));
+
+const longReporter = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: reportMachine.id, title: 'Overlong reporter', reported_by: 'n'.repeat(121) } });
+ok('a reporter name beyond 120 characters is refused with a sentence',
+  longReporter.status === 400 && /120 characters/.test(longReporter.data.error || ''),
+  JSON.stringify(longReporter.data));
+ok('and nothing is written when the name is refused',
+  !(await late('/api/work-orders')).data.some((w) => w.title === 'Overlong reporter'));
+
+const corrected = await late(`/api/work-orders/${bareJob.data.id}`, { method: 'PATCH', body: {
+  title: 'Vibration at speed', notes: '  Worse when warm  ', reported_by: '  Night shift  ' } });
+ok('the report can be corrected afterwards, and is trimmed again',
+  corrected.status === 200 && corrected.data.reported_by === 'Night shift'
+  && corrected.data.notes === 'Worse when warm', JSON.stringify(corrected.data));
+const untouched = await late(`/api/work-orders/${bareJob.data.id}`, { method: 'PATCH', body: {
+  priority: 'low' } });
+ok('a change that does not mention them leaves them alone',
+  untouched.data.reported_by === 'Night shift' && untouched.data.notes === 'Worse when warm');
+
+// ---- the photograph of the fault ------------------------------------------
+const faultsBefore = photoCount();
+ok('a job with no photograph says so',
+  (await late(`/api/work-orders/${reportJob.data.id}/photo`)).status === 404);
+const faultShot = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph of the fault can be attached', faultShot.status === 200,
+  JSON.stringify(faultShot.data));
+ok('the file is named by the server, never by the client',
+  Boolean(faultShot.data.photo) && !/jpeg|photo\./i.test(faultShot.data.photo),
+  String(faultShot.data.photo));
+const faultFetched = await late(`/api/work-orders/${reportJob.data.id}/photo`);
+ok('and comes back byte for byte, typed from the file rather than the header',
+  faultFetched.status === 200 && faultFetched.bytes.equals(jpegBytes)
+  && faultFetched.headers.get('content-type') === 'image/jpeg',
+  `${faultFetched.status} ${faultFetched.headers.get('content-type')}`);
+ok('the list says which jobs have one',
+  Boolean((await late('/api/work-orders')).data.find((w) => w.id === reportJob.data.id)?.photo));
+ok('the photograph is a file beside the database, not bytes inside it',
+  photoCount() === faultsBefore + 1, `${faultsBefore} -> ${photoCount()}`);
+ok('a photograph is not readable without signing in',
+  (await fetch(`${BASE}/api/work-orders/${reportJob.data.id}/photo`)).status === 401);
+ok('a photograph for a job that does not exist is a 404, not a stray file',
+  (await late('/api/work-orders/999999/photo', {
+    method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes })).status === 404);
+
+// The deliberate difference from a machine photograph: the person who finds the
+// fault is a technician, so an admin-only route would be one nobody who needs it
+// can use. Deleting the machine stays admin-only; deleting a blurred photo does not.
+// A fresh technician, because the one created near the top of the run has been
+// renamed, demoted and disabled many times since; borrowing that account makes
+// this test fail for reasons that have nothing to do with photographs.
+const floorUser = await late('/api/users', { method: 'POST', body: {
+  name: 'Rafael on nights', email: 'rafael@local', password: 'fault-photo-1', role: 'tech' } });
+const floor = makeClient();
+const floorIn = await floor('/api/login', { method: 'POST', body: {
+  email: 'rafael@local', password: 'fault-photo-1' } });
+ok('a technician can sign in to photograph a fault', floorUser.status === 201 && floorIn.status === 200,
+  JSON.stringify(floorIn.data));
+const floorShot = await floor(`/api/work-orders/${bareJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/png', rawBody: pngBytes });
+ok('a technician can photograph a fault — this is the route they need',
+  floorShot.status === 200, JSON.stringify(floorShot.data));
+ok('and can take a blurred one back out',
+  (await floor(`/api/work-orders/${bareJob.data.id}/photo`, { method: 'DELETE' })).status === 200);
+
+const faultText = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: Buffer.from('this is not an image') });
+ok('text sent as a JPEG is refused on its bytes here too',
+  faultText.status === 400 && /JPEG, PNG, WebP/.test(faultText.data.error || ''),
+  JSON.stringify(faultText.data));
+const faultHuge = await late(`/api/work-orders/${reportJob.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg',
+  rawBody: Buffer.concat([jpegBytes, Buffer.alloc(3 * 1024 * 1024, 0)]) });
+ok('a fault photograph over 2 MB is accepted',
+  faultHuge.status === 200, `status ${faultHuge.status}`);
+
+// The jobs go when the machine does (ON DELETE CASCADE); their photographs must
+// go too, or a workshop backup grows files nothing can ever point at again.
+const keptFaultName = faultShot.data.photo;
+await late(`/api/equipment/${reportMachine.id}`, { method: 'DELETE' });
+ok('deleting the machine takes the photographs of its jobs with it',
+  !existsSync(join(photosDir, keptFaultName)),
+  `still on disk: ${keptFaultName}`);
+ok('and the jobs themselves are gone', (await late(`/api/work-orders/${reportJob.data.id}`)).status === 404
+  || !(await late('/api/work-orders')).data.some((w) => w.id === reportJob.data.id));
+
+// ---- the form that asks for all of it -------------------------------------
+const workForm = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the required problem field has a small red asterisk',
+  /<label[^>]*><span>Problem\s*<span class="required-mark" aria-hidden="true">\*<\/span><\/span><input id="w-title" required\b/.test(workForm)
+  && /\.required-mark\s*\{[^}]*color:\s*var\(--red\);[^}]*font-size:\s*\.85em/.test(uiCss));
+ok('the report form asks what was seen, who saw it and for a photograph',
+  workForm.includes('id="w-notes"') && workForm.includes('id="w-reporter"')
+  && workForm.includes('id="w-photo"'), workForm ? 'a field is missing' : 'work-form is gone');
+const workSrc = readFileSync(join(root, 'public', 'work.js'), 'utf8');
+const createWorkFn = (workSrc.match(/export async function addWorkOrder\(\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the report sends the notes and the name it was given',
+  createWorkFn.includes('#w-notes') && createWorkFn.includes('#w-reporter'),
+  createWorkFn ? 'a field is read but not sent' : 'addWorkOrder() is not defined');
+ok('the photograph is uploaded only after the job exists to hold it',
+  createWorkFn.includes("api('/work-orders'")
+  && createWorkFn.indexOf("api('/work-orders'") < createWorkFn.indexOf('postPhoto('),
+  'the upload happens before there is an id to upload to');
+ok('a job with a photograph offers a link to it beside the problem',
+  /link-photo/.test(workSrc) && /api\/work-orders\/\$\{w\.id\}\/photo/.test(workSrc),
+  'nothing on the row points at the photograph');
+ok('the link is styled, so it does not read as a stray word',
+  /\.link-photo \{/.test(uiCss) && /\.link-photo:hover/.test(uiCss));
+
+// ---- closing a job: what was done, by whom, with which parts ---------------
+// A closed job that says only "done" is a row, not a history. The record of the
+// repair is the reason this screen exists at all.
+const closeMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Lathe (closing)' } })).data;
+const closeJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: closeMachine.id, title: 'Spindle wobble', priority: 'medium' } })).data;
+
+const silentClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done' } });
+ok('a job cannot be closed without confirming it is running',
+  silentClose.status === 400 && /machine is running/i.test(silentClose.data.error || ''),
+  JSON.stringify(silentClose.data));
+const falseClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: false } });
+const stringClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: 'true' } });
+ok('out of service and ambiguous running answers cannot close a job', falseClose.status === 400 && stringClose.status === 400);
+await late(`/api/equipment/${closeMachine.id}`, { method: 'PUT', body: { status: 'retired' } });
+const retiredClose = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+ok('a retired machine cannot be reported running by closing a job', retiredClose.status === 400);
+await late(`/api/equipment/${closeMachine.id}`, { method: 'PUT', body: { status: 'active' } });
+const noNoteJob = (await late('/api/work-orders', { method: 'POST', body: { equipment_id: closeMachine.id, title: 'No closing note', assigned_to: 1, stops_machine: true } })).data;
+await late(`/api/work-orders/${noNoteJob.id}/updates`, { method: 'POST', body: { message: 'Stage work', hours: 2, machine_running: false } });
+const noNoteClose = await late(`/api/work-orders/${noNoteJob.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true } });
+const noNoteRow = (await late('/api/work-orders')).data.find((w) => w.id === noNoteJob.id);
+const noNoteMachine = (await late('/api/equipment')).data.find((m) => m.id === closeMachine.id);
+ok('closing with no note preserves stage hours and records the running state', noNoteClose.status === 200 && noNoteClose.data.resolution === null && noNoteRow.effective_hours === 2 && noNoteMachine.status === 'active');
+const closeAttempt = (await late('/api/work-orders')).data.find((w) => w.id === closeJob.id);
+ok('and it is still open, not half closed',
+  closeAttempt?.status === 'open' && closeAttempt.closed_at === null,
+  JSON.stringify(closeAttempt?.status));
+
+const closedJob = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done', machine_running: true, resolution: '  New spindle bearings, re-greased  ',
+  verified_by: '  Sam  ', labour_hours: 2.5 } });
+ok('closing records what was done, who checked it and the hours',
+  closedJob.status === 200 && closedJob.data.resolution === 'New spindle bearings, re-greased'
+  && closedJob.data.verified_by === 'Sam' && Number(closedJob.data.labour_hours) === 2.5
+  && Boolean(closedJob.data.closed_at), JSON.stringify(closedJob.data));
+
+const laterEdit = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  priority: 'low' } });
+ok('a later change to a closed job does not have to tell the story again',
+  laterEdit.status === 200 && laterEdit.data.resolution === 'New spindle bearings, re-greased'
+  && laterEdit.data.status === 'done', JSON.stringify(laterEdit.data));
+
+const reopenedJob = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'open' } });
+ok('reopening clears the closed date and keeps what was done',
+  reopenedJob.data.status === 'open' && reopenedJob.data.closed_at === null
+  && reopenedJob.data.resolution === 'New spindle bearings, re-greased',
+  JSON.stringify(reopenedJob.data));
+const reopenAgain = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done' } });
+ok('but closing it again requires a fresh running confirmation',
+  reopenAgain.status === 400 && /machine is running/i.test(reopenAgain.data.error || ''),
+  JSON.stringify(reopenAgain.data));
+const reclosed = await late(`/api/work-orders/${closeJob.id}`, { method: 'PATCH', body: {
+  status: 'done', machine_running: true, resolution: 'Shimmed the mount; wobble gone' } });
+ok('and the new account replaces the old one',
+  reclosed.data.resolution === 'Shimmed the mount; wobble gone', JSON.stringify(reclosed.data.resolution));
+
+const longResolution = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: closeMachine.id, title: 'Long story' } });
+const refusedLong = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
+  status: 'done', machine_running: true, resolution: 'x'.repeat(2001) } });
+ok('a resolution longer than 2000 characters is refused with a sentence',
+  refusedLong.status === 400 && /2000 characters/.test(refusedLong.data.error || ''),
+  JSON.stringify(refusedLong.data));
+const refusedVerifier = await late(`/api/work-orders/${longResolution.data.id}`, { method: 'PATCH', body: {
+  status: 'done', machine_running: true, resolution: 'Adjusted', verified_by: 'n'.repeat(121) } });
+ok('and so is a name longer than 120',
+  refusedVerifier.status === 400 && /120 characters/.test(refusedVerifier.data.error || ''),
+  JSON.stringify(refusedVerifier.data));
+
+// The machine also has the job whose long story was refused, so the assertion is
+// about the job this test closed rather than about the length of the list.
+const closedHistory = (await late(`/api/history?equipment_id=${closeMachine.id}`)).data.rows;
+ok('the record carries what was done, on the job it belongs to',
+  closedHistory.find((r) => r.id === closeJob.id)?.resolution === 'Shimmed the mount; wobble gone',
+  JSON.stringify(closedHistory.map((r) => [r.id, r.resolution])));
+
+const closeFile = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const closeCsv = await closeFile(`/api/export/history.csv?equipment_id=${closeMachine.id}`);
+const closeCsvLines = closeCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
+ok('the history file gives the repair a column of its own',
+  /What was done/.test(closeCsvLines[0] || '')
+  && closeCsvLines.some((line) => line.includes('Shimmed the mount; wobble gone')),
+  closeCsvLines.join(' | '));
+
+// ---- the dialog that asks for it ------------------------------------------
+const closeDialog = (indexEq.match(/<dialog id="work-close"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the close dialog asks for running state and an optional note, not stage data',
+  closeDialog.includes('id="wc-running" type="checkbox" role="switch"') && closeDialog.includes('id="wc-resolution"')
+  && closeDialog.includes('class="machine-toggle"') && !closeDialog.includes('Is the machine now running?')
+  && !['wc-hours', 'wc-verified', 'wc-part', 'wc-qty', 'wc-parts'].some((id) => closeDialog.includes(`id="${id}"`)));
+ok('closing opens that dialog instead of a one-click PATCH',
+  /if \(status === 'done'\) return openWorkClose\(id\)/.test(workSrc));
+ok('the disabled close action explains an out-of-service machine on hover or focus',
+  closeDialog.includes('id="wc-disabled-tip" role="tooltip"')
+  && closeDialog.includes('aria-describedby="wc-disabled-tip"')
+  && /close-action:hover/.test(uiCss) && /close-action:focus \.close-tooltip/.test(uiCss)
+  && /wc-go'\)\.disabled = !closeStateReady/.test(workSrc));
+ok('closure requires running and sends no hours or parts',
+  /machine_running: true/.test(workSrc) && /wc-running/.test(workSrc)
+  && !workSrc.includes("$('#wc-hours')") && !workSrc.includes("$('#wc-part')"));
+ok('the history row shows what was done under the job',
+  /row-sub/.test(histSrc) && /w\.resolution/.test(histSrc));
+
+// ---- creating a machine asks everything editing one asks -------------------
+// The creating dialog asked for four fields and the editor for seven, so a machine
+// could only be fully described by creating it and immediately editing it again.
+// POST has accepted manufacturer and notes all along.
+const eqForm = (indexEq.match(/<dialog id="equipment-form"[\s\S]*?<\/dialog>/) || [''])[0];
+const eqEditor = (indexEq.match(/<dialog id="equipment-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+const labelsIn = (dialog) => (dialog.match(/<span>[^<]*<\/span>/g) || [])
+  .map((one) => one.replace(/<\/?span>/g, '')).sort();
+ok('creating a machine asks for everything editing one asks for',
+  labelsIn(eqForm).length > 0
+  && JSON.stringify(labelsIn(eqForm)) === JSON.stringify(labelsIn(eqEditor)),
+  `create: ${labelsIn(eqForm).join(' | ')}\nedit:   ${labelsIn(eqEditor).join(' | ')}`);
+ok('and the form it fills has a field for each of them',
+  ['e-name', 'e-tag', 'e-maker', 'e-cat', 'e-loc', 'e-notes', 'e-photo']
+    .every((wanted) => eqForm.includes(`id="${wanted}"`)),
+  ['e-name', 'e-tag', 'e-maker', 'e-cat', 'e-loc', 'e-notes', 'e-photo']
+    .filter((wanted) => !eqForm.includes(`id="${wanted}"`)).join(', '));
+
+const described = await late('/api/equipment', { method: 'POST', body: {
+  name: 'Drill (described)', asset_tag: '101220054', manufacturer: 'Bosch',
+  category: 'Drilling', location: 'Bay 4', notes: 'Chuck key missing' } });
+ok('one request describes the whole machine',
+  described.status === 201 && described.data.manufacturer === 'Bosch'
+  && described.data.notes === 'Chuck key missing' && described.data.category === 'Drilling'
+  && described.data.location === 'Bay 4' && described.data.asset_tag === '101220054',
+  JSON.stringify(described.data));
+
+const createdShot = await late(`/api/equipment/${described.data.id}/photo`, {
+  method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('a photograph can be attached as the machine is created',
+  createdShot.status === 200
+  && (await late(`/api/equipment/${described.data.id}/photo`)).status === 200,
+  JSON.stringify(createdShot.data));
+
+const addEqFn = (appEq.match(/export async function addEquipment\(\) \{[\s\S]*?\n\}/) || [''])[0];
+// The body it posts, not the whole function: every one of these ids also appears in
+// the line that clears the form afterwards, so a file-wide search passed while the
+// manufacturer was asked for, cleared, and never sent.
+// Up to the closing brace of the object literal, which is a line of its own — the
+// call around it ends })})); and a lazier pattern swallowed the wrong two characters.
+const addEqBody = (addEqFn.match(/JSON\.stringify\(\{[\s\S]*?\n\s*\}\)/) || [''])[0];
+ok('the creating form sends what it now asks for',
+  /manufacturer: \$\('#e-maker'\)/.test(addEqBody) && /notes: \$\('#e-notes'\)/.test(addEqBody)
+  && /asset_tag: \$\('#e-tag'\)/.test(addEqBody),
+  addEqBody ? `posted: ${addEqBody.replace(/\s+/g, ' ').slice(0, 160)}` : 'no request body found');
+ok('and uploads the photograph only after the machine exists to hold it',
+  addEqFn.includes("api('/equipment'")
+  && addEqFn.indexOf("api('/equipment'") < addEqFn.indexOf('uploadPhoto('),
+  'the upload happens before there is an id to upload to');
+ok('a photograph that fails does not lose the machine that was just created',
+  /The machine itself was saved/.test(addEqFn));
+
+// ---- every ticket has a number --------------------------------------------
+// The id is for the database. A number is for the whiteboard, the phone call with
+// the vendor and the printed sheet that goes out to the machine.
+const numberMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Press (numbered)' } })).data;
+const firstNumber = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'First in the series' } })).data;
+const secondNumber = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'Second in the series' } })).data;
+ok('a new ticket gets a number of its own',
+  /^WO-\d{4}-\d{4}$/.test(String(firstNumber.code)), String(firstNumber.code));
+ok('and the number carries the year it was raised in',
+  String(firstNumber.code).slice(3, 7) === new Date().toISOString().slice(0, 4),
+  String(firstNumber.code));
+ok('the next ticket follows it',
+  Number(String(secondNumber.code).slice(-4)) === Number(String(firstNumber.code).slice(-4)) + 1,
+  `${firstNumber.code} then ${secondNumber.code}`);
+const allCodes = (await late('/api/work-orders')).data.map((w) => w.code);
+ok('no two tickets share a number',
+  allCodes.every((c) => /^WO-\d{4}-\d{4}$/.test(String(c)))
+  && new Set(allCodes).size === allCodes.length,
+  allCodes.join(', '));
+const chosenNumber = await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: numberMachine.id, title: 'Trying to choose', code: 'WO-1999-0001' } });
+ok('a client cannot choose its own number',
+  chosenNumber.status === 201 && chosenNumber.data.code !== 'WO-1999-0001',
+  String(chosenNumber.data.code));
+const retitledNumber = await late(`/api/work-orders/${firstNumber.id}`, { method: 'PATCH', body: {
+  title: 'First in the series, renamed' } });
+ok('editing a ticket does not renumber it', retitledNumber.data.code === firstNumber.code,
+  `${firstNumber.code} -> ${retitledNumber.data.code}`);
+
+// A database written before the column existed still ends up with numbers, per
+// year and in the order the jobs were raised — the only thing a person can check.
+{
+  const legacyCodeDb = join(root, 'data', 'legacy-code.db');
+  rmSync(legacyCodeDb, { force: true });
+  const seed = new DatabaseSync(legacyCodeDb);
+  seed.exec('CREATE TABLE equipment (id INTEGER PRIMARY KEY, name TEXT, status TEXT)');
+  seed.exec(`CREATE TABLE work_orders (id INTEGER PRIMARY KEY, equipment_id INTEGER NOT NULL,
+    title TEXT NOT NULL, notes TEXT, priority TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, closed_at TEXT,
+    assigned_to INTEGER)`);
+  seed.exec("INSERT INTO equipment (name, status) VALUES ('Old lathe', 'active')");
+  seed.exec(`INSERT INTO work_orders (equipment_id, title, created_at) VALUES
+    (1, 'Oldest', '2025-03-02 09:00:00'),
+    (1, 'Next', '2025-07-02 09:00:00'),
+    (1, 'This year', '2026-01-04 09:00:00')`);
+  seed.close();
+  spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', '-e', "import('./db.js')"],
+    { cwd: root, env: { ...process.env, MM_DB: legacyCodeDb } });
+  const numbered = new DatabaseSync(legacyCodeDb, { readOnly: true });
+  const legacyCodes = numbered.prepare('SELECT code FROM work_orders ORDER BY id').all()
+    .map((r) => r.code);
+  numbered.close();
+  ok('jobs that predate the number are numbered on upgrade, per year and oldest first',
+    JSON.stringify(legacyCodes) === JSON.stringify(['WO-2025-0001', 'WO-2025-0002', 'WO-2026-0001']),
+    legacyCodes.join(', '));
+  rmSync(legacyCodeDb, { force: true });
+}
+
+// ---- the ticket says whether the machine stops ----------------------------
+const stopMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Mill (stopped)' } })).data;
+const quietJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: stopMachine.id, title: 'Oil leak', priority: 'high' } })).data;
+ok('a new ticket says the machine is still running unless somebody says otherwise',
+  quietJob.stops_machine === 0
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'active',
+  JSON.stringify(quietJob.stops_machine));
+const loudJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: stopMachine.id, title: 'Spindle gone', stops_machine: true } })).data;
+ok('and one answer in the ticket is what takes the machine out of service',
+  loudJob.stops_machine === 1
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'down',
+  JSON.stringify(loudJob.stops_machine));
+const stoppedMachine = (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id);
+ok('the reason gives the number and the complaint, not a priority',
+  String(stoppedMachine.status_reason).includes(loudJob.code)
+  && /Spindle gone/.test(stoppedMachine.status_reason), String(stoppedMachine.status_reason));
+const released = await late(`/api/work-orders/${loudJob.id}`, { method: 'PATCH', body: {
+  stops_machine: false } });
+ok('taking the answer off brings the machine back without closing the job',
+  released.data.stops_machine === 0 && released.data.status !== 'done'
+  && (await late('/api/equipment?service=all')).data.find((m) => m.id === stopMachine.id)?.status === 'active',
+  JSON.stringify({ flag: released.data.stops_machine, status: released.data.status }));
+
+// ---- the screen asks the question and shows the answer --------------------
+const workFormNow = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('the report form uses the same accessible machine-state switch as stages',
+  /id="w-running" type="checkbox" role="switch"/.test(workFormNow)
+  && workFormNow.includes('aria-labelledby="w-running-question w-running-label"')
+  && workFormNow.includes('class="stage-machine"') && workFormNow.includes('class="toggle-track"')
+  && !/<select id="w-running"/.test(workFormNow));
+ok('the running switch sends the inverse stops-machine state',
+  /stops_machine: !\$\('#w-running'\)\.checked/.test(workSrc));
+ok('the row shows the number under the problem',
+  /class="row-sub">\$\{esc\(w\.code/.test(workSrc));
+// The badge itself, not the words "stops the machine": the inline editor's option
+// says the same three words, so a search for them passed with the row badge deleted.
+ok('and says so when a job is holding the machine down',
+  /badge\('last noted out of service', 'red'\)/.test(workSrc)
+  && /w\.stops_machine \?/.test(workSrc));
+ok('the answer can be changed from the edit dialog without closing the job',
+  indexEq.includes('id="we-stops"')
+  && /const stops = \$\('#we-stops'\)\.value === '1'/.test(workSrc) && /body\.stops_machine = stops/.test(workSrc),
+  'the editor has no control for it, or the control is not saved');
+ok('the close dialog names the ticket by its number',
+  /\$\{job\.code \? `\$\{job\.code\} · `/.test(workSrc));
+ok('the history shows the number beside the job',
+  /w\.code/.test(histSrc));
+
+// ---- editing a work order is a dialog, not a row of inputs ----------------
+// The inline editor could change four things and nothing else: not the notes, not
+// who reported it, not the photograph, and the answer to "does this stop the
+// machine" was a dropdown squeezed into a cell beside a badge.
+const editDialog = (indexEq.match(/<dialog id="work-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('editing a work order opens a dialog that carries the whole record',
+  editDialog.includes('<h3 id="work-edit-title">')
+  && ['we-id', 'we-title', 'we-owner', 'we-priority', 'we-stops',
+    'we-reporter', 'we-notes', 'we-photo', 'we-photo-clear', 'we-photo-now']
+    .every((wanted) => editDialog.includes(`id="${wanted}"`)),
+  editDialog ? 'a field is missing' : 'work-edit is gone');
+ok('the list itself has no editor left in it',
+  !/we-title-\$\{/.test(workSrc) && !/id="we-owner-\$\{/.test(workSrc)
+  && /menuItem\('Edit', `editWork\(\$\{w\.id\}\)`/.test(workSrc),
+  'a row still draws inputs, or Edit does not open anything');
+// The function itself: the close dialog also reads workCache, so a file-wide search
+// for it passed while editWork had been changed to fetch the job again.
+const editWorkFn = (workSrc.match(/export function editWork\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the dialog is filled from the row that was clicked, not from a second request',
+  /workCache\.find/.test(editWorkFn) && !/await api\(/.test(editWorkFn)
+  && /\$\('#we-title'\)\.value = job\.title/.test(editWorkFn)
+  && /\$\('#we-notes'\)\.value = job\.notes/.test(editWorkFn)
+  && /\$\('#we-stops'\)\.value = job\.stops_machine/.test(editWorkFn),
+  editWorkFn ? 'the prefill is missing, or it fetches the job again' : 'editWork() is not a plain function');
+const saveWorkFn = (workSrc.match(/export async function saveWork\(\) \{[\s\S]*?\n\}/) || [''])[0];
+// The body it builds, key by key. `title` is written shorthand (`title,`) and the
+// rest as `field: value`, so the pattern allows either rather than demanding one style.
+const saveBody = (saveWorkFn.match(/const body = \{[\s\S]*?\n  \};/) || [''])[0];
+ok('one Save sends everything the dialog asked for',
+  ['title', 'priority', 'reported_by', 'notes']
+    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(saveBody))
+    && /body\.stops_machine = stops/.test(saveWorkFn),
+  saveBody ? `sent: ${saveBody.replace(/\s+/g, ' ').slice(0, 200)}` : 'no request body found');
+ok('and refuses an empty problem before it reaches the server',
+  /formError\('work-edit'/.test(saveWorkFn));
+// A technician cannot read the list of people, so the owner control is replaced by
+// a read-only name and the save does not mention ownership at all. Sending null
+// because a select was empty would quietly unassign the job.
+// The `hidden` attribute is a browser rule and any author rule that sets `display`
+// beats it: `.field { display: flex }` did, so the editor showed the owner select and
+// the read-only owner name at the same time, one of them empty. The stylesheet has to
+// say so, and say it with !important, because `.field` and `[hidden]` are equally
+// specific.
+ok('the hidden attribute hides, whatever display the element has',
+  /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(uiCss)
+  && /\.field\s*\{[^}]*display:\s*flex/.test(uiCss),
+  'a rule that sets display beats the hidden attribute, so hidden elements show');
+// One Owner field, not two with one hidden. The first version of this dialog had a
+// select for administrators and a separate read-only label for everyone else, and
+// swapped them with the hidden attribute — which is how the screen ended up showing
+// two Owner fields, one of them empty. A control that only exists once cannot do that.
+ok('the editor has exactly one Assigned-to field',
+  (editDialog.match(/<span>Assigned to<\/span>/g) || []).length === 1,
+  `${(editDialog.match(/<span>Assigned to<\/span>/g) || []).length} Assigned-to labels in the dialog`);
+ok('and that one field tells the truth to whoever is reading it',
+  /canAssign\s*\n?\s*\?/.test(workSrc)
+  && /<option value="">\$\{esc\(job\.assignee_name \|\| 'Nobody yet'\)\}<\/option>/.test(workSrc)
+  && /\$\('#we-owner'\)\.disabled = !canAssign/.test(workSrc)
+  && /\$\('#we-owner-hint'\)\.hidden = canAssign/.test(workSrc),
+  'a technician sees an empty list, a blank field, no explanation, or an editable one');
+ok('a technician editing a job cannot silently unassign it',
+  /if \(canAssign\) body\.assigned_to/.test(saveWorkFn)
+  && /canAssign = assignable\.length > 0/.test(workSrc),
+  'the owner is sent whether or not the list was readable');
+ok('the photograph can be replaced or removed from the same dialog',
+  /postPhoto\(`\/api\/work-orders\/\$\{idToSave\}\/photo`/.test(saveWorkFn)
+  && /else if \(\$\('#we-photo-clear'\)\.checked\)/.test(saveWorkFn)
+  && /api\(`\/work-orders\/\$\{idToSave\}\/photo`, \{ method: 'DELETE' \}\)/.test(saveWorkFn),
+  'the editor cannot touch the photograph, or the checkbox decides nothing');
+
+// The behaviour those controls promise, through the API. An edit that mentions one
+// field must not quietly drop the others, and the owner must survive an edit that
+// never heard of it.
+const editMachine = (await late('/api/equipment', { method: 'POST', body: {
+  name: 'Shaper (editing)' } })).data;
+const editJob = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: editMachine.id, title: 'Gearbox rattle', priority: 'medium',
+  reported_by: 'Ada', notes: 'Only at low speed' } })).data;
+const ownerId = (await late('/api/users/assignable')).data[0]?.id;
+await late(`/api/work-orders/${editJob.id}`, { method: 'PATCH', body: { assigned_to: ownerId } });
+const edited = await late(`/api/work-orders/${editJob.id}`, { method: 'PATCH', body: {
+  title: 'Gearbox rattle, louder', priority: 'high', labour_hours: 1.25,
+  reported_by: 'Bea', notes: 'Now at every speed', stops_machine: true } });
+ok('one edit writes every field the dialog offers',
+  edited.data.title === 'Gearbox rattle, louder' && edited.data.priority === 'high'
+  && Number(edited.data.labour_hours) === 1.25 && edited.data.reported_by === 'Bea'
+  && edited.data.notes === 'Now at every speed' && edited.data.stops_machine === 1,
+  JSON.stringify(edited.data));
+ok('and it keeps the owner, the number and the report it never mentioned',
+  edited.data.assigned_to === ownerId && edited.data.code === editJob.code
+  && edited.data.status === editJob.status, JSON.stringify({
+    owner: edited.data.assigned_to, code: edited.data.code, status: edited.data.status }));
+ok('the machine follows the answer given in the editor',
+  (await late('/api/equipment?service=all')).data.find((m) => m.id === editMachine.id)?.status === 'down');
+
+// ---- the assignee is called "Assigned to" wherever a person reads it ------
+// It was "Owner" in three table headers, in the edit dialog and in two export
+// headers. The export check compared the file to a second hard-coded string, so half
+// a rename could not fail; the checks below read the page and the label, and the
+// last one holds the API still — a rename of what a word looks like must not rename
+// the fields other code depends on.
+const routeSources = ['work-orders.js', 'record.js']
+  .map((f) => readFileSync(join(root, 'routes', f), 'utf8'));
+const staleOwner = [indexEq, ...routeSources]
+  .flatMap((src) => src.match(/<th>Owner<\/th>|<span>Owner<\/span>|label: 'Owner'/g) || []);
+ok('nothing a person reads calls the assignee an owner', staleOwner.length === 0,
+  staleOwner.join(', '));
+ok('every screen and both files call it Assigned to',
+  (indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length === 3
+  && indexEq.includes('<span>Assigned to</span>')
+  && routeSources.every((src) => src.includes("label: 'Assigned to'")),
+  `headers: ${(indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length}, labels: ${
+    routeSources.filter((src) => src.includes("label: 'Assigned to'")).length}/2`);
+const assigneeRow = (await late('/api/work-orders').catch(() => ({ data: [] }))).data[0] || {};
+ok('and the API still calls the field what it always did',
+  'assigned_to' in assigneeRow && 'assignee_name' in assigneeRow,
+  `fields: ${Object.keys(assigneeRow).join(', ')}`);
+
+// ---- every table, not one of them -----------------------------------------
+// The machines table sorted and had a menu; the other eight were still plain
+// headings and a row of buttons each. "All tables and all options should be like
+// that" is a claim about the whole page, so it is checked table by table rather than
+// by looking for a `sort(` and hoping.
+const TABLE_IDS = ['equipment-rows', 'machine-history-rows', 'work-rows',
+  'history-rows', 'parts-rows', 'pm-rows', 'users-rows', 'report-rows'];
+const headingKeys = (tbodyId) => {
+  const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
+  if (at < 0) return null;
+  const head = ([...indexEq.slice(0, at).matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+  return [...head.matchAll(/data-sort="([a-z_]+)"/g)].map((m) => m[1]);
+};
+const headingBlock = (tbodyId) => {
+  const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
+  return at < 0 ? '' : ([...indexEq.slice(0, at).matchAll(/<thead>[\s\S]*?<\/thead>/g)].pop() || [''])[0];
+};
+const registeredMap = (tbodyId) => {
+  const at = clientSrc.indexOf(`register('${tbodyId}'`);
+  // Bounded, because all the client files are one string here and a greedy search
+  // ran from one screen's registration into another's.
+  return at < 0 ? '' : (clientSrc.slice(at, at + 900)
+    .match(/^register\('[^']+',\s*\{[\s\S]*?\n\}, draw\w+\)/) || [''])[0];
+};
+const unsortable = TABLE_IDS.filter((tbodyId) => {
+  const keys = headingKeys(tbodyId) || [];
+  const block = registeredMap(tbodyId);
+  return !block || keys.length < 2 || !keys.every((key) => new RegExp(`\\n  ${key}: `).test(block));
+});
+ok('every table sorts by each of its headings, and only by headings it can sort',
+  unsortable.length === 0,
+  unsortable.map((id) => `${id}: ${(headingKeys(id) || []).join(',') || 'nothing'}`).join(' | ')
+    || `${TABLE_IDS.length} tables, ${TABLE_IDS.reduce((n, id) => n + (headingKeys(id) || []).length, 0)} headings`);
+ok('and every one of them keeps the order and says which way it is going',
+  TABLE_IDS.every((id) => clientSrc.includes(`markTable('${id}')`)),
+  TABLE_IDS.filter((id) => !clientSrc.includes(`markTable('${id}')`)).join(', '));
+// The other half of the same promise. A row's actions were a row of buttons; a
+// table of twenty looked like a toolbar. Six tables have actions and six call the
+// shared menu, and no `<td>` anywhere still opens with its own button.
+const bareRowButtons = clientSrc.match(/<td[^>]*>\s*<button class="ghost small"/g) || [];
+// `function rowMenu(` is the definition, not a seventh table.
+const menuCalls = (clientSrc.match(/(?<!function )rowMenu\(/g) || []).length;
+ok('a row never carries its own buttons, whatever the table is',
+  bareRowButtons.length === 0 && menuCalls === 5,
+  bareRowButtons.length ? bareRowButtons[0].slice(0, 80) : `${menuCalls} menus for 5 tables with actions`);
+ok('and a menu names the row it belongs to, for anyone not reading the screen',
+  (clientSrc.match(/(?<!function )rowMenu\(\s*(?:[A-Za-z_$][\w$.]*|`)/g) || []).length === 5
+  && /aria-label="Actions for \$\{esc\(what\)\}"/.test(tablesSrc),
+  'a menu whose button is just three dots with no name');
+ok('the items a menu holds are real buttons, and a destructive one is marked',
+  /<button type="button"/.test(tablesSrc) && /danger \? ' class="danger"'/.test(tablesSrc)
+  && /menuItem\('Delete machine',[\s\S]{0,90}?\{ danger: true, icon: 'delete' \}\)/.test(appEq)
+  && /menuItem\('Delete part',[\s\S]{0,90}?\{ danger: true \}\)/.test(partsSrc),
+  'an item that is not a button, or a delete that looks like the rest');
+
+// Two columns where the alphabet is the wrong order. "high, low, medium" is not a
+// priority, and sorting status alphabetically puts finished work at the top of the
+// list a workshop reads to decide what to do next.
+ok('priority and status sort in the order the workshop means, not the alphabet',
+  /priority: \(w\) => PRIORITY_RANK\[w\.priority\]/.test(workSrc)
+  && /status: \(w\) => WORK_STATUS_RANK\[w\.status\]/.test(workSrc)
+  && /const PRIORITY_RANK = \{ high: 0, medium: 1, low: 2 \}/.test(workSrc),
+  'a priority column sorted alphabetically: high, low, medium');
+
+// A menu column is one more cell, and forgetting it in the header is the kind of
+// mismatch nothing throws on: the table simply draws a column with no name. Each
+// table's empty row states its own column count, so the two are compared.
+// The function that draws a table, found from the registration rather than guessed:
+// `drawMachineHistory(name = ...)` takes an argument, so the parentheses are not empty.
+const drawerBody = (tbodyId) => {
+  const drawer = (registeredMap(tbodyId).match(/, draw(\w+)\)/) || [])[1];
+  return drawer
+    ? (clientSrc.match(new RegExp(`function draw${drawer}\\([^)]*\\)[\\s\\S]*?\\n}`)) || [''])[0]
+    : '';
+};
+const mismatched = TABLE_IDS.map((tbodyId) => {
+  const span = (drawerBody(tbodyId).match(/emptyRow\((\d+)/) || [])[1];
+  return { tbodyId, columns: (headingBlock(tbodyId).match(/<th[\s>]/g) || []).length, span };
+}).filter((t) => String(t.columns) !== String(t.span));
+ok('every table has a heading for every column its row draws',
+  mismatched.length === 0,
+  mismatched.map((t) => `${t.tbodyId}: ${t.columns} headings, empty row spans ${t.span ?? 'nothing'}`).join(' | '));
+// Sorting must be a redraw, not a round trip. Checked for all nine, because only
+// the machines table was proved to do this when it was the only one that sorted.
+const refetching = TABLE_IDS
+  .map((tbodyId) => ({ tbodyId, body: drawerBody(tbodyId) }))
+  .filter((t) => !t.body || /\bapi\(|\bfetch\(/.test(t.body));
+ok('no table asks the server again when a heading is clicked',
+  refetching.length === 0, refetching.map((t) => t.tbodyId).join(', '));
+ok('and the click finds the table the heading belongs to, rather than the first one',
+  /button\.closest\('table'\)\?\.querySelector\('tbody'\)\?\.id/.test(tablesSrc),
+  'a heading that sorts some other table');
+
+// Due soon has no date picker; the one this reads belongs to the Maintenance table,
+// which may never have been drawn. Without the guard, Mark done on Due soon throws.
+ok('marking a schedule done from Due soon does not depend on another table',
+  appSrc13.includes('const picker = $(`#pm-on-${id}`);')
+  && /picker \? picker\.value : today\(\)/.test(appSrc13),
+  'the date is read from a field that only exists on one screen');
+
+// ---- the section is called Admins & Technicians, not Users -----------------
+// The screen lists people by role: administrators and technicians. "Users" is the
+// word the database uses, and the word leaked into the name of the screen.
+const SECTION_NAME = 'Admins & Technicians';
+const navLabel = (appSrc13.match(/\{ key: 'users', label: '([^']+)', adminOnly: true, settingsOnly: true \}/) || [])[1];
+const pageHeading = (indexEq.match(/<section data-page="users"[\s\S]*?<h2>([^<]+)<\/h2>/) || [])[1];
+ok('the menu and the page heading give the section the same name',
+  navLabel === SECTION_NAME && pageHeading === SECTION_NAME.replace('&', '&amp;'),
+  `menu: ${navLabel || 'missing'} · heading: ${pageHeading || 'missing'}`);
+ok('and nothing on that screen still calls the people users',
+  !/>Users</.test(indexEq) && !/New user|Create user/.test(indexEq)
+  && !/New user/.test(appSrc13),
+  (indexEq.match(/>Users<|New user|Create user/g) || []).join(', '));
+// "Account" is the word the dialog, the filter and the empty state use, so creating
+// one says the same thing in all three places.
+ok('creating one is called an account, like the filter that lists them',
+  indexEq.includes('>New account</button>') && indexEq.includes('>Create account</button>')
+  && indexEq.includes('<h3>New account</h3>')
+  && indexEq.includes('<option value="all" selected>All accounts</option>'),
+  'the button, the dialog title and the filter disagree about what is being made');
+// The rename is of the word on the screen. The table, the route and the role values
+// stay as they are, because everything else in the app already speaks them.
+ok('the endpoint underneath keeps its name',
+  /'GET \/api\/users':/.test(readFileSync(join(root, 'routes', 'admin.js'), 'utf8'))
+  && /fetch|api\('\/users'\)|\/users`/.test(appSrc13),
+  'renaming what a word looks like renamed the API');
+// A 404 for a row that has gone is read by a person, so it is a sentence about an
+// account rather than a bare "User not found".
+const staleAccount = await late('/api/users/999999', { method: 'PUT', body: { active: 0 } });
+ok('a missing account is reported as a sentence, not as "User not found"',
+  staleAccount.status === 404 && !/user/i.test(staleAccount.data.error || ''),
+  `${staleAccount.status} ${JSON.stringify(staleAccount.data)}`);
+
+// ---- every list has a filter, and none of them is a checkbox --------------
+// The machines screen had one; spare parts had a checkbox that could only say one
+// thing; maintenance and users had nothing at all. A filter on this page is a named
+// <select> with an answer that means "all" and a label a screen reader can read.
+const FILTERS = {
+  'eq-filter': 'All machines',
+  'wo-status-filter': 'Any status',
+  'part-filter': 'All parts',
+  'pm-filter': 'All schedules',
+  'user-filter': 'All accounts',
+};
+const missingFilters = Object.entries(FILTERS).filter(([id, all]) => {
+  const at = indexEq.indexOf(`id="${id}"`);
+  if (at < 0) return true;
+  const open = indexEq.lastIndexOf('<select', at);
+  const body = indexEq.slice(open, indexEq.indexOf('</select>', at));
+  return !/aria-label="/.test(body) || !new RegExp(`>${all}</option>`).test(body)
+    || !/<option value="[a-z_]*" selected>/.test(body);
+});
+ok('every list says what would narrow it, and each opens on everything',
+  missingFilters.length === 0, missingFilters.map(([id]) => id).join(', '));
+ok('the spare parts checkbox is gone, not hidden',
+  !indexEq.includes('low-stock-filter') && !clientSrc.includes('low-stock-filter')
+  && !/type="checkbox"[^>]*id="part-filter"/.test(indexEq),
+  'the checkbox is still there, or still read by the code');
+// The screen and its CSV must ask the same question, or the file is a different list
+// from the one on screen — the bug the shared workQuery()/historyQuery() prevented.
+const partsFile = partsSrc.match(/export function downloadParts[\s\S]*?\n}/)?.[0] || '';
+ok('the parts file asks the same question as the parts table',
+  /partQuery\(\)/.test(partsFile)
+  && /api\/export\/parts\.csv\$\{partQuery\(\)\}/.test(partsFile),
+  partsFile ? 'the download builds its own query' : 'downloadParts() is missing');
+// Maintenance and users filter a list already in memory. Reading the select and then
+// fetching again would be a round trip for a question the page can answer.
+const pmDraw = (appSrc13.match(/function drawPm\(\) \{[\s\S]*?\n}/) || [''])[0];
+const userDraw = (appSrc13.match(/function drawUsers\(\) \{[\s\S]*?\n}/) || [''])[0];
+// Both comparisons, not just the word `days_left`: "overdue" returning true for
+// everything is exactly the mutation a looser assertion missed.
+ok('the maintenance and user filters redraw, they do not refetch',
+  /#pm-filter/.test(pmDraw) && !/\bapi\(/.test(pmDraw)
+  && /if \(filter === 'overdue'\) return p\.days_left < 0;/.test(pmDraw)
+  && /if \(filter === 'due'\) return p\.days_left <= days;/.test(pmDraw)
+  && /#user-filter/.test(userDraw) && !/\bapi\(/.test(userDraw)
+  && /if \(filter === 'active'\) return u\.active;/.test(userDraw)
+  && /if \(filter === 'disabled'\) return !u\.active;/.test(userDraw)
+  && /if \(filter === 'admin'\) return u\.role === 'admin';/.test(userDraw),
+  'a filter that asks the server for a list it already has, or one whose branches do not say what they mean');
+
+// ---- editing a spare part is a dialog too ---------------------------------
+// It used to turn the row it belonged to into five inputs — which meant the parts
+// table could be edited one cell at a time but the supplier could not be edited at
+// all. The create form has always asked for it; the row editor never did.
+const partDialog = (indexEq.match(/<dialog id="part-edit"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('editing a spare part opens a dialog that carries the whole record',
+  partDialog.includes('<h3 id="part-edit-title">')
+  && ['pe-id', 'pe-name', 'pe-ref', 'pe-supplier', 'pe-qty', 'pe-price', 'pe-reorder']
+    .every((wanted) => partDialog.includes(`id="${wanted}"`)),
+  partDialog ? 'a field is missing' : 'part-edit is gone');
+ok('and the supplier is one of them, which the row editor never offered',
+  partDialog.includes('id="pe-supplier"')
+  && /supplier: \$\('#pe-supplier'\)\.value\.trim\(\) \|\| null/.test(partsSrc),
+  'a part can still be created with a supplier it can never correct');
+ok('the parts table is a table again, with Edit in its menu',
+  !/id="edit-name-\$\{/.test(partsSrc) && !/editingPart/.test(partsSrc)
+  && /menuItem\('Edit part', `editPart\(\$\{p\.id\}\)`\)/.test(partsSrc),
+  'a row still draws inputs, or Edit does not open anything');
+const editPartFn = (partsSrc.match(/export function editPart\(idToEdit\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('the dialog is filled from the row that was clicked, not from a second request',
+  /partsCache\.find/.test(editPartFn) && !/await api\(/.test(editPartFn)
+  && /\$\('#pe-name'\)\.value = part\.name/.test(editPartFn)
+  && /\$\('#pe-supplier'\)\.value = part\.supplier/.test(editPartFn)
+  && /\$\('#pe-price'\)\.value/.test(editPartFn),
+  editPartFn ? 'the prefill is missing, or it fetches the part again' : 'editPart() is not a plain function');
+// Filled, then shown — the same order the machine editor is held to, because a form
+// opened first and filled second flashes the previous part's numbers.
+ok('the dialog is filled before it is shown',
+  editPartFn.indexOf("openForm('part-edit')") > editPartFn.indexOf('#pe-name')
+  && editPartFn.indexOf("openForm('part-edit')") > 0,
+  'opened before it was filled, or never opened');
+const savePartFn = (partsSrc.match(/export async function savePart\(\) \{[\s\S]*?\n\}/) || [''])[0];
+ok('one Save sends every field, so clearing one really clears it',
+  ['name', 'reference', 'supplier', 'qty', 'unit_price', 'reorder_level']
+    .every((f) => new RegExp(`\\b${f}\\b\\s*[,:]`).test(savePartFn))
+  && /reference: [^,]+\|\| null/.test(savePartFn) && /supplier: [^,]+\|\| null/.test(savePartFn),
+  savePartFn ? `sent: ${savePartFn.replace(/\s+/g, ' ').slice(0, 220)}` : 'savePart() is not a plain function');
+ok('and refuses an empty name before it reaches the server',
+  /formError\('part-edit'/.test(savePartFn) && /!name\) return/.test(savePartFn));
+// Where that save lands: the route takes a corrected supplier and keeps what it was
+// not told, which is what lets the dialog send the whole record without zeroing stock.
+const freshPart = await late('/api/parts', { method: 'POST', body: {
+  name: 'Bearing 6204', supplier: 'SKF', qty: 4, unit_price: 12.5, reorder_level: 2 } });
+const supplierFix = await late(`/api/parts/${freshPart.data.id}`, { method: 'PUT', body: {
+  name: 'Bearing 6204', supplier: 'NSK', reference: '6204-2RS' } });
+ok('the server accepts a corrected supplier and keeps the stock and the price',
+  supplierFix.status === 200 && supplierFix.data.supplier === 'NSK'
+  && supplierFix.data.qty === 4 && supplierFix.data.unit_price === 12.5,
+  JSON.stringify(supplierFix.data));
+const supplierGone = await late(`/api/parts/${freshPart.data.id}`, { method: 'PUT', body: {
+  name: 'Bearing 6204', supplier: null } });
+ok('and clearing the supplier clears it, rather than keeping the old one',
+  supplierGone.status === 200 && supplierGone.data.supplier === null,
+  JSON.stringify(supplierGone.data));
+
+console.log('\nCoverage — the questions nothing was asking');
+
+
+// ---- signing out -----------------------------------------------------------
+// POST /api/logout has existed since v1.0 and no check ever called it: the suite
+// signed in, tested everything, and never left. Two browsers, one sign-out, is the
+// contract that matters — the session that signed out dies and the other lives.
+await late('/api/users', { method: 'POST', body: {
+  name: 'Two browsers', email: 'browsers@local', password: 'two-browsers-1', role: 'tech' } });
+const browserA = makeClient();
+const browserB = makeClient();
+const browserCreds = { email: 'browsers@local', password: 'two-browsers-1' };
+ok('two browsers can hold two sessions for the same person',
+  (await browserA('/api/login', { method: 'POST', body: browserCreds })).status === 200
+  && (await browserB('/api/login', { method: 'POST', body: browserCreds })).status === 200);
+ok('and both work before either signs out',
+  (await browserA('/api/me')).status === 200 && (await browserB('/api/me')).status === 200);
+const signedOut = await browserA('/api/logout', { method: 'POST' });
+ok('signing out answers', signedOut.status === 200, JSON.stringify(signedOut.data));
+ok('and the cookie that signed out stops working', (await browserA('/api/me')).status === 401);
+ok('while the other browser is still signed in', (await browserB('/api/me')).status === 200);
+ok('signing out a session that is already gone is not an error',
+  (await browserB('/api/logout', { method: 'POST' })).status === 200
+  && (await browserB('/api/logout', { method: 'POST' })).status === 200);
+ok('and the second browser is signed out too', (await browserB('/api/me')).status === 401);
+
+// The header matters as much as the session row: without Max-Age=0 the browser
+// keeps the cookie and sends it forever, and every request pays for a lookup that
+// can never succeed.
+{
+  const raw = await fetch(BASE + '/api/logout', { method: 'POST' });
+  const cookie = raw.headers.get('set-cookie') || '';
+  ok('signing out tells the browser to drop the cookie',
+    /sid=;/.test(cookie) && /Max-Age=0/.test(cookie), cookie || '(no cookie header)');
+}
+
+// The browser forgetting is not the same as the server forgetting. This is the
+// stolen-cookie case: keep a copy of the session cookie, sign out, present the copy.
+// Removing `revokeSession()` from the logout route passed every other check, because
+// the client had already been told to drop its cookie — so this is the check that
+// actually holds the server to its side of the promise.
+{
+  const rawLogin = await fetch(BASE + '/api/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(browserCreds) });
+  const keptCookie = String(rawLogin.headers.get('set-cookie') || '').split(';')[0];
+  ok('a session cookie can be captured for this test', /^sid=./.test(keptCookie), keptCookie);
+  ok('that cookie works while the session is live',
+    (await fetch(BASE + '/api/me', { headers: { cookie: keptCookie } })).status === 200);
+  await fetch(BASE + '/api/logout', { method: 'POST', headers: { cookie: keptCookie } });
+  ok('a copy of the cookie taken before signing out no longer works',
+    (await fetch(BASE + '/api/me', { headers: { cookie: keptCookie } })).status === 401,
+    'the session outlived the sign-out');
+}
+
+// ---- history.csv: the export nothing downloaded ---------------------------
+// The History screen could always download a file; no check ever asked the endpoint
+// for one, so a broken content type or a missing filter would have gone unnoticed.
+const historyClient = makeTextClient({ email: 'admin@local', password: 'smoke-test-password' });
+const csvMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'CSV press' } })).data;
+const closedForCsv = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: csvMachine.id, title: 'Closed for the file', priority: 'low' } })).data;
+await late(`/api/work-orders/${closedForCsv.id}`, { method: 'PATCH', body: { status: 'done', machine_running: true, resolution: 'Closed for the file' } });
+
+const historyCsv = await historyClient(`/api/export/history.csv?equipment_id=${csvMachine.id}`);
+ok('the history export answers', historyCsv.status === 200, `status ${historyCsv.status}`);
+ok('with a file name and a spreadsheet type',
+  /text\/csv/.test(String(historyCsv.headers.get('content-type')))
+  && /history\.csv/.test(String(historyCsv.headers.get('content-disposition'))),
+  String(historyCsv.headers.get('content-disposition')));
+const historyLines = historyCsv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean);
+ok('its first line is the column names',
+  /^Number,Machine,Job,What was done,Status,Assigned to,Priority,Opened,Closed$/.test(historyLines[0] || ''),
+  historyLines[0]);
+ok('and it carries the closed job it was asked for',
+  historyCsv.text.includes('Closed for the file'), 'the file does not contain the job');
+ok('filtered by machine, it carries nothing else',
+  historyLines.length === 2, `${historyLines.length} lines for one machine`);
+ok('an anonymous request for the history file is refused',
+  (await fetch(BASE + '/api/export/history.csv')).status === 401);
+await late(`/api/equipment/${csvMachine.id}`, { method: 'DELETE' });
+
+// ---- LIKE is escaped, not merely trimmed ---------------------------------
+// A search for `100%` must mean a literal percent. Without the escape it matches
+// every row, which is the quiet way a search box stops being trustworthy.
+const someMachine = (await late('/api/equipment?service=active')).data[0];
+const pctA = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: someMachine.id, title: 'Reduce load to 100% of rated', priority: 'low' } })).data;
+const pctB = (await late('/api/work-orders', { method: 'POST', body: {
+  equipment_id: someMachine.id, title: 'Ordered 100 spare filters', priority: 'low' } })).data;
+const pctHits = (await late('/api/work-orders?q=100%25')).data;
+ok('a search for "100%" finds the literal percent, not everything',
+  pctHits.some((w) => w.id === pctA.id) && !pctHits.some((w) => w.id === pctB.id),
+  pctHits.map((w) => w.title).join(' | '));
+await late(`/api/work-orders/${pctA.id}`, { method: 'DELETE' });
+await late(`/api/work-orders/${pctB.id}`, { method: 'DELETE' });
+
+// ---- the two helpers everything else rests on ----------------------------
+// Dates and search patterns are pure functions with edge cases no screen shows, so
+// they are asked directly — in a child process with its own database, because
+// importing `filters.js` pulls in `db.js`, which must not open the one under test.
+const unitDb = join(root, 'data', 'unit.db');
+rmSync(unitDb, { force: true });
+const unit = spawnSync(process.execPath,
+  ['--no-warnings=ExperimentalWarning', '--input-type=module', '-e', `
+    import { parseDay, nowStamp } from './dates.js';
+    import { likeParam } from './filters.js';
+    const BS = String.fromCharCode(92);
+    console.log(JSON.stringify({
+      feb30: parseDay('2026-02-30').error || null,
+      month13: parseDay('2026-13-01').error || null,
+      shortMonth: parseDay('2026-1-01').error || null,
+      notADate: parseDay('yesterday').error || null,
+      leap: parseDay('2024-02-29').value || null,
+      ordinary: parseDay('2026-11-06').value || null,
+      stamp: /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(nowStamp()),
+      percent: likeParam('100%') === '%100' + BS + '%%',
+      underscore: likeParam('a_b') === '%a' + BS + '_b%',
+      backslash: likeParam('a' + BS + 'b') === '%a' + BS + BS + 'b%',
+      padded: likeParam('  pump  ') === '%pump%',
+      empty: likeParam('   ') === '%%',
+    }));
+  `], { cwd: root, env: { ...process.env, MM_DB: unitDb }, encoding: 'utf8' });
+let pure = {};
+try { pure = JSON.parse(unit.stdout.trim().split('\n').pop()); }
+catch { /* reported by the check below, with the stderr that explains it */ }
+ok('the pure helpers can be asked directly',
+  Object.keys(pure).length === 12, String(unit.stderr || unit.stdout).slice(0, 300));
+
+ok('a date that does not exist is refused, not rolled into the next month',
+  /not a real calendar date/.test(pure.feb30 || '') && /not a real calendar date/.test(pure.month13 || ''),
+  `${pure.feb30} / ${pure.month13}`);
+ok('a loosely written date is refused too',
+  /YYYY-MM-DD/.test(pure.shortMonth || '') && /YYYY-MM-DD/.test(pure.notADate || ''));
+ok('a leap day in a leap year is accepted, and a plain day round-trips',
+  pure.leap === '2024-02-29' && pure.ordinary === '2026-11-06');
+ok('the timestamp is the shape SQLite sorts', pure.stamp === true, String(pure.stamp));
+ok('a search pattern escapes the wildcards and the escape character itself',
+  pure.percent === true && pure.underscore === true && pure.backslash === true,
+  JSON.stringify({ percent: pure.percent, underscore: pure.underscore, backslash: pure.backslash }));
+ok('and trims what was typed before wrapping it',
+  pure.padded === true && pure.empty === true);
+rmSync(unitDb, { force: true });
+rmSync(unitDb + '-wal', { force: true });
+rmSync(unitDb + '-shm', { force: true });
+
+// Run the actual browser module with a small DOM and API double as well as the
+// endpoint tests: a correct backend alone cannot prove the assignment prompt works.
+const stateMigrationTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'machine-state-migration-test.js')], { cwd: root, encoding: 'utf8' });
+ok('upgrading preserves each current machine state and does not repeat the baseline', stateMigrationTest.status === 0,
+  (stateMigrationTest.stderr || stateMigrationTest.stdout).slice(0, 500));
+const stageMigrationTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'stage-migration-test.js')], { cwd: root, encoding: 'utf8' });
+ok('existing stage hours and part costs migrate once without double-counting', stageMigrationTest.status === 0,
+  (stageMigrationTest.stderr || stageMigrationTest.stdout).slice(0, 500));
+const photoCleanupTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'photo-cleanup-test.js')], { cwd: root, encoding: 'utf8' });
+ok('failed photo writes clean partial files and failed deletion is reported', photoCleanupTest.status === 0,
+  (photoCleanupTest.stderr || photoCleanupTest.stdout).slice(0, 500));
+const galleryTest = spawnSync(process.execPath, [join(root, 'scripts', 'stage-gallery-test.js')], { cwd: root, encoding: 'utf8' });
+ok('stage photo thumbnails, previews and object URL cleanup work', galleryTest.status === 0,
+  (galleryTest.stderr || galleryTest.stdout).slice(0, 500));
+const printUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'print-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('print page handles escaping, missing images, failures and the print action', printUiTest.status === 0,
+  (printUiTest.stderr || printUiTest.stdout).slice(0, 500));
+const partsOnlyUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'parts-only-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('report and dashboard show only verified parts costs', partsOnlyUiTest.status === 0,
+  String(partsOnlyUiTest.stderr || partsOnlyUiTest.stdout).slice(0, 400));
+const machineCostTest = spawnSync(process.execPath, [join(root, 'scripts', 'machine-cost-test.js')], { cwd: root, encoding: 'utf8' });
+ok('missing machine costs fall back to job totals without inventing zeroes', machineCostTest.status === 0,
+  String(machineCostTest.stderr || machineCostTest.stdout).slice(0, 400));
+const timeCostTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'timezone-cost-test.js')], { cwd: root, encoding: 'utf8' });
+ok('workshop zone and machine costs survive boundaries, permissions and restart', timeCostTest.status === 0,
+  String(timeCostTest.stderr || timeCostTest.stdout).slice(0, 400));
+const workUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'work-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('work-order UI creation and assignment interactions work', workUiTest.status === 0,
+  (workUiTest.stderr || workUiTest.stdout).slice(0, 500));
+const assignDialog = (html.match(/<dialog id="work-assign"[\s\S]*?<\/dialog>/) || [''])[0];
+ok('labour hours are captured in stages, not the work order or close forms',
+  !workForm.includes('id="w-hours"') && !editDialog.includes('id="we-hours"')
+  && !indexEq.includes('id="wc-hours"') && !createWorkFn.includes('labour_hours') && !saveWorkFn.includes('labour_hours'));
+ok('the stage dialog asks for an update, time and optional photos',
+  ['wa-message', 'wa-hours', 'wa-photos', 'wa-history'].every((id) => assignDialog.includes(`id="${id}"`))
+  && assignDialog.includes('multiple'));
+ok('the stage dialog uses an accessible two-state machine switch',
+  /id="wa-running" type="checkbox" role="switch"/.test(assignDialog)
+  && !/No change/.test(assignDialog) && /toggle-track/.test(assignDialog)
+  && /input:checked \+ \.toggle-track/.test(uiCss));
+ok('stage history and optional additions use accessible disclosures',
+  ['wa-history-panel', 'wa-parts-panel', 'wa-photos-panel'].every((id) => assignDialog.includes(`<details id="${id}"`))
+  && assignDialog.includes('id="wa-history-count"') && assignDialog.includes('id="wa-parts-summary"')
+  && assignDialog.includes('id="wa-photos-summary"') && assignDialog.includes('aria-describedby="wa-running-help"'));
+const reportDisclosure = (assignDialog.match(/<details id="wa-report-panel"[\s\S]*?<\/details>/) || [''])[0];
+ok('the job report picker uses the same accessible upload card as stage media',
+  /<label class="stage-photo-picker">[\s\S]*?id="wa-report"[^>]*aria-label="Choose job report"/.test(reportDisclosure)
+  && assignDialog.includes('id="wa-report-selection"') && assignDialog.includes('id="wa-report-clear"')
+  && assignDialog.includes('onchange="stageReportSelectionChanged()"'));
+ok('the stage form provides a labelled parts table and clear disclosure arrows',
+  /<table class="stage-parts-table">/.test(assignDialog) && /<th scope="col">Spare part/.test(assignDialog)
+  && /<th scope="col">Quantity/.test(assignDialog) && /<th scope="col">Actual unit cost/.test(assignDialog)
+  && /aria-label="Add selected part"/.test(assignDialog) && (assignDialog.match(/class="disclosure-chevron"/g) || []).length === 4
+  && /<path d="m6 9 6 6 6-6"/.test(assignDialog));
+const stageLayout = readFileSync(join(root, 'public', 'stage-experience.css'), 'utf8');
+const printMarkup = readFileSync(join(root, 'public', 'print-job.html'), 'utf8');
+const printCss = readFileSync(join(root, 'public', 'print-job.css'), 'utf8');
+ok('machine status is alongside time in the stage details row',
+  /stage-details-row[\s\S]*id="wa-hours"[\s\S]*class="stage-machine"[\s\S]*id="wa-running"[\s\S]*id="wa-owner-field"/.test(assignDialog));
+ok('machine status reads like a form field and uses the muted stage palette',
+  assignDialog.includes('id="wa-running-question">Machine status</strong>')
+  && /\.stage-machine-copy strong \{[^}]*color: var\(--soft\)/.test(stageLayout)
+  && /\.stage-machine \.machine-toggle \{[^}]*background: #f5f7fa/.test(stageLayout));
+ok('the stage timeline and photo preview have dedicated responsive styles',
+  stageLayout.includes('.stage-view-only .update-history') && stageLayout.includes('.stage-thumbnail')
+  && html.includes('id="stage-photo-viewer"') && html.includes('id="wa-new-photos"'));
+ok('work order printing is in Reports, not the row menu, and the printable page is ready',
+  !workSrc.includes("menuItem('Print job'") && html.includes('id="report-work-select"')
+  && printMarkup.includes('Save as PDF') && printCss.includes('@media print'));
+ok('the stage form scrolls independently of its visible actions and errors',
+  assignDialog.includes('id="wa-scroll" class="stage-scroll"') && assignDialog.includes('class="stage-footer"')
+  && /class="stage-footer"><p class="form-error" role="alert"/.test(assignDialog)
+  && /\.stage-scroll \{[^}]*overflow-y: auto/.test(uiCss) && !/#work-assign \.stage-actions \{[^}]*position: sticky/.test(uiCss));
+ok('the stage dialog explains loading failures and offers retry',
+  assignDialog.includes('id="wa-load-status"') && assignDialog.includes('id="wa-retry"')
+  && assignDialog.includes('onclick="retryWorkUpdateLoading()"') && appSrc13.includes('function retryWorkUpdateLoading()'));
+ok('the work-order forms expose the assignment controls and wire up the actions',
+  workForm.includes('id="w-owner"') && workForm.includes('id="w-title" required')
+  && html.includes('onclick="openNewWork()"') && appSrc13.includes('openNewWork()')
+  && assignDialog.includes('id="wa-owner"') && assignDialog.includes('onclick="startAssigned()"')
+  && appSrc13.includes('startAssigned()'));
+
+ok('the machine picker shows its own status and retry control',
+  workForm.includes('id="w-machine-status"') && workForm.includes('id="w-machine-retry"')
+  && workForm.includes('onclick="retryWorkMachines()"') && appSrc13.includes('function retryWorkMachines()'));
+ok('the machines screen does not overwrite the work-order picker',
+  !appEq.includes("$('#w-equipment').innerHTML"));
+
+// ---- the page speaks for itself -----------------------------------------
+// A dialog with no heading is announced as "dialog" and nothing else; a button
+// with no text or label is announced as "button".
+{
+  const dialogBlocks = html.match(/<dialog id="[\w-]+"[\s\S]*?<\/dialog>/g) || [];
+  const nameless = dialogBlocks.filter((d) => !/<h3[\s>]/.test(d));
+  ok('every dialog names itself with a heading',
+    dialogBlocks.length > 0 && nameless.length === 0,
+    `${nameless.length} dialog(s) without a heading`);
+  const emptyButtons = html.match(/<button[^>]*>\s*<\/button>/g) || [];
+  ok('no button is a blank rectangle', emptyButtons.length === 0, emptyButtons.join(' '));
+}
+
+// Temporary stage media has an authenticated upload/discard endpoint.
+const uploadProbe = await late('/api/uploads?kind=media', { method: 'POST', contentType: 'image/jpeg', rawBody: jpegBytes });
+ok('stage media can be uploaded for later association', uploadProbe.status === 201 && !!uploadProbe.data.id);
+const discardProbe = await late(`/api/uploads/${uploadProbe.data.id}`, { method: 'DELETE' });
+ok('temporary stage uploads can be discarded', discardProbe.status === 200);
+
+const mediaSuite = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'media-test.js')], { cwd: root, encoding: 'utf8' });
+ok('streamed media, reports, permissions, ranges and cleanup work end to end', mediaSuite.status === 0,
+  (mediaSuite.stderr || mediaSuite.stdout).slice(0, 600));
+
+const reportProbeMachine = (await late('/api/equipment', { method: 'POST', body: { name: 'Report probe' } })).data;
+const reportMachineProbe = await late(`/api/reports/machine/${reportProbeMachine.id}`);
+ok('machine service reports are authenticated and available', reportMachineProbe.status === 200 && reportMachineProbe.data.cost_basis === 'parts');
+ok('inventory reports are available', (await late('/api/reports/parts')).status === 200);
+ok('machine reports export to CSV', (await late(`/api/export/machine-report.csv?id=${reportProbeMachine.id}`)).status === 200);
+ok('inventory reports export to CSV', (await late('/api/export/inventory-report.csv')).status === 200);
+await late(`/api/equipment/${reportProbeMachine.id}`, { method: 'DELETE' });
+
+const reportsAttachmentsSuite = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'reports-attachments-test.js')], { cwd: root, encoding: 'utf8' });
+ok('reports and spare-part attachments work end to end', reportsAttachmentsSuite.status === 0,
+  (reportsAttachmentsSuite.stderr || reportsAttachmentsSuite.stdout).slice(0, 600));
+
+// ---- no endpoint is unknown to the suite --------------------------------
+// A floor rather than a proof: every route in `routes/` must at least be *named*
+// here, which is the least that is true of a route that is tested. It is how
+// POST /api/logout and the history export were noticed missing.
+{
+  const routeKeys = [];
+  for (const file of readdirSync(join(root, 'routes'))) {
+    const src = readFileSync(join(root, 'routes', file), 'utf8');
+    for (const m of src.matchAll(/'([A-Z]+) (\/api[^']*)':/g)) {
+      routeKeys.push({ key: `${m[1]} ${m[2]}`, stem: m[2].split('/:')[0], file });
+    }
+  }
+  const suiteText = readFileSync(join(root, 'scripts', 'smoke-test.js'), 'utf8');
+  const unheard = routeKeys.filter(({ stem }) => !suiteText.includes(stem));
+  ok('every endpoint is exercised somewhere in this suite',
+    routeKeys.length >= 35 && unheard.length === 0,
+    unheard.map((r) => `${r.key} (${r.file})`).join(', '));
+}
+
+console.log('\n--- stopping ---');
+srv.child.kill('SIGKILL');
+await srv.exited;
+
+// Retry for up to 3 s: on Windows the sqlite handle can outlive the process briefly.
+async function removeWithRetry(path, attempts = 30) {
+  for (let i = 0; i < attempts; i++) {
+    try { rmSync(path, { force: true }); return true; }
+    catch { /* EBUSY / EPERM: sleep and retry */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}
+let cleaned = true;
+// the failure log is plain-file state too; leaving it behind would make the
+// next run's "one entry per failure" assertions pass on stale lines
+for (const f of [DB, DB + '-wal', DB + '-shm', join(root, 'data', 'login-failures.log'),
+                 join(root, 'data', 'login-failures.log.1'),
+                 join(root, 'data', 'first-password.txt'),
+                 join(root, 'data', 'copied-alone.db'),
+                 join(root, 'data', 'test-process.db'),
+                 join(root, 'data', 'test-process.db-wal'),
+                 join(root, 'data', 'test-process.db-shm')]) {
+  if (!removeWithRetry(f) && existsSync(f)) cleaned = false;
+}
+for (const f of readdirSync(join(root, 'data'))) {
+  if (f.startsWith('backup-') && !removeWithRetry(join(root, 'data', f))) cleaned = false;
+}
+if (!cleaned) console.log('  note: some temp files could not be deleted (still locked)');
+
+console.log(`\n${pass} passed, ${fail} failed\n`);
+process.exit(fail === 0 ? 0 : 1);

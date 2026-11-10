@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Machine Maintenance</title>
+  <link rel="stylesheet" href="/app.css" /><link rel="stylesheet" href="/stage-experience.css" />
+</head>
+<body>
+<!-- Login -->
+<section id="login" class="card">
+  <h2>Sign in</h2>
+  <div class="form-grid" style="grid-template-columns:1fr">
+    <input id="email" type="email" placeholder="email" autocomplete="username" />
+    <input id="password" type="password" placeholder="password" autocomplete="current-password" />
+    <button class="primary" onclick="login()">Sign in</button>
+  </div>
+  <p id="login-error" class="error"></p>
+</section>
+<!-- App -->
+<div id="app" class="hidden">
+  <header>
+    <h1>Machine Maintenance</h1>
+    <span id="who" class="muted"></span>
+    <button class="small settings-button" type="button" onclick="openSettings()" aria-label="Settings" title="Settings"><span aria-hidden="true">⚙</span> Settings</button>
+    <button class="small" onclick="logout()">Sign out</button>
+    <span id="settings-status" class="error" role="status" hidden></span>
+  </header>
+  <div class="layout">
+    <aside id="sidebar"></aside>
+    <main>
+    <!-- Dashboard -->
+    <section data-page="dashboard" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p class="page-sub">What needs attention today, across the whole workshop.</p>
+        </div>
+      </div>
+      <div id="dashboard-body"></div>
+    </section>
+    <!-- Machines -->
+    <section data-page="equipment" class="hidden">
+      <div class="section-tabs" role="tablist" aria-label="Machines views" onkeydown="machineTabKey(event)">
+        <button type="button" role="tab" id="machine-tab-list" aria-controls="machine-list-panel" aria-selected="true" tabindex="0" onclick="selectMachineTab('list')">Machines</button>
+        <button type="button" role="tab" id="machine-tab-history" aria-controls="machine-history-panel" aria-selected="false" tabindex="-1" onclick="selectMachineTab('history')">History</button>
+      </div>
+      <div id="machine-list-panel" role="tabpanel" aria-labelledby="machine-tab-list" tabindex="0">
+      <div class="page-head">
+        <div>
+          <h2>Machines</h2>
+          <p class="page-sub">Everything you maintain, and the state it is in right now. Service cost is the sum of recorded parts costs across all work orders.</p><p id="machine-cost-status" class="summary-line" role="status" hidden></p>
+        </div>
+        <button class="primary" onclick="openForm('equipment-form')">New machine</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <input id="eq-search" type="search" placeholder="Search name, tag, location or category"
+                 oninput="searchEquipment()" />
+          <select id="eq-filter" onchange="loadEquipment()" aria-label="Which machines to show">
+            <option value="all" selected>All machines</option>
+            <option value="in">In service</option>
+            <option value="down">Down right now</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th class="cell-thumb">Photo</th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="asset_tag">Barcode<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="manufacturer">Manufacturer<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="location">Location<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_hours" title="Total labour hours recorded for this machine">Total service hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total_service_cost" title="Recorded parts costs across all work orders">Total service cost<span class="sort-mark" aria-hidden="true"></span></button></th>
+            <th></th></tr></thead>
+            <tbody id="equipment-rows"></tbody></table>
+        </div>
+      </div>
+      </div>
+    <div id="machine-history-panel" role="tabpanel" aria-labelledby="machine-tab-history" tabindex="0" hidden>
+      <div class="page-head">
+        <div>
+          <h2>History</h2>
+          <p class="page-sub">Everything that has been finished, and when it happened.</p>
+        </div>
+        <button class="ghost" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <label><span>Closed from</span>
+            <input type="date" id="history-from" onchange="loadHistory()" /></label>
+          <label><span>Closed to</span>
+            <input type="date" id="history-to" onchange="loadHistory()" /></label>
+          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
+                 oninput="searchHistory()" />
+          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
+          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
+        </div>
+        <p id="history-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
+            <tbody id="history-rows"></tbody></table>
+        </div>
+      </div>
+    </div>
+      <dialog id="equipment-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-form')">&times;</button>
+          </div>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="e-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Barcode</span><input id="e-tag" placeholder="e.g. 101220054" /></label>
+            <label class="field"><span>Manufacturer</span><input id="e-maker" placeholder="e.g. Mazak" /></label>
+            <label class="field"><span>Model</span><input id="e-model" placeholder="e.g. QT-250" /></label><label class="field"><span>Serial number</span><input id="e-serial" placeholder="e.g. SN-123456" /></label>
+            <label class="field"><span>Category</span><input id="e-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="e-loc" placeholder="e.g. Bay 2" /></label>
+            <label class="field field-wide"><span>Notes</span><textarea id="e-notes" rows="2" placeholder="Anything the next person should know"></textarea></label>
+            <label class="field field-wide"><span>Photo or video — JPEG, PNG, WebP, MP4, MOV or WebM</span>
+              <input id="e-photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addEquipment()">Add machine</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="equipment-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-edit-title">Edit machine details</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub">What this machine <em>is</em>. Its operating state comes from the latest explicit report or update.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="ee-name" placeholder="e.g. CNC lathe" /></label>
+            <label class="field"><span>Barcode</span><input id="ee-tag" placeholder="e.g. 101220054" /></label>
+            <label class="field"><span>Manufacturer</span><input id="ee-maker" placeholder="e.g. Mazak" /></label>
+            <label class="field"><span>Model</span><input id="ee-model" placeholder="e.g. QT-250" /></label><label class="field"><span>Serial number</span><input id="ee-serial" placeholder="e.g. SN-123456" /></label>
+            <label class="field"><span>Category</span><input id="ee-cat" placeholder="e.g. Machining" /></label>
+            <label class="field"><span>Location</span><input id="ee-loc" placeholder="e.g. Bay 2" /></label>
+            <label class="field field-wide"><span>Notes</span><textarea id="ee-notes" rows="2" placeholder="Anything the next person should know"></textarea></label>
+          </div>
+          <div class="photo-row">
+            <div id="ee-photo-preview" class="photo-preview"></div>
+            <div class="photo-pick">
+              <label class="field"><span>Photo or video — JPEG, PNG, WebP, MP4, MOV or WebM</span><input id="ee-photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" /></label>
+              <input id="ee-photo-clear" type="checkbox" hidden /><button id="ee-photo-undo" type="button" class="ghost small" onclick="undoEquipmentPhotoRemoval()" hidden>Undo removal</button>
+            </div>
+          </div>
+          <input type="hidden" id="ee-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveEquipment()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="equipment-delete" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="equipment-delete-title">Delete machine</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('equipment-delete')">&times;</button>
+          </div>
+          <div class="danger-box">
+            <p class="danger-lead">This cannot be undone.</p>
+            <p id="equipment-delete-consequences"></p>
+          </div>
+          <label class="field"><span>Type <code id="equipment-delete-phrase"></code> to confirm</span>
+            <input id="equipment-delete-confirm" autocomplete="off" spellcheck="false"
+                   placeholder="delete machine …" oninput="checkDeletePhrase()" /></label>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('equipment-delete')">Cancel</button>
+            <button class="danger-btn" type="button" id="equipment-delete-go" disabled
+                    onclick="confirmEquipmentDelete()">Delete permanently</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="machine-history" class="sheet">
+        <div class="sheet-inner">
+          <div class="sheet-head">
+            <h3 id="machine-history-title">Machine history</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeMachineHistory()">&times;</button>
+          </div>
+          <p class="sheet-sub">Every job reported against this machine. Select a job to view its timeline.</p><p id="machine-history-error" class="form-error" role="alert" hidden></p>
+          <div class="table-wrap">
+            <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="code">Number<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="created_at">Opened<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
+              <tbody id="machine-history-rows"></tbody></table>
+          </div>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeMachineHistory()">Close</button>
+          </div>
+        </div>
+      </dialog>
+    </section>
+
+    <!-- Work orders -->
+    <section data-page="work" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Work orders</h2>
+          <p class="page-sub">What needs fixing, who owns it, and what is already done.</p><p id="work-cost-status" class="summary-line" role="status" hidden></p>
+        </div>
+        <button class="primary" onclick="openNewWork()">New work order</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <input id="wo-search" type="search" placeholder="Search problem, notes or machine"
+                 oninput="searchWork()" />
+          <select id="wo-status-filter" onchange="loadWork()" aria-label="Which work orders to show">
+            <option value="" selected>Any status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="done">Done</option>
+          </select>
+          <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="last_activity_at" title="Latest report, stage update or closure in the workshop time zone">Last activity (<span id="last-activity-zone">UTC</span>)<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
+            <tbody id="work-rows"></tbody></table>
+        </div>
+      </div>
+      <dialog id="work-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">Say what is wrong; the machine and a short title are enough to act on.</p>
+          <div class="form-grid form-grid-wide work-report-grid">
+            <div class="report-section-title field-wide"><strong>Problem details</strong><span>Start with the machine and what happened.</span></div>
+            <label class="field"><span>Machine</span><select id="w-equipment" onchange="syncWorkMachineState()" required></select>
+              <span id="w-machine-status" class="hint" role="status"></span><button id="w-machine-retry" class="ghost small" type="button" onclick="retryWorkMachines()" hidden>Retry loading machines</button></label>
+            <label class="field"><span>Problem <span class="required-mark" aria-hidden="true">*</span></span><input id="w-title" required placeholder="What is wrong?" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span><textarea id="w-notes" rows="3" placeholder="Add any useful details about the problem"></textarea></label>
+            <div class="report-section-title field-wide"><strong>Job details</strong><span>Set the priority and who should handle it.</span></div>
+            <label class="field"><span>Assigned to</span><select id="w-owner"><option value="">— unassigned —</option></select></label>
+            <label class="field"><span>Priority</span>
+              <select id="w-priority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <div class="stage-machine"><div class="stage-machine-copy"><strong id="w-running-question">Machine status</strong><span id="w-running-help" class="hint">The state you record becomes the machine’s latest status.</span></div><label class="machine-toggle"><input id="w-running" type="checkbox" role="switch" aria-labelledby="w-running-question w-running-label" aria-describedby="w-running-help" onchange="workMachineToggleChanged()" disabled /><span class="toggle-track" aria-hidden="true"></span><strong id="w-running-label" class="toggle-status">Loading…</strong></label></div>
+            <label class="field"><span>Reported by (optional)</span>
+              <input id="w-reporter" placeholder="Who saw it — e.g. Ada on line 2" /></label>
+            <label class="field field-wide"><span>Photo or video of the fault (optional)</span>
+              <input id="w-photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-form')">Cancel</button>
+            <button class="primary" type="button" id="w-create" onclick="addWorkOrder()">Create work order</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="work-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-edit-title">Edit work order</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-edit-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Problem</span>
+              <input id="we-title" placeholder="What is wrong?" /></label>
+            <label class="field"><span>Assigned to</span>
+              <select id="we-owner"></select>
+              <span class="hint" id="we-owner-hint" hidden>People could not be loaded. The assignment stays as it is.</span></label>
+            <label class="field"><span>Priority</span>
+              <select id="we-priority">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field"><span>Does this stop the machine?</span>
+              <select id="we-stops">
+                <option value="0">No — it is still running</option>
+                <option value="1">Yes — take it out of service</option>
+              </select>
+            </label>
+            <label class="field"><span>Reported by (optional)</span>
+              <input id="we-reporter" placeholder="Who saw it" /></label>
+            <label class="field field-wide"><span>What you saw (optional)</span>
+              <textarea id="we-notes" rows="2" placeholder="Only fails above 20 m/min"></textarea></label>
+            <div class="field field-wide"><span>Photograph of the fault</span>
+              <p id="we-photo-now" class="photo-now"></p>
+              <label class="field"><span>Replace with a photo or video</span>
+                <input id="we-photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" /></label>
+              <label class="check"><input id="we-photo-clear" type="checkbox" /> Remove the photograph</label>
+            </div>
+          </div>
+          <input type="hidden" id="we-id" />
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-edit')">Cancel</button>
+            <button class="primary" type="button" onclick="saveWork()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="work-close" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="work-close-title">Close the job</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-close')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="work-close-what"></p>
+          <div class="close-fields">
+            <div class="stage-machine close-machine"><div class="stage-machine-copy"><strong id="wc-running-title">Machine status</strong><span id="wc-running-help" class="hint">The machine must be running to close this job.</span></div><label class="machine-toggle"><input id="wc-running" type="checkbox" role="switch" aria-labelledby="wc-running-title wc-running-label" aria-describedby="wc-running-help wc-current" onchange="closeToggleChanged()" /><span class="toggle-track" aria-hidden="true"></span><strong id="wc-running-label" class="toggle-status">Out of service</strong></label></div>
+            <div id="wc-load" hidden><span id="wc-current" class="hint" role="status"></span><button id="wc-retry" class="ghost small" type="button" onclick="retryCloseState()" hidden>Retry loading machine state</button></div>
+            <label class="field"><span>Closing note (optional)</span>
+              <textarea id="wc-resolution" rows="3" maxlength="2000" placeholder="Anything else to note about closing this job"></textarea></label>
+          </div>
+          <p class="form-error" role="alert"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('work-close')">Cancel</button>
+            <span class="close-action" id="wc-action" tabindex="-1" role="group" aria-label="Close the job unavailable" aria-describedby="wc-disabled-tip"><button class="primary" id="wc-go" type="button" onclick="confirmCloseWork()" disabled>Close the job</button><span class="close-tooltip" id="wc-disabled-tip" role="tooltip" hidden>The machine is out of service. Switch it to Running to close the job.</span></span>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Shared work-order timeline and photo preview, available from Machines too. -->
+      <dialog id="work-assign" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="stage-modal-head"><div class="sheet-head"><div><span class="stage-eyebrow">WORK ORDER</span><h3 id="work-assign-title" tabindex="-1">Work order updates</h3></div>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('work-assign')">&times;</button></div><p class="sheet-sub" id="work-assign-what"></p></div>
+          <div id="wa-scroll" class="stage-scroll">
+            <details id="wa-history-panel" class="stage-disclosure stage-history-panel"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2-5.3M4 4v4h4M12 8v4l3 2"/></svg></span><span class="disclosure-copy"><strong id="wa-history-label">Previous updates</strong><small id="wa-history-count">Loading…</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div id="wa-history" class="update-history" aria-live="polite"></div></details>
+            <p id="wa-load-status" class="hint" role="status"></p><button id="wa-retry" class="ghost small" type="button" onclick="retryWorkUpdateLoading()" hidden>Retry loading</button>
+            <div id="wa-entry" class="stage-editor">
+              <div class="stage-heading"><div><span class="stage-kicker">WORK PROGRESS</span><h4 id="wa-stage-title">Stage 1</h4></div><span class="stage-required">* Required</span></div>
+              <div class="stage-fields"><label class="field field-wide"><span>What was done? <span class="required-mark" aria-hidden="true">*</span></span><textarea id="wa-message" rows="3" maxlength="2000" placeholder="Describe the work completed in this stage" required></textarea></label>
+                <div class="stage-details-row field-wide"><label class="field stage-time"><span>Time spent <span class="required-mark" aria-hidden="true">*</span></span><span class="stage-time-input"><input id="wa-hours" type="number" min="0" max="10000" step="any" placeholder="e.g. 1.5" required /><span>hours</span></span></label><div class="stage-machine"><div class="stage-machine-copy"><strong id="wa-running-question">Machine status</strong><span id="wa-running-help" class="hint">The state you record becomes the machine’s latest status.</span></div><label class="machine-toggle"><input id="wa-running" type="checkbox" role="switch" aria-labelledby="wa-running-question wa-running-label" aria-describedby="wa-running-help" onchange="stageToggleChanged()" /><span class="toggle-track" aria-hidden="true"></span><strong id="wa-running-label" class="toggle-status">Out of service</strong></label></div><label id="wa-owner-field" class="field stage-owner"><span>Assigned to</span><select id="wa-owner"></select></label></div>
+                <div class="stage-extras field-wide"><details id="wa-parts-panel" class="stage-disclosure"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3ZM4 7.5 12 12l8-4.5M12 12v9"/></svg></span><span class="disclosure-copy"><strong>Spare parts</strong><small id="wa-parts-summary">Optional · Add parts used in this stage</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="stage-extra-content"><div class="stage-parts-table-wrap" role="region" aria-label="Spare parts table, scroll horizontally if needed" tabindex="0"><table class="stage-parts-table"><thead><tr><th scope="col">Spare part</th><th scope="col">Quantity</th><th scope="col">Actual unit cost</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead><tbody id="wa-part-list"></tbody><tbody class="stage-part-input"><tr class="stage-part-entry"><td><select id="wa-part" aria-label="Spare part" onchange="selectStagePart()"></select></td><td><input id="wa-part-qty" type="number" aria-label="Quantity" min="1" step="1" value="1" /></td><td><input id="wa-part-price" type="number" aria-label="Actual unit cost" min="0" step="any" oninput="updateStagePartsSummary()" /></td><td><button class="stage-row-action stage-add-part" type="button" onclick="addStagePart()" aria-label="Add selected part" title="Add selected part"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></button></td></tr></tbody></table></div><span class="stage-table-scroll-hint">Scroll sideways to see all columns.</span><span id="wa-part-status" class="hint" role="status"></span><button id="wa-part-retry" class="ghost small" type="button" onclick="loadStageParts()" hidden>Retry parts</button><p class="hint stage-parts-hint">Press + to add another part. Saving also includes the selected part.</p></div></details>
+                  <details id="wa-photos-panel" class="stage-disclosure"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="9" r="1.3"/><path d="m4 17 5-5 3 3 2-2 6 5"/></svg></span><span class="disclosure-copy"><strong>Photos and videos</strong><small id="wa-photos-summary">Optional · Attach up to 5 files</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="stage-extra-content"><div id="wa-existing-photos" class="stage-photos"></div><label class="stage-photo-picker"><span class="photo-picker-icon" aria-hidden="true">↑</span><span><strong>Choose photos or videos</strong><small>JPEG, PNG, WebP, MP4, MOV or WebM</small></span><input id="wa-photos" type="file" aria-label="Add stage photos or videos" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" multiple onchange="stagePhotoSelectionChanged()" /></label><div id="wa-new-photos" class="stage-photo-grid"></div><p id="wa-photo-selection" class="hint"></p></div></details><details id="wa-report-panel" class="stage-disclosure"><summary><span class="disclosure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/></svg></span><span class="disclosure-copy"><strong>Job report</strong><small>Optional · PDF or Word document</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="stage-extra-content"><label class="stage-photo-picker"><span class="photo-picker-icon" aria-hidden="true">↑</span><span><strong>Choose job report</strong><small>PDF, DOC or DOCX</small></span><input id="wa-report" type="file" aria-label="Choose job report" aria-describedby="wa-report-selection" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="stageReportSelectionChanged()" /></label><p id="wa-report-selection" class="hint" role="status" aria-live="polite"></p><button id="wa-report-clear" type="button" class="ghost small" onclick="clearStageReportSelection()" hidden>Remove selected file</button><label id="wa-report-keep" class="check" hidden><input id="wa-keep-report" type="checkbox" checked /> Keep existing report</label><p id="wa-report-name" class="hint"></p></div></details></div>
+              </div>
+            </div>
+          </div>
+          <div class="stage-footer"><p class="form-error" role="alert"></p><div class="sheet-foot stage-actions"><button class="ghost danger" type="button" id="wa-delete" onclick="deleteLatestStage()" hidden>Delete stage</button><span class="stage-action-spacer"></span><button class="ghost" type="button" id="wa-cancel" onclick="closeForm('work-assign')">Cancel</button><button class="primary" type="button" id="wa-go" onclick="startAssigned()">Save update</button></div></div>
+        </form>
+      </dialog>
+      <dialog id="stage-photo-viewer" aria-labelledby="stage-photo-title"><form method="dialog"><div class="photo-viewer-head"><h3 id="stage-photo-title">Photo preview</h3><button class="icon-btn" type="submit" aria-label="Close">&times;</button></div><img id="stage-photo-image" alt="" /><video id="stage-photo-video" controls playsinline hidden></video><p id="stage-photo-caption" role="status"></p></form></dialog>
+
+
+    <section data-page="parts" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Spare parts</h2>
+          <p class="page-sub">What is on the shelf, what it costs, and what needs reordering.</p>
+        </div>
+        <button class="primary" onclick="openForm('parts-form')">New part</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <input id="part-search" type="search" placeholder="Search name or reference"
+                 oninput="searchParts()" />
+          <select id="part-filter" onchange="loadParts()" aria-label="Which parts to show">
+            <option value="all" selected>All parts</option>
+            <option value="low">At or below the reorder level</option>
+            <option value="out">Out of stock</option>
+          </select>
+          <button class="ghost small" onclick="downloadParts()">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="reference">Reference<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="qty">In stock<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="unit_price">Unit price<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="reorder_level">Reorder at<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
+            <tbody id="parts-rows"></tbody></table>
+        </div>
+      </div>
+      <dialog id="parts-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New spare part</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('parts-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">The reorder level is the quantity that triggers a warning.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Name</span><input id="p-name" placeholder="e.g. Bearing 6204" /></label>
+            <label class="field"><span>Reference</span><input id="p-ref" placeholder="Supplier part number" /></label>
+            <label class="field"><span>In stock</span><input id="p-qty" type="number" min="0" value="0" /></label>
+            <label class="field"><span>Unit price</span><input id="p-price" type="number" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>Reorder at</span><input id="p-reorder" type="number" min="0" value="5" /></label>
+            <label class="field"><span>Supplier</span><input id="p-supplier" placeholder="Where it is ordered from" /></label>
+          </div>
+          <details class="stage-disclosure part-attachments" id="p-attachments-panel"><summary><span class="disclosure-copy"><strong>Photos, videos and receipts</strong><small>Optional · Up to 20 files</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="stage-extra-content"><div id="p-attachments-list" class="part-attachment-list"></div><label class="field"><span>Add photos or videos</span><input id="p-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" multiple /></label><label class="field"><span>Add receipts or documents — PDF, DOC or DOCX</span><input id="p-documents" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple /></label><p id="p-attachments-status" class="hint" role="status"></p></div></details>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('parts-form')">Cancel</button>
+            <button id="p-save" class="primary" type="button" onclick="addPart()">Add part</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="part-edit" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3 id="part-edit-title">Edit spare part</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('part-edit')">&times;</button>
+          </div>
+          <p class="sheet-sub" id="part-edit-what"></p>
+          <div class="form-grid form-grid-wide">
+            <label class="field field-wide"><span>Name</span><input id="pe-name" placeholder="e.g. Bearing 6204" /></label>
+            <label class="field"><span>Reference</span><input id="pe-ref" placeholder="Supplier part number" /></label>
+            <label class="field"><span>Supplier</span><input id="pe-supplier" placeholder="Where it is ordered from" /></label>
+            <label class="field"><span>In stock</span><input id="pe-qty" type="number" min="0" /></label>
+            <label class="field"><span>Unit price</span><input id="pe-price" type="number" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>Reorder at</span><input id="pe-reorder" type="number" min="0" /></label>
+          </div>
+          <input type="hidden" id="pe-id" />
+          <details class="stage-disclosure part-attachments" id="pe-attachments-panel"><summary><span class="disclosure-copy"><strong>Photos, videos and receipts</strong><small>Optional · Up to 20 files</small></span><svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="stage-extra-content"><div id="pe-attachments-list" class="part-attachment-list"></div><label class="field"><span>Add photos or videos</span><input id="pe-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.mov" multiple /></label><label class="field"><span>Add receipts or documents — PDF, DOC or DOCX</span><input id="pe-documents" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple /></label><p id="pe-attachments-status" class="hint" role="status"></p></div></details>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('part-edit')">Cancel</button>
+            <button id="pe-save" class="primary" type="button" onclick="savePart()">Save changes</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Preventive maintenance -->
+    <section data-page="pm" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Maintenance</h2>
+          <p class="page-sub">The repeating jobs that keep each machine running.</p>
+        </div>
+        <button class="primary" onclick="openNewPm()">New schedule</button>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <select id="pm-filter" onchange="drawPm()" aria-label="Which schedules to show">
+            <option value="all" selected>All schedules</option>
+            <option value="due">Due soon</option>
+            <option value="overdue">Overdue</option>
+          </select>
+          <label id="pm-window-label" hidden>Within <select id="pm-days" onchange="drawPm()" aria-label="Due within days"><option value="7">7</option><option value="14">14</option><option value="30">30</option><option value="90">90</option></select> days</label>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="task">Task<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="interval_days">Every<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="last_done">Last done<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="next_due">Next due<span class="sort-mark" aria-hidden="true"></span></button></th><th>Mark done on</th><th></th></tr></thead>
+            <tbody id="pm-rows"></tbody></table>
+        </div>
+      </div>
+      <dialog id="pm-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New maintenance schedule</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('pm-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">A repeating job. Set the first due date, or it starts today.</p>
+          <p id="pm-machine-status" role="status"></p><button id="pm-machine-retry" class="ghost small" type="button" onclick="retryPmMachines()" hidden>Retry machines</button>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Machine</span><select id="pm-equipment" disabled></select></label>
+            <label class="field"><span>Task</span><input id="pm-task" placeholder="e.g. Change hydraulic oil" /></label>
+            <label class="field"><span>Repeat every (days)</span><input id="pm-interval" type="number" value="30" /></label>
+            <label class="field"><span>First due</span><input id="pm-first" type="date" /></label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('pm-form')">Cancel</button>
+            <button class="primary" id="pm-create" type="button" onclick="addPm()" disabled>Add schedule</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Admins & technicians (admin only) -->
+    <section data-page="users" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Admins &amp; Technicians</h2>
+          <p class="page-sub">Who can sign in, and what they are allowed to do.</p>
+        </div>
+        <div class="head-actions"><button class="ghost" type="button" onclick="openSettings()">Back to settings</button><button class="primary" onclick="openForm('users-form')">New account</button></div>
+      </div>
+      <div class="card">
+        <div class="card-toolbar">
+          <select id="user-filter" onchange="drawUsers()" aria-label="Which accounts to show">
+            <option value="all" selected>All accounts</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+            <option value="admin">Administrators</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="email">Email<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="role">Role<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="active">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
+            <tbody id="users-rows"></tbody></table>
+        </div>
+      </div>
+      <dialog id="users-form" class="sheet">
+        <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
+          <div class="sheet-head">
+            <h3>New account</h3>
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('users-form')">&times;</button>
+          </div>
+          <p class="sheet-sub">There is no public sign-up; only an admin can create an account.</p>
+          <div class="form-grid form-grid-wide">
+            <label class="field"><span>Full name</span><input id="u-name" placeholder="e.g. Sam Rivera" /></label>
+            <label class="field"><span>Email</span><input id="u-email" placeholder="name@workshop" type="email" /></label>
+            <label class="field"><span>Password</span><input id="u-pass" placeholder="8 characters or more" type="password" /></label>
+            <label class="field"><span>Role</span>
+              <select id="u-role">
+                <option value="tech" selected>Technician</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+          </div>
+          <p class="form-error"></p>
+          <div class="sheet-foot">
+            <button class="ghost" type="button" onclick="closeForm('users-form')">Cancel</button>
+            <button class="primary" type="button" onclick="addUser()">Create account</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- Backup -->
+    <!-- Report -->
+    <section data-page="report" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Reports</h2>
+          <p class="page-sub">Choose a report and print it or save it as a PDF.</p>
+        </div>
+        <div class="report-actions"><button id="report-csv" class="ghost" onclick="downloadHubReport()">Download CSV</button> <button id="report-print" class="primary" onclick="printHubReport()">Print / Save as PDF</button></div>
+      </div>
+      <div class="card report-hub-chooser"><label class="field"><span>Report type</span><select id="report-type" onchange="changeReportType()"><option value="monthly">Monthly completed work</option><option value="work">Work order</option><option value="machine">Machine service history</option><option value="parts">Spare-parts inventory</option></select></label></div>
+      <div class="card" id="report-monthly">
+        <div class="card-toolbar">
+          <label><span>Month</span>
+            <input type="month" id="report-month" onchange="loadReport()" /></label>
+        </div>
+        <p id="report-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="jobs">Jobs<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total">Total service cost<span class="sort-mark" aria-hidden="true"></span></button></th>
+          </tr></thead><tbody id="report-rows"></tbody></table>
+        </div>
+      </div>
+      <div class="card report-hub-panel" id="report-work-panel" hidden><label class="field"><span>Find a work order</span><input id="report-work-search" type="search" placeholder="Search number, problem or machine" oninput="filterReportJobs()" /></label><label class="field"><span>Work order</span><select id="report-work-select" onchange="reportSelectionChanged()"></select></label><p id="report-work-status" class="hint" role="status"></p></div>
+      <div class="card report-hub-panel" id="report-machine-panel" hidden><label class="field"><span>Machine</span><select id="report-machine-select" onchange="loadMachineReport()"></select></label><label class="field"><span>Filter work orders</span><input id="report-machine-search" type="search" maxlength="200" placeholder="Search number, problem or status" oninput="filterHubMachine()" /></label><p class="hint">All-time work orders, including open and completed jobs. One work order counts as one service event. Costs include recorded parts only.</p><p id="report-machine-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="code">Work order<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="title">Problem<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="status">Status<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="hours">Hours<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="cost">Parts cost<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-machine-rows"></tbody></table></div></div>
+      <div class="card report-hub-panel" id="report-parts-panel" hidden><label class="field"><span>Filter spare parts</span><input id="report-parts-search" type="search" maxlength="200" placeholder="Search name, reference or supplier" oninput="filterHubParts()" /></label><p class="hint">Current stock, not a history of purchases. Values exclude parts with no unit price.</p><p id="report-parts-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="name">Part<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reference">Reference<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="qty">In stock<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="unit_price">Unit price<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reorder_level">Reorder at<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-parts-rows"></tbody></table></div></div>
+    </section>
+    <section data-page="backup" class="hidden">
+      <div class="page-head">
+        <div>
+          <h2>Backup</h2>
+          <p class="page-sub">Keep a copy of everything, in case this computer stops.</p>
+        </div>
+        <button class="ghost" type="button" onclick="openSettings()">Back to settings</button>
+      </div>
+      <div class="card card-pad">
+        <p class="muted">Writes a full copy into the <code>data</code> folder next to the
+          database. Do this before upgrades, and ideally from Windows Task Scheduler
+          every night.</p>
+        <button class="primary" onclick="doBackup()">Back up now</button>
+        <p id="backup-result" class="muted"></p>
+      </div>
+    </section>
+    </main>
+  </div></div>
+<dialog id="app-settings" class="sheet" aria-labelledby="app-settings-title">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h3 id="app-settings-title">Settings</h3><button class="icon-btn" type="button" aria-label="Close" onclick="closeForm('app-settings')">×</button></div>
+    <p class="sheet-sub">These settings apply to the whole workshop, for everyone.</p>
+    <div class="settings-field">
+      <label for="settings-time-zone">Workshop time zone</label>
+      <input id="settings-time-zone" list="time-zone-options" autocomplete="off" placeholder="e.g. Asia/Bahrain" />
+      <datalist id="time-zone-options"></datalist>
+    </div>
+    <p class="muted">Enter an IANA time zone, such as Asia/Bahrain. Dates and times use this zone, including daylight saving time.</p>
+    <p id="settings-permission" class="muted" hidden>Only administrators can change these settings.</p>
+    <div id="settings-admin" class="settings-admin" hidden>
+      <h4>Administration</h4>
+      <p class="muted">Save any time zone changes before opening another setting.</p>
+      <button class="ghost settings-link" type="button" onclick="openSettingsPage('users')"><strong>Admins &amp; Technicians</strong><span>Manage accounts and access</span></button>
+      <button class="ghost settings-link" type="button" onclick="openSettingsPage('backup')"><strong>Backup</strong><span>Save a database backup</span></button>
+    </div>
+    <p class="form-error error" role="alert"></p>
+    <div class="sheet-foot"><button type="button" class="ghost" onclick="closeForm('app-settings')">Cancel</button><button type="button" id="settings-save" class="primary" onclick="saveSettings()">Save settings</button></div>
+  </div>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>
