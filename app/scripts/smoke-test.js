@@ -1107,6 +1107,10 @@ const indexSrc = readFileSync(join(root, 'public', 'index.html'), 'utf8');
 
 ok('the tab row is gone', !/id="tabs"/.test(indexSrc) && !/id="tabs"/.test(appUrl));
 ok('the sidebar exists in the markup', /id="sidebar"/.test(indexSrc));
+ok('the sidebar brand opens the dashboard without a separate dashboard link',
+  /p\.key !== 'dashboard'/.test(appUrl) && /class="side-home/.test(shellSrc)
+  && /onNavigate\('dashboard'\)/.test(shellSrc) && /class="side-mark"[^>]*><svg/.test(shellSrc)
+  && !/>MM<\/span>/.test(shellSrc));
 ok('the shell lives in its own file, not in app.js',
   existsSync(join(root, 'public', 'shell.js')) && !/function renderShell/.test(appUrl));
 

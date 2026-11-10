@@ -146,7 +146,9 @@ photograph pushed that page past 600 lines.
 
 ### The screens
 
-`Dashboard` · `Machines` · `Work orders` · `Maintenance` · `Spare parts` · `Reports`
+`Machines` · `Work orders` · `Maintenance` · `Spare parts` · `Reports`
+
+Select the **Machine Maintenance** brand and logo at the top of the sidebar to open the dashboard, including when the sidebar is collapsed.
 
 The top-bar **Settings** button provides the workshop time zone and, for administrators,
 **Admins & Technicians** and **Backup**.

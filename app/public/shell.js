@@ -69,8 +69,12 @@ export function renderShell({ pages, current, onNavigate }) {
 
   sidebar.innerHTML = `
     <div class="side-brand">
-      <span class="side-mark">MM</span>
-      <span class="side-label">Machine Maintenance</span>
+      <button class="side-home${current === 'dashboard' ? ' on' : ''}" type="button"
+              aria-label="Machine Maintenance — open dashboard" title="Open dashboard"
+              ${current === 'dashboard' ? 'aria-current="page"' : ''}>
+        <span class="side-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4l.5 2.3 2 1.1 2.3-.7 2 3.5-1.8 1.6v2.4l1.8 1.6-2 3.5-2.3-.7-2 1.1L14 20h-4l-.5-2.3-2-1.1-2.3.7-2-3.5L5 12.2V9.8L3.2 8.2l2-3.5 2.3.7 2-1.1L10 2z"/><circle cx="12" cy="11" r="3.2"/><path d="M7 22h10"/></svg></span>
+        <span class="side-label">Machine Maintenance</span>
+      </button>
       <button class="side-toggle" type="button"
               aria-expanded="${!collapsed}"
               aria-controls="sidebar"
@@ -85,6 +89,7 @@ export function renderShell({ pages, current, onNavigate }) {
     </div>
     <nav class="side-nav" aria-label="Sections">${entries}</nav>`;
 
+  sidebar.querySelector('.side-home').addEventListener('click', () => onNavigate('dashboard'));
   // Clicking outside the sidebar should not navigate; each entry stops here.
   sidebar.querySelectorAll('.side-link').forEach((btn) => {
     btn.addEventListener('click', () => onNavigate(btn.dataset.page));
@@ -105,6 +110,13 @@ export function renderShell({ pages, current, onNavigate }) {
 /** Move the highlight without rebuilding: cheaper, and it keeps focus where the
  *  user put it. */
 export function markCurrent(key) {
+  const home = document.querySelector('#sidebar .side-home');
+  if (home) {
+    const on = key === 'dashboard';
+    home.classList.toggle('on', on);
+    if (on) home.setAttribute('aria-current', 'page');
+    else home.removeAttribute('aria-current');
+  }
   document.querySelectorAll('#sidebar .side-link').forEach((btn) => {
     const on = btn.dataset.page === key;
     btn.classList.toggle('on', on);

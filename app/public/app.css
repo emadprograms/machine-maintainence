@@ -38,7 +38,11 @@
     display: flex; align-items: center; gap: 8px; min-width: 0;
     padding: 4px 4px 12px 8px; font-weight: 600; font-size: 14px; flex-shrink: 0;
   }
-  .side-brand > .side-label { flex: 1; min-width: 0; line-height: 1.15; }
+  .side-home { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; border-radius: 9px; }
+  .side-home .side-label { min-width: 0; line-height: 1.15; }
+  .side-home:hover .side-label, .side-home.on .side-label { color: var(--brand); }
+  .side-mark svg { width: 21px; height: 21px; }
+  #sidebar.collapsed .side-home { flex: 0 0 auto; }
   #sidebar.collapsed .side-brand { flex-direction: column; padding: 4px 0 12px; }
   .side-mark {
     display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px;

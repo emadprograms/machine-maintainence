@@ -183,7 +183,7 @@ let currentPage = 'dashboard';
 let machineTab = 'list';
 
 function buildTabs(user) {
-  const visible = PAGES.filter((p) => !p.settingsOnly && (!p.adminOnly || user.role === 'admin'));
+  const visible = PAGES.filter((p) => p.key !== 'dashboard' && !p.settingsOnly && (!p.adminOnly || user.role === 'admin'));
   shellReady.then((shell) => shell.renderShell({
     pages: visible,
     current: currentPage,
