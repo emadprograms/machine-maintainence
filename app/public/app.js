@@ -9,6 +9,7 @@ const timeReady = import('/time-zone.js').then((m) => { timeKit = m; return m; }
 const shellReady = import('/shell.js').then((m) => { window.shell = m; return m; });
 const dashReady = import('/dashboard.js').then((m) => { window.dash = m; return m; });
 const historyReady = import('/history.js').then((m) => { return m; });
+const historyTablesReady = import('/history-tables-ui.js');
 const reportReady = import('/report.js').then((m) => { return m; });
 const reportHubReady = import('/report-hub.js');
 const machinesReady = import('/machines.js').then((m) => { return m; });
@@ -175,12 +176,11 @@ const PAGES = [
   { key: 'work', label: 'Work orders' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
-  { key: 'report', label: 'Reports' },
   { key: 'users', label: 'Admins & Technicians', adminOnly: true, settingsOnly: true },
   { key: 'backup', label: 'Backup', adminOnly: true, settingsOnly: true },
 ];
 let currentPage = 'dashboard';
-let machineTab = 'list';
+let machineTab = 'list'; let workTab = 'active';
 
 function buildTabs(user) {
   const visible = PAGES.filter((p) => p.key !== 'dashboard' && !p.settingsOnly && (!p.adminOnly || user.role === 'admin'));
@@ -192,6 +192,7 @@ function buildTabs(user) {
 }
 
 function navigatePage(key) {
+  if (key === 'work') selectWorkTab('active', false);
   if (key === 'equipment') selectMachineTab('list', false);
   return showPage(key);
 }
@@ -204,8 +205,7 @@ async function showPage(key) {
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
   const loaders = {
     dashboard: loadDashboard,
-    equipment: () => machineTab === 'history' ? loadHistory() : loadEquipment(), work: loadWork,
-    report: loadReportsPage,
+    equipment: () => machineTab === 'history' ? loadHistoryTable('machine') : loadEquipment(), work: () => workTab === 'history' ? loadHistoryTable('work') : loadWork(),
     pm: loadPm, parts: loadParts, users: loadUsers,
   };
   try { await syncTimeZone(); }
@@ -226,7 +226,7 @@ function selectMachineTab(tab, load = true) {
     button.tabIndex = selected ? 0 : -1;
     $(`#machine-${name === 'list' ? 'list' : 'history'}-panel`).hidden = !selected;
   }
-  if (load && currentPage === 'equipment') return tab === 'history' ? loadHistory() : loadEquipment();
+  if (load && currentPage === 'equipment') return tab === 'history' ? loadHistoryTable('machine') : loadEquipment();
 }
 function machineTabKey(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -235,6 +235,22 @@ function machineTabKey(event) {
     : machineTab === 'list' ? 'history' : 'list';
   selectMachineTab(next);
   $(`#machine-tab-${next}`).focus();
+}
+function selectWorkTab(tab, load = true) {
+  if (!['active', 'history'].includes(tab)) return;
+  workTab = tab;
+  for (const name of ['active', 'history']) {
+    const button = $(`#work-tab-${name}`), selected = name === tab;
+    button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
+    $(`#work-${name}-panel`).hidden = !selected;
+  }
+  if (load && currentPage === 'work') return tab === 'history' ? loadHistoryTable('work') : loadWork();
+}
+function workTabKey(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 'active' : event.key === 'End' ? 'history' : workTab === 'active' ? 'history' : 'active';
+  selectWorkTab(next); $(`#work-tab-${next}`).focus();
 }
 function openDueMaintenance() {
   $('#pm-filter').value = 'due';
@@ -305,11 +321,8 @@ async function saveSettings() {
   finally { button.disabled = false; }
 }
 
-// -------------------------------------------------------------- equipment
 const searchEquipment = debounce(() => loadEquipment());
 
-// The Machines screen lives in its own module (see machines.js). These are the
-// names the markup and the screen loader already use, so nothing above changes.
 async function loadEquipment() { return (await machinesReady).loadEquipment(); }
 async function addEquipment() { return (await machinesReady).addEquipment(); }
 function editEquipment(idToEdit) { (machinesReady).then((m) => m.editEquipment(idToEdit)); }
@@ -320,8 +333,6 @@ function openEquipmentDelete(id) { (machinesReady).then((m) => m.openEquipmentDe
 function checkDeletePhrase() { (machinesReady).then((m) => m.checkDeletePhrase()); }
 function confirmEquipmentDelete() { (machinesReady).then((m) => m.confirmEquipmentDelete()); }
 
-// The Spare parts screen lives in its own module (see parts.js), for the same reason
-// and with the same shape: these are the names the markup already calls.
 async function loadParts() { return (await partsReady).loadParts(); }
 async function addPart() { return (await partsReady).addPart(); }
 function editPart(idToEdit) { partsReady.then((m) => m.editPart(idToEdit)); }
@@ -329,9 +340,6 @@ function savePart() { partsReady.then((m) => m.savePart()); }
 async function removePart(idToRemove) { return (await partsReady).removePart(idToRemove); }
 function downloadParts() { partsReady.then((m) => m.downloadParts()); }
 
-// ------------------------------------------------------------ work orders
-// The Work orders screen lives in its own module (see work.js). These are the
-// names the markup and the rendered rows already use, so nothing above changes.
 const workReady = import('/work.js').then((m) => { return m; });
 
 async function loadWork() { return (await workReady).loadWork(); }
@@ -349,19 +357,13 @@ function openWorkUpdates(id, viewOnly = false) { (workReady).then((m) => m.openW
 function retryWorkUpdateLoading() { (workReady).then((m) => m.retryWorkUpdateLoading()); }
 function startAssigned() { (workReady).then((m) => m.startAssigned()); }
 
-// ----------------------------------------------------- preventive maint.
 function dueKind(days) {
   if (days < 0) return badge(`${-days} days overdue`, 'red');
   if (days === 0) return badge('today', 'amber');
   return badge(`in ${days} days`, days <= 7 ? 'amber' : 'grey');
 }
 
-// The History screen lives in its own module. This waits for it and hands over,
-// so showPage stays the one place that knows which screens exist.
-async function loadHistory() {
-  return (await historyReady).loadHistory();
-}
-
+function loadHistoryTable(kind) { return historyTablesReady.then((m) => m.loadHistoryTable(kind)); }
 async function loadReport() {
   return (await reportReady).loadReport();
 }
@@ -510,7 +512,6 @@ async function pmDone(id) {
 
 function today() { return timeKit?.todayInZone() || new Date().toISOString().slice(0, 10); }
 
-// ------------------------------------------------------------------ export
 // window.location rather than fetch: the server already sets
 // content-disposition, and letting the browser handle it avoids holding the
 // whole file in memory and gives the user their normal download UI.
@@ -530,7 +531,6 @@ async function doBackup() {
 }
 
 
-// ------------------------------------------------------------------ users
 let usersCache = [];
 
 async function loadUsers() {

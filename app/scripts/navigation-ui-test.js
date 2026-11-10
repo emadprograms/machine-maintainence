@@ -28,7 +28,7 @@ const context = vm.createContext({
   esc: (x) => String(x ?? '').replaceAll('<', '&lt;'), strong: (x) => `<td>${x}</td>`,
   soft: (x) => `<td>${x || ''}</td>`, dueKind: () => '', emptyRow: (_, x) => `<tr>${x}</tr>`, today: () => '2026-01-02',
   openForm: () => { el('#pm-form').open = true; },
-  loadHistory: () => calls.push('history'), loadEquipment: () => calls.push('equipment'),
+  loadHistoryTable: (kind) => calls.push(`history:${kind}`), loadEquipment: () => calls.push('equipment'),
   showPage: (page) => calls.push(page),
 });
 const extract = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)));
@@ -68,7 +68,7 @@ assert.match(el('#pm-equipment').innerHTML, /New machine/); assert.doesNotMatch(
 context.selectMachineTab('history');
 assert.equal(el('#machine-history-panel').hidden, false); assert.equal(el('#machine-list-panel').hidden, true);
 assert.equal(el('#machine-tab-history').attributes['aria-selected'], 'true'); assert.equal(el('#machine-tab-list').tabIndex, -1);
-assert.equal(calls.at(-1), 'history');
+assert.equal(calls.at(-1), 'history:machine');
 let prevented = false; context.machineTabKey({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
 assert.ok(prevented); assert.equal(focused, '#machine-tab-list'); assert.equal(calls.at(-1), 'equipment');
 context.openDueMaintenance(); assert.equal(el('#pm-filter').value, 'due'); assert.equal(el('#pm-days').value, '7'); assert.equal(calls.at(-1), 'pm');

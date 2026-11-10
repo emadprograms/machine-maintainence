@@ -210,6 +210,27 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `);
 
+// Older releases stored only last_done. Seed that one known date once, without
+// inventing earlier events. Creating and seeding together makes upgrades repeatable.
+{
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pm_completions'").get();
+    if (!exists) db.exec(`CREATE TABLE pm_completions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      schedule_id INTEGER NOT NULL REFERENCES pm_schedule(id) ON DELETE CASCADE,
+      completed_on TEXT NOT NULL,
+      recorded_by INTEGER REFERENCES users(id),
+      source TEXT NOT NULL CHECK(source IN ('recorded', 'legacy')),
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_pm_completions_schedule ON pm_completions(schedule_id, completed_on);
+    INSERT INTO pm_completions (schedule_id, completed_on, source)
+      SELECT id, last_done, 'legacy' FROM pm_schedule WHERE last_done IS NOT NULL AND last_done <> '';`);
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+
 // --------------------------------------------------- adding a column later
 // Taken from the reviewed repo (backend/src/database.ts:364): a small helper
 // that adds a column only if it is missing, so old database files keep working.

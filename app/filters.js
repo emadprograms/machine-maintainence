@@ -29,7 +29,8 @@ export function workOrderFilter(query = {}) {
   const where = [];
   const params = [];
 
-  if (query.status) { where.push('w.status = ?'); params.push(String(query.status)); }
+  if (query.status === 'active') where.push("w.status IN ('open','in_progress')");
+  else if (query.status) { where.push('w.status = ?'); params.push(String(query.status)); }
   if (query.equipment_id) { where.push('w.equipment_id = ?'); params.push(Number(query.equipment_id)); }
   if (query.assigned_to) { where.push('w.assigned_to = ?'); params.push(Number(query.assigned_to)); }
   if (query.q) {

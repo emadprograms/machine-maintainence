@@ -43,7 +43,7 @@
     <section data-page="equipment" class="hidden">
       <div class="section-tabs" role="tablist" aria-label="Machines views" onkeydown="machineTabKey(event)">
         <button type="button" role="tab" id="machine-tab-list" aria-controls="machine-list-panel" aria-selected="true" tabindex="0" onclick="selectMachineTab('list')">Machines</button>
-        <button type="button" role="tab" id="machine-tab-history" aria-controls="machine-history-panel" aria-selected="false" tabindex="-1" onclick="selectMachineTab('history')">History</button>
+        <button type="button" role="tab" id="machine-tab-history" aria-controls="machine-history-panel" aria-selected="false" tabindex="-1" onclick="selectMachineTab('history')">Machine history</button>
       </div>
       <div id="machine-list-panel" role="tabpanel" aria-labelledby="machine-tab-list" tabindex="0">
       <div class="page-head">
@@ -78,30 +78,20 @@
       </div>
       </div>
     <div id="machine-history-panel" role="tabpanel" aria-labelledby="machine-tab-history" tabindex="0" hidden>
-      <div class="page-head">
-        <div>
-          <h2>History</h2>
-          <p class="page-sub">Everything that has been finished, and when it happened.</p>
-        </div>
-        <button class="ghost" onclick="loadHistory()">Refresh</button>
-      </div>
-      <div class="card">
-        <div class="card-toolbar">
-          <label><span>Closed from</span>
-            <input type="date" id="history-from" onchange="loadHistory()" /></label>
-          <label><span>Closed to</span>
-            <input type="date" id="history-to" onchange="loadHistory()" /></label>
-          <input id="history-search" type="search" placeholder="Search machine, problem or notes"
-                 oninput="searchHistory()" />
-          <button class="ghost small" onclick="clearHistoryFilters()">Clear</button>
-          <button class="ghost small" onclick="downloadHistory()">Download CSV</button>
-        </div>
-        <p id="history-summary" class="summary-line"></p>
-        <div class="table-wrap">
-          <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="closed_at">Closed<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th></tr></thead>
-            <tbody id="history-rows"></tbody></table>
-        </div>
-      </div>
+<div class="page-head"><div><h2>Machine history</h2><p class="page-sub">Date overlap uses the reported and closed dates, including open jobs. Job start is the first stage; scheduled maintenance uses its completion date.</p></div><button class="ghost" type="button" onclick="loadHistoryTable('machine')">Refresh</button></div>
+      <div class="card"><div class="card-toolbar history-filters">
+        <label><span>From</span><input type="date" id="ht-machine-from" onchange="loadHistoryTable('machine')" /></label>
+        <label><span>To</span><input type="date" id="ht-machine-to" onchange="loadHistoryTable('machine')" /></label>
+        <label><span>Category</span><select id="ht-machine-category" onchange="loadHistoryTable('machine')"><option value="">All categories</option></select></label>
+        <label><span>Machines (none = all)</span><select id="ht-machine-machines" multiple size="3" onchange="loadHistoryTable('machine')" aria-label="Choose machines; leave none selected for all"></select></label>
+        <label><span>Status</span><select id="ht-machine-status" onchange="loadHistoryTable('machine')"><option value="">All statuses</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="done">Completed</option></select></label>
+        <label><span>Search</span><input id="ht-machine-search" type="search" maxlength="200" placeholder="Machine, job or notes" oninput="searchHistoryTable('machine')" /></label>
+        <button class="ghost small" type="button" onclick="clearHistoryTable('machine')">Clear</button>
+        <button class="ghost small" id="ht-machine-csv" type="button" onclick="downloadHistoryTable('machine')" disabled>Download CSV</button>
+        <button class="primary small" id="ht-machine-print" type="button" onclick="printHistoryTable('machine')" disabled>Print / Save as PDF</button>
+      </div><p class="hint">Select multiple machines with Ctrl or Command; no selection means all machines. Category and machine selections work together.</p>
+      <p class="hint">Older schedules only show their last recorded completion; earlier completions were not retained.</p>
+      <p id="ht-machine-summary" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="code">Work order<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job / maintenance<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="kind">Type<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="opened_day">Reported<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="start_day">Job start<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="end_day">Job close / completion<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned / recorded by<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="resolution">What was done<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Parts cost<span class="sort-mark" aria-hidden="true"></span></button></th><th>Actions</th></tr></thead><tbody id="ht-machine-rows"></tbody></table></div></div>
     </div>
       <dialog id="equipment-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
@@ -199,6 +189,11 @@
 
     <!-- Work orders -->
     <section data-page="work" class="hidden">
+      <div class="section-tabs" role="tablist" aria-label="Work order views" onkeydown="workTabKey(event)">
+        <button type="button" role="tab" id="work-tab-active" aria-controls="work-active-panel" aria-selected="true" tabindex="0" onclick="selectWorkTab('active')">Open work orders</button>
+        <button type="button" role="tab" id="work-tab-history" aria-controls="work-history-panel" aria-selected="false" tabindex="-1" onclick="selectWorkTab('history')">Work order history</button>
+      </div>
+      <div id="work-active-panel" role="tabpanel" aria-labelledby="work-tab-active" tabindex="0">
       <div class="page-head">
         <div>
           <h2>Work orders</h2>
@@ -211,10 +206,9 @@
           <input id="wo-search" type="search" placeholder="Search problem, notes or machine"
                  oninput="searchWork()" />
           <select id="wo-status-filter" onchange="loadWork()" aria-label="Which work orders to show">
-            <option value="" selected>Any status</option>
+            <option value="" selected>Open and in progress</option>
             <option value="open">Open</option>
             <option value="in_progress">In progress</option>
-            <option value="done">Done</option>
           </select>
           <button class="ghost small" onclick="downloadWorkOrders()">Download CSV</button>
         </div>
@@ -222,6 +216,48 @@
           <table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Problem<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="assignee_name">Assigned to<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="priority">Priority<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="last_activity_at" title="Latest report, stage update or closure in the workshop time zone">Last activity (<span id="last-activity-zone">UTC</span>)<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="labour_hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Cost<span class="sort-mark" aria-hidden="true"></span></button></th><th></th></tr></thead>
             <tbody id="work-rows"></tbody></table>
         </div>
+      </div>
+      </div>
+      <div id="work-history-panel" role="tabpanel" aria-labelledby="work-tab-history" tabindex="0" hidden>
+<div class="page-head"><div><h2>Work order history</h2><p class="page-sub">Date overlap uses the reported and closed dates, including open jobs. Job start is the first stage.</p></div><button class="ghost" type="button" onclick="loadHistoryTable('work')">Refresh</button></div>
+      <div class="card"><div class="card-toolbar history-filters">
+        <label><span>From</span><input type="date" id="ht-work-from" onchange="loadHistoryTable('work')" /></label>
+        <label><span>To</span><input type="date" id="ht-work-to" onchange="loadHistoryTable('work')" /></label>
+        <label><span>Category</span><select id="ht-work-category" onchange="loadHistoryTable('work')"><option value="">All categories</option></select></label>
+        <label><span>Machines (none = all)</span><select id="ht-work-machines" multiple size="3" onchange="loadHistoryTable('work')" aria-label="Choose machines; leave none selected for all"></select></label>
+        <label><span>Status</span><select id="ht-work-status" onchange="loadHistoryTable('work')"><option value="">All statuses</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="done">Completed</option></select></label>
+        <label><span>Search</span><input id="ht-work-search" type="search" maxlength="200" placeholder="Machine, job or notes" oninput="searchHistoryTable('work')" /></label>
+        <button class="ghost small" type="button" onclick="clearHistoryTable('work')">Clear</button>
+        <button class="ghost small" id="ht-work-csv" type="button" onclick="downloadHistoryTable('work')" disabled>Download CSV</button>
+        <button class="primary small" id="ht-work-print" type="button" onclick="printHistoryTable('work')" disabled>Print / Save as PDF</button>
+      </div><p class="hint">Select multiple machines with Ctrl or Command; no selection means all machines. Category and machine selections work together.</p>
+
+      <p id="ht-work-summary" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th aria-sort="none"><button type="button" class="sort-btn" data-sort="equipment_name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="category">Category<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="code">Work order<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="title">Job / maintenance<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="kind">Type<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="opened_day">Reported<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="start_day">Job start<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="end_day">Job close / completion<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="owner">Assigned / recorded by<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="resolution">What was done<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th aria-sort="none"><button type="button" class="sort-btn" data-sort="cost">Parts cost<span class="sort-mark" aria-hidden="true"></span></button></th><th>Actions</th></tr></thead><tbody id="ht-work-rows"></tbody></table></div></div>
+    <details id="additional-reports" class="history-extra" ontoggle="if(this.open) loadReportsPage()"><summary>Additional reports</summary>
+      <div class="page-head">
+        <div>
+          <h3>Additional reports</h3>
+          <p class="page-sub">Choose a report and print it or save it as a PDF.</p>
+        </div>
+        <div class="report-actions"><button id="report-csv" class="ghost" onclick="downloadHubReport()">Download CSV</button> <button id="report-print" class="primary" onclick="printHubReport()">Print / Save as PDF</button></div>
+      </div>
+      <div class="card report-hub-chooser"><label class="field"><span>Report type</span><select id="report-type" onchange="changeReportType()"><option value="monthly">Monthly completed work</option><option value="work">Work order</option><option value="machine">Machine service history</option><option value="parts">Spare-parts inventory</option></select></label></div>
+      <div class="card" id="report-monthly">
+        <div class="card-toolbar">
+          <label><span>Month</span>
+            <input type="month" id="report-month" onchange="loadReport()" /></label>
+        </div>
+        <p id="report-summary" class="summary-line"></p>
+        <div class="table-wrap">
+          <table class="table"><thead><tr>
+            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="jobs">Jobs<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total">Total service cost<span class="sort-mark" aria-hidden="true"></span></button></th>
+          </tr></thead><tbody id="report-rows"></tbody></table>
+        </div>
+      </div>
+      <div class="card report-hub-panel" id="report-work-panel" hidden><label class="field"><span>Find a work order</span><input id="report-work-search" type="search" placeholder="Search number, problem or machine" oninput="filterReportJobs()" /></label><label class="field"><span>Work order</span><select id="report-work-select" onchange="reportSelectionChanged()"></select></label><p id="report-work-status" class="hint" role="status"></p></div>
+      <div class="card report-hub-panel" id="report-machine-panel" hidden><label class="field"><span>Machine</span><select id="report-machine-select" onchange="loadMachineReport()"></select></label><label class="field"><span>Filter work orders</span><input id="report-machine-search" type="search" maxlength="200" placeholder="Search number, problem or status" oninput="filterHubMachine()" /></label><p class="hint">All-time work orders, including open and completed jobs. One work order counts as one service event. Costs include recorded parts only.</p><p id="report-machine-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="code">Work order<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="title">Problem<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="status">Status<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="hours">Hours<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="cost">Parts cost<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-machine-rows"></tbody></table></div></div>
+      <div class="card report-hub-panel" id="report-parts-panel" hidden><label class="field"><span>Filter spare parts</span><input id="report-parts-search" type="search" maxlength="200" placeholder="Search name, reference or supplier" oninput="filterHubParts()" /></label><p class="hint">Current stock, not a history of purchases. Values exclude parts with no unit price.</p><p id="report-parts-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="name">Part<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reference">Reference<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="qty">In stock<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="unit_price">Unit price<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reorder_level">Reorder at<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-parts-rows"></tbody></table></div></div>
+    </details>
       </div>
       <dialog id="work-form" class="sheet">
         <form method="dialog" class="sheet-inner" onsubmit="event.preventDefault()">
@@ -519,31 +555,6 @@
 
     <!-- Backup -->
     <!-- Report -->
-    <section data-page="report" class="hidden">
-      <div class="page-head">
-        <div>
-          <h2>Reports</h2>
-          <p class="page-sub">Choose a report and print it or save it as a PDF.</p>
-        </div>
-        <div class="report-actions"><button id="report-csv" class="ghost" onclick="downloadHubReport()">Download CSV</button> <button id="report-print" class="primary" onclick="printHubReport()">Print / Save as PDF</button></div>
-      </div>
-      <div class="card report-hub-chooser"><label class="field"><span>Report type</span><select id="report-type" onchange="changeReportType()"><option value="monthly">Monthly completed work</option><option value="work">Work order</option><option value="machine">Machine service history</option><option value="parts">Spare-parts inventory</option></select></label></div>
-      <div class="card" id="report-monthly">
-        <div class="card-toolbar">
-          <label><span>Month</span>
-            <input type="month" id="report-month" onchange="loadReport()" /></label>
-        </div>
-        <p id="report-summary" class="summary-line"></p>
-        <div class="table-wrap">
-          <table class="table"><thead><tr>
-            <th aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Machine<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="jobs">Jobs<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="hours">Hours<span class="sort-mark" aria-hidden="true"></span></button></th><th class="cell-num" aria-sort="none"><button type="button" class="sort-btn" data-sort="total">Total service cost<span class="sort-mark" aria-hidden="true"></span></button></th>
-          </tr></thead><tbody id="report-rows"></tbody></table>
-        </div>
-      </div>
-      <div class="card report-hub-panel" id="report-work-panel" hidden><label class="field"><span>Find a work order</span><input id="report-work-search" type="search" placeholder="Search number, problem or machine" oninput="filterReportJobs()" /></label><label class="field"><span>Work order</span><select id="report-work-select" onchange="reportSelectionChanged()"></select></label><p id="report-work-status" class="hint" role="status"></p></div>
-      <div class="card report-hub-panel" id="report-machine-panel" hidden><label class="field"><span>Machine</span><select id="report-machine-select" onchange="loadMachineReport()"></select></label><label class="field"><span>Filter work orders</span><input id="report-machine-search" type="search" maxlength="200" placeholder="Search number, problem or status" oninput="filterHubMachine()" /></label><p class="hint">All-time work orders, including open and completed jobs. One work order counts as one service event. Costs include recorded parts only.</p><p id="report-machine-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="code">Work order<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="title">Problem<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="status">Status<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="hours">Hours<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="cost">Parts cost<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-machine-rows"></tbody></table></div></div>
-      <div class="card report-hub-panel" id="report-parts-panel" hidden><label class="field"><span>Filter spare parts</span><input id="report-parts-search" type="search" maxlength="200" placeholder="Search name, reference or supplier" oninput="filterHubParts()" /></label><p class="hint">Current stock, not a history of purchases. Values exclude parts with no unit price.</p><p id="report-parts-status" class="summary-line" role="status"></p><div class="table-wrap"><table class="table"><thead><tr><th><button class="sort-btn" data-sort="name">Part<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reference">Reference<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="qty">In stock<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="unit_price">Unit price<span class="sort-mark"></span></button></th><th><button class="sort-btn" data-sort="reorder_level">Reorder at<span class="sort-mark"></span></button></th></tr></thead><tbody id="report-parts-rows"></tbody></table></div></div>
-    </section>
     <section data-page="backup" class="hidden">
       <div class="page-head">
         <div>

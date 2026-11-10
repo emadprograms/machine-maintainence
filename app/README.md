@@ -146,7 +146,7 @@ photograph pushed that page past 600 lines.
 
 ### The screens
 
-`Machines` · `Work orders` · `Maintenance` · `Spare parts` · `Reports`
+`Machines` · `Work orders` · `Maintenance` · `Spare parts`
 
 Select the **Machine Maintenance** brand and logo at the top of the sidebar to open the dashboard, including when the sidebar is collapsed.
 
@@ -172,10 +172,9 @@ stored `role` values keep the word *user*, because everything else already speak
   table spans exactly the columns its header names, and the suite checks that rather than
   trusting anyone to count.
 * **Every list has a named filter, and each one opens on everything.** Machines
-  (all / in service / down / retired), work orders (any status / open / in progress /
-  done), spare parts (all / at or below the reorder level / out of stock), maintenance
+  (all / in service / down / retired), open work orders (open and in progress / open / in progress), spare parts (all / at or below the reorder level / out of stock), maintenance
   (all / due soon within 7, 14, 30 or 90 days / overdue), users (all / active / disabled / administrators),
-  and the report (a month). Spare parts had a **checkbox** that
+  and the monthly report (a month). Spare parts had a **checkbox** that
   could only ever say one thing, and maintenance and users had no filter at all. Every
   filter carries an `aria-label`, every one states its "everything" answer as selected,
   and the CSV download next to a list builds its query from the same function as the
@@ -285,7 +284,7 @@ stored `role` values keep the word *user*, because everything else already speak
   Deleting the only stage of an in-progress job returns that job to open. Photo files are
   removed after the database commit; a storage failure is logged and the admin is warned to
   remove the named leftover files manually. Backups made before deletion are not affected.
-* **Print or save a complete work order as a PDF.** In **Reports**, choose *Work order* and select the job. A fresh local print view includes the original report, machine details, closure,
+* **Print or save a complete work order as a PDF.** In either history tab, choose *Print job* beside the job, or open **Work order history → Additional reports** and select it. A fresh local print view includes the original report, machine details, closure,
   totals, all stages, actual-cost parts and fault/stage photos. The browser opens its print
   dialog; select a printer or *Save as PDF*. A missing photo is explicitly marked unavailable.
 * **Hours and costs stay live, separately.** The work-order cost is its recorded
@@ -322,7 +321,7 @@ stored `role` values keep the word *user*, because everything else already speak
   details and clears the closed date; a later close requires a new running confirmation.
   Historical resolution, verification and reviewed-hour records remain readable.
 * **Work-order actions are ordered and labelled with icons.** View updates, Add update,
-  any applicable editing action, and finally Close job. Printing is in Reports. Open jobs use Add update
+  any applicable editing action, and finally Close job. Printing is in the history tabs. Open jobs use Add update
   to start the first stage; closed jobs can be reopened.
 * **Machine details are easier to understand.** The total service hours heading describes
   maintenance labour; the row action is Edit machine details. Remove an existing photo
@@ -339,15 +338,9 @@ stored `role` values keep the word *user*, because everything else already speak
   using the time-zone rules built into the local runtime, with no network request. Other
   sessions pick up changes when they next load data or navigate. Stored timestamps stay UTC;
   maintenance dates entered as calendar days are never shifted.
-* **Machines → History** lists finished work across the workshop, newest first, narrowable to a date range — "what did
-  we close in October".
-* **Reports** is the generation hub for a work-order printout, monthly completed work,
-  an individual machine’s all-time service history, and current spare-parts inventory.
-  Machine reports count every work order as one service event, show counts by status,
-  service hours and recorded parts-only costs. Monthly reports count closed jobs in the
-  selected month. Inventory value excludes items with no unit price. Machine and inventory
-  filters apply to the on-screen report, its CSV and print/PDF. No sales or labour costs are
-  inferred. Work-order reports are available for open and completed jobs.
+* **Machines → Machine history** combines work orders (including open jobs) with scheduled-maintenance completions. **Work orders → Open work orders** shows open and in-progress jobs; **Work order history** includes all statuses and supports reopening. Both history tables filter by date overlap, category, selected machines, status and search. The date range includes jobs between their reported and closed dates (or still open); job start is the first recorded stage, and scheduled tasks use their completion date. Dates use the workshop time zone. Print / Save as PDF prints the filtered, sorted table; CSV uses the same filters.
+* Scheduled-maintenance completions are recorded individually from this version onward. On upgrade, only each schedule's previously stored last completion can be included; earlier completions cannot be reconstructed and are labelled last known.
+* **Work order history → Additional reports** retains individual work-order, monthly completed work, machine service and current spare-parts inventory reports. Machine service events count all work orders, with service hours separate from parts-only costs. Inventory value excludes items without a price; no sales or labour costs are inferred.
 * **Maintenance** includes the Due soon filter and 7/14/30/90-day window; the dashboard maintenance card opens its seven-day view, including overdue schedules. The same rows support completion dates.
 * **The Dashboard draws two charts** — jobs closed per month and what each month cost,
   recorded parts only — for the last six months. They are drawn as SVG in the page: no

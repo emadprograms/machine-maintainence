@@ -23,13 +23,13 @@ const ctx = vm.createContext({ $, window: { me: { role: 'admin' } }, Intl,
 vm.runInContext(extract('const PAGES = [', 'function navigatePage('), ctx);
 vm.runInContext(extract('let settingsLoad = 0;', 'async function saveSettings()'), ctx);
 ctx.buildTabs(ctx.window.me); await new Promise((resolve) => setImmediate(resolve));
-assert.deepEqual(Array.from(shellPages, (p) => p.key), ['equipment','work','pm','parts','report']);
+assert.deepEqual(Array.from(shellPages, (p) => p.key), ['equipment','work','pm','parts']);
 await ctx.openSettings(); assert.equal($('#settings-admin').hidden, false); assert.equal($('#settings-save').hidden, false);
 ctx.openSettingsPage('users'); assert.equal($('#app-settings').open, false); assert.equal(navigated.at(-1), 'users');
 await ctx.openSettings(); ctx.openSettingsPage('backup'); assert.equal(navigated.at(-1), 'backup');
 ctx.openSettingsPage('work'); assert.equal(navigated.length, 2);
 ctx.window.me = { role: 'tech' }; ctx.buildTabs(ctx.window.me); await new Promise((resolve) => setImmediate(resolve));
-assert.deepEqual(Array.from(shellPages, (p) => p.key), ['equipment','work','pm','parts','report']);
+assert.deepEqual(Array.from(shellPages, (p) => p.key), ['equipment','work','pm','parts']);
 await ctx.openSettings(); assert.equal($('#settings-admin').hidden, true); assert.equal($('#settings-time-zone').readOnly, true); assert.equal($('#settings-save').hidden, true);
 ctx.openSettingsPage('users'); ctx.openSettingsPage('backup'); assert.equal(navigated.length, 2);
 ctx.window.me = { role: 'admin' }; focused = undefined;

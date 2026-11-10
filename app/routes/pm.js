@@ -2,7 +2,7 @@
 // generated calendar; here a schedule is a row, and due-ness is arithmetic.
 
 import { send, readBody, route, id, day } from '../http.js';
-import { all, get, run } from '../db.js';
+import { all, get, run, transaction } from '../db.js';
 import { parseDay } from '../dates.js';
 import { IN_SERVICE_SQL } from '../status.js';
 import { timeZone } from '../settings.js';
@@ -44,8 +44,13 @@ export default {
       return send(res, 400, { error: 'Machine, task and a positive interval are required' });
     }
     const due = b.next_due || get("SELECT date(?, '+' || ? || ' days') AS day", todayInZone(timeZone()), interval).day;
-    const r = run('INSERT INTO pm_schedule (equipment_id, task, interval_days, last_done, next_due) '
-      + 'VALUES (?,?,?,?,?)', id(b.equipment_id), b.task.trim(), interval, day(b.last_done), day(due));
+    const r = transaction(() => {
+      const last = day(b.last_done);
+      const result = run('INSERT INTO pm_schedule (equipment_id, task, interval_days, last_done, next_due) '
+        + 'VALUES (?,?,?,?,?)', id(b.equipment_id), b.task.trim(), interval, last, day(due));
+      if (last) run("INSERT INTO pm_completions (schedule_id, completed_on, source) VALUES (?, ?, 'legacy')", result.lastInsertRowid, last);
+      return result;
+    });
     send(res, 201, get('SELECT * FROM pm_schedule WHERE id = ?', r.lastInsertRowid));
   }),
 
@@ -72,9 +77,13 @@ export default {
       base = parsed.value;
     }
 
-    run(`UPDATE pm_schedule
-         SET last_done = ?, next_due = date(?, '+' || interval_days || ' days')
-         WHERE id = ?`, base, base, id(req.params.id));
+    transaction(() => {
+      run(`UPDATE pm_schedule
+           SET last_done = ?, next_due = date(?, '+' || interval_days || ' days')
+           WHERE id = ?`, base, base, id(req.params.id));
+      run("INSERT INTO pm_completions (schedule_id, completed_on, recorded_by, source) VALUES (?, ?, ?, 'recorded')",
+        row.id, base, Number(req.user.sub));
+    });
     send(res, 200, get('SELECT * FROM pm_schedule WHERE id = ?', id(req.params.id)));
   }),
 };

@@ -1,14 +1,4 @@
-// The record: everything that has been closed, and everything that ever happened
-// to one machine.
-//
-// Its own file for the same reason as shell.js and dashboard.js — the
-// readability promise is per file. The two views share one endpoint, because a
-// machine's history and the workshop's history are the same query with a
-// different filter, and two queries would drift.
-//
-// It uses the helpers app.js already defines (esc, strong, soft, badge,
-// emptyRow, api, $) rather than repeating them: this is one page, not a bundle
-// of independent widgets.
+// One machine’s job timeline dialog. The filterable history tables live in history-tables-ui.js.
 
 import { register, rowsFor, markTable } from './tables.js';
 import { zoneDate } from './time-zone.js';
@@ -22,105 +12,6 @@ const dayOf = (stamp) => zoneDate(stamp) || '';
 function statusBadge(status) {
   return `<td>${badge(STATUS_LABEL[status] || status, STATUS_COLOUR[status] || 'grey')}</td>`;
 }
-
-// ------------------------------------------------------------ the screen
-/**
- * The filters on the History screen, as a query string. The screen and its CSV
- * download both call this — the file is the screen's query with another output.
- */
-function historyQuery() {
-  const params = new URLSearchParams();
-  // The History screen is about finished work; a job still running belongs on
-  // the work orders screen, where you can act on it.
-  params.set('status', 'done');
-  const from = $('#history-from').value;
-  const to = $('#history-to').value;
-  const q = ($('#history-search')?.value || '').trim();
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
-  if (q) params.set('q', q);
-  return `?${params.toString()}`;
-}
-
-function historyHasRange() {
-  return Boolean($('#history-from').value || $('#history-to').value);
-}
-
-let historyRows = [];
-
-function historyRow(w) {
-  return `<tr>
-    ${strong(w.equipment_name)}
-    <td class="cell-strong">${esc(w.title)}<span class="row-sub">${esc(w.code || '')}${w.resolution
-      ? ` · ${esc(w.resolution)}` : ''}</span></td>
-    <td class="cell-num">${esc(dayOf(w.closed_at))}</td>
-    ${soft(w.owner, 'Nobody')}
-    <td>${esc(w.priority)}</td>
-  </tr>`;
-}
-
-function renderHistoryError(message) {
-  // A failed load is not an empty range. Without this the two would share a
-  // sentence, and "nothing closed" is a claim a broken request cannot make.
-  $('#history-summary').textContent = '';
-  $('#history-rows').innerHTML = `<tr><td colspan="5" class="cell-say cell-error">` +
-    `Could not load the history. ${esc(message)}</td></tr>`;
-}
-
-export function renderHistory({ rows, total, shown }) {
-  const count = Number(total ?? 0);
-  $('#history-summary').textContent = count === 0 ? ''
-    : `${count} closed ${count === 1 ? 'job' : 'jobs'}`
-      + (shown < count ? ` · showing the most recent ${shown}` : '');
-  historyRows = rows;
-  drawHistory();
-}
-
-/** Drawn from the rows the last load returned, so sorting a column costs no request
- *  and cannot disagree with the summary line above it. */
-function drawHistory() {
-  const range = historyHasRange();
-  const searched = ($('#history-search')?.value || '').trim();
-  const rows = rowsFor('history-rows', historyRows);
-  $('#history-rows').innerHTML = rows.length
-    ? rows.map(historyRow).join('')
-    : emptyRow(5, searched
-      ? `Nothing closed matches "${searched}". Clear the search to see everything.`
-      : range
-        ? 'Nothing was closed between those dates. Widen the range, or clear it.'
-        : 'Nothing has been closed yet. A work order appears here once it is marked done.');
-  markTable('history-rows');
-}
-
-register('history-rows', {
-  equipment_name: (w) => w.equipment_name,
-  title: (w) => w.title,
-  closed_at: (w) => w.closed_at,
-  owner: (w) => w.owner,
-  priority: (w) => ({ high: 0, medium: 1, low: 2 }[w.priority] ?? 3),
-}, drawHistory);
-
-export async function loadHistory() {
-  try {
-    renderHistory(await api(`/history${historyQuery()}`));
-  } catch (e) {
-    renderHistoryError(e.message);
-  }
-}
-
-export function clearHistoryFilters() {
-  $('#history-from').value = '';
-  $('#history-to').value = '';
-  if ($('#history-search')) $('#history-search').value = '';
-  return loadHistory();
-}
-
-/** The same filters as the screen, written out as a file. */
-export function downloadHistory() {
-  window.location = `/api/export/history.csv${historyQuery()}`;
-}
-
-export const searchHistory = debounce(() => loadHistory());
 
 // --------------------------------------------------- one machine's history
 let machineHistory = [], machineHistoryId = null, machineHistoryLoad = 0, machineJobLoad = 0;
@@ -220,6 +111,5 @@ $('#machine-history').addEventListener?.('close', () => { if (!$('#machine-histo
 // The markup calls these by name from onclick attributes, which cannot see a
 // module's exports. Four lines here beats four wrappers in app.js.
 Object.assign(window, {
-  loadHistory, clearHistoryFilters, openMachineHistory, closeMachineHistory, openMachineHistoryJob,
-  downloadHistory, searchHistory,
+  openMachineHistory, closeMachineHistory, openMachineHistoryJob,
 });

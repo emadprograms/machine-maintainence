@@ -29,7 +29,7 @@ try {
   if (type === 'machine' && /^\d+$/.test(q.get('id') || '') && Number(q.get('id')) > 0) path = `/api/reports/machine/${Number(q.get('id'))}?q=${encodeURIComponent(q.get('q') || '')}`;
   else if (type === 'parts') path = `/api/reports/parts?q=${encodeURIComponent(q.get('q') || '')}`;
   else if (type === 'monthly' && /^\d{4}-\d{2}$/.test(q.get('month') || '')) path = `/api/report?month=${encodeURIComponent(q.get('month'))}`;
-  else throw new Error('Choose a valid report in Reports.');
+  else throw new Error('Choose a valid report in Work order history.');
   const response = await fetch(path, { credentials:'same-origin' });
   if (!response.ok) throw new Error(response.status === 401 ? 'Please sign in in the main app, then reload this page.' : 'Could not load this report.');
   render(type, await response.json()); button.disabled = false; window.print();

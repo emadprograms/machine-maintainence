@@ -28,7 +28,7 @@ export function workQuery() {
   const params = new URLSearchParams();
   const status = $('#wo-status-filter')?.value;
   const q = searchTerm('#wo-search');
-  if (status) params.set('status', status);
+  params.set('status', status || 'active');
   if (q) params.set('q', q);
   const qs = params.toString();
   return qs ? `?${qs}` : '';

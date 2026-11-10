@@ -15,8 +15,6 @@ const ICONS = {
   dashboard: '<path d="M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z"/>',
   equipment: '<path d="M4 7h16v10H4zM7 7V5h10v2M9 17v3M15 17v3"/>',
   work: '<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h5"/>',
-  // Report: bars over a baseline — the month, added up.
-  report: '<path d="M4 20v-9M10 20V5M16 20v-6M20 20H3"/>',
   pm: '<path d="M14 3l-2 6h4l-6 12 2-8H8z"/>',
   parts: '<path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/>',
   users: '<path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5M17 12a2.5 2.5 0 1 0 0-5M22 20c0-2.5-2-4-5-4"/>',

@@ -452,6 +452,7 @@ th.sorted .sort-btn { color: var(--ink); }
 #machine-cost-status { color: #8a4b08; margin-top: 8px; }
 #settings-status { position: absolute; right: 20px; top: 100%; background: #fff4f2; padding: 6px 10px; }
 @media (max-width: 600px) {
+  main { padding: 20px 12px; }
   header { gap: 8px; padding: 10px 12px; flex-wrap: wrap; }
   header h1 { font-size: 14px; min-width: 120px; }
   #who { order: 4; width: 100%; font-size: 11px; }
@@ -459,6 +460,12 @@ th.sorted .sort-btn { color: var(--ink); }
 
 /* Subviews belong to Machines, not another sidebar section. */
 .section-tabs { display: flex; gap: .35rem; border-bottom: 1px solid var(--line, #ddd); margin-bottom: 1.25rem; }
-.section-tabs button { border: 0; border-bottom: 3px solid transparent; background: transparent; padding: .7rem 1rem; color: inherit; cursor: pointer; }
+.section-tabs button { min-width: 0; flex: 0 1 auto; border: 0; border-bottom: 3px solid transparent; background: transparent; padding: .7rem .65rem; color: inherit; cursor: pointer; }
 .section-tabs button[aria-selected="true"] { border-bottom-color: #067647; font-weight: 700; }
 .section-tabs button:focus-visible { outline: 2px solid #067647; outline-offset: -2px; }
+
+/* History filters wrap without making the mobile page wider than its container. */
+.history-filters label { flex: 1 1 180px; min-width: 0; flex-direction: column; align-items: stretch; }
+.history-filters input[type="date"], .history-filters input[type="search"], .history-filters select { width: 100%; min-width: 0; max-width: 100%; }
+.history-extra { margin-top: 18px; }
+.history-extra > summary { cursor: pointer; font-weight: 600; margin-bottom: 12px; }

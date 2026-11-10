@@ -1,3 +1,4 @@
+import historyTableRoutes from './routes/history-tables.js';
 // The server: it starts, it seeds the first account, it decides which route a
 // request belongs to, and it serves the one HTML page. Nothing else.
 //
@@ -56,6 +57,7 @@ if (!get('SELECT id FROM users LIMIT 1')) {
 const api = {
   ...authRoutes,
   ...recordRoutes,
+  ...historyTableRoutes,
   ...equipmentRoutes,
   ...workOrderRoutes,
   ...jobPrintRoutes,

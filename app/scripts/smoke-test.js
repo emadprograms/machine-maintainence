@@ -824,7 +824,7 @@ ok('every element the page looks up by id exists in the markup',
 // nothing about which file you get.
 const exportHandlers = [...new Set(handlers.filter((h) => h.startsWith('download')))];
 ok('every filtered list can also be written to a file',
-  ['downloadWorkOrders', 'downloadParts', 'downloadHistory']
+  ['downloadWorkOrders', 'downloadParts', 'downloadHistoryTable']
     .every((h) => exportHandlers.includes(h)),
   exportHandlers.join(', '));
 ok('both exports read a filter that is on the page',
@@ -1100,6 +1100,18 @@ const settingsUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'setti
 ok('settings navigation preserves sidebar order and role restrictions', settingsUiTest.status === 0,
   settingsUiTest.stderr || settingsUiTest.stdout);
 
+const historyTableSmoke = await c2('/api/history-table?view=work');
+const historyTableCsv = await csvClient('/api/export/history-table.csv?view=work');
+ok('history table and CSV endpoints answer with authenticated filtered records',
+  historyTableSmoke.status === 200 && Array.isArray(historyTableSmoke.data.rows)
+  && historyTableCsv.status === 200 && /Job start/.test(historyTableCsv.text));
+const historyTablesUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'history-tables-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('history table UI handles filtering, errors and safe print snapshots', historyTablesUiTest.status === 0,
+  (historyTablesUiTest.stderr || historyTablesUiTest.stdout).slice(0, 600));
+const historyTablesTest = spawnSync(process.execPath, ['--no-warnings=ExperimentalWarning', join(root, 'scripts', 'history-tables-test.js')], { cwd: root, encoding: 'utf8' });
+ok('history overlap, scheduled maintenance migration and export regression', historyTablesTest.status === 0,
+  (historyTablesTest.stderr || historyTablesTest.stdout).slice(0, 600));
+
 console.log('\nPhase 11 — the shell');
 
 const shellSrc = readFileSync(join(root, 'public', 'shell.js'), 'utf8');
@@ -1288,7 +1300,7 @@ ok('the work-order export applies the same search as the screen',
 ok('a search with no hits says so instead of showing an empty list',
   /Nothing matches "/.test(clientSrc)
   && /Nothing in this filter matches "/.test(readFileSync(join(root, 'public', 'machines.js'), 'utf8'))
-  && /Nothing closed matches "/.test(readFileSync(join(root, 'public', 'history.js'), 'utf8')),
+  && /No history matches these filters/.test(readFileSync(join(root, 'public', 'history-tables-ui.js'), 'utf8')),
   'one of the three search empty states is missing');
 
 console.log('\nPhase 16 — what it cost');
@@ -1373,7 +1385,7 @@ ok('the report exports with a total row that matches the screen',
   && Number(totalRow[4]) === Number(report.data.parts_cost),
   `csv total row: ${JSON.stringify(totalRow)}`);
 ok('the report is a screen with its own export',
-  appUrl.includes("{ key: 'report', label: 'Reports' }")
+  indexSrc.includes('id="additional-reports"') && !appUrl.includes("{ key: 'report', label: 'Reports' }")
   && /downloadReport/.test(readFileSync(join(root, 'public', 'report.js'), 'utf8')),
   'no sidebar entry or no export');
 
@@ -1466,8 +1478,8 @@ ok('a machine with nothing in it is an empty list, not an error',
 const histSrc = readFileSync(join(root, 'public', 'history.js'), 'utf8');
 ok('an empty machine, an empty range and a failed load read differently',
   /Nothing has been reported against/.test(histSrc)
-  && /Nothing was closed between those dates/.test(histSrc)
-  && /Could not load the history/.test(histSrc),
+  && /No history matches these filters/.test(clientSrc)
+  && /Could not load history/.test(clientSrc),
   'one of the three empty states is missing');
 const quickIndex = readFileSync(join(root, 'public', 'index.html'), 'utf8');
 const quickWork = readFileSync(join(root, 'public', 'work.js'), 'utf8');
@@ -2895,7 +2907,7 @@ ok('closure requires running and sends no hours or parts',
   /machine_running: true/.test(workSrc) && /wc-running/.test(workSrc)
   && !workSrc.includes("$('#wc-hours')") && !workSrc.includes("$('#wc-part')"));
 ok('the history row shows what was done under the job',
-  /row-sub/.test(histSrc) && /w\.resolution/.test(histSrc));
+  /\['resolution','What was done'\]/.test(readFileSync(join(root, 'public', 'history-tables-ui.js'), 'utf8')));
 
 // ---- creating a machine asks everything editing one asks -------------------
 // The creating dialog asked for four fields and the editor for seven, so a machine
@@ -3169,7 +3181,8 @@ const staleOwner = [indexEq, ...routeSources]
 ok('nothing a person reads calls the assignee an owner', staleOwner.length === 0,
   staleOwner.join(', '));
 ok('every screen and both files call it Assigned to',
-  (indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length === 3
+  (indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length === 2
+  && indexEq.includes('Assigned / recorded by')
   && indexEq.includes('<span>Assigned to</span>')
   && routeSources.every((src) => src.includes("label: 'Assigned to'")),
   `headers: ${(indexEq.match(/>Assigned to<span class="sort-mark"/g) || []).length}, labels: ${
@@ -3185,7 +3198,7 @@ ok('and the API still calls the field what it always did',
 // that" is a claim about the whole page, so it is checked table by table rather than
 // by looking for a `sort(` and hoping.
 const TABLE_IDS = ['equipment-rows', 'machine-history-rows', 'work-rows',
-  'history-rows', 'parts-rows', 'pm-rows', 'users-rows', 'report-rows'];
+  'parts-rows', 'pm-rows', 'users-rows', 'report-rows'];
 const headingKeys = (tbodyId) => {
   const at = indexEq.indexOf(`<tbody id="${tbodyId}">`);
   if (at < 0) return null;
@@ -3318,7 +3331,7 @@ ok('a missing account is reported as a sentence, not as "User not found"',
 // <select> with an answer that means "all" and a label a screen reader can read.
 const FILTERS = {
   'eq-filter': 'All machines',
-  'wo-status-filter': 'Any status',
+  'wo-status-filter': 'Open and in progress',
   'part-filter': 'All parts',
   'pm-filter': 'All schedules',
   'user-filter': 'All accounts',
