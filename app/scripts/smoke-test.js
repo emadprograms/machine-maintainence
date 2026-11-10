@@ -3014,13 +3014,13 @@ ok('taking the answer off brings the machine back without closing the job',
 
 // ---- the screen asks the question and shows the answer --------------------
 const workFormNow = (indexEq.match(/<dialog id="work-form"[\s\S]*?<\/dialog>/) || [''])[0];
-ok('the report form asks whether the machine stops, and defaults to still running',
-  workFormNow.includes('id="w-stops"')
-  && /<option value="0" selected>No — it is still running<\/option>/.test(workFormNow)
-  && /<option value="1">Yes — take it out of service<\/option>/.test(workFormNow),
-  workFormNow ? 'the question is missing or presumes an answer' : 'work-form is gone');
-ok('and the answer it gives is the one that is sent',
-  /stops_machine: \$\('#w-stops'\)\?\.value === '1'/.test(workSrc));
+ok('the report form uses the same accessible machine-state switch as stages',
+  /id="w-running" type="checkbox" role="switch"/.test(workFormNow)
+  && workFormNow.includes('aria-labelledby="w-running-question w-running-label"')
+  && workFormNow.includes('class="stage-machine"') && workFormNow.includes('class="toggle-track"')
+  && !/<select id="w-running"/.test(workFormNow));
+ok('the running switch sends the inverse stops-machine state',
+  /stops_machine: !\$\('#w-running'\)\.checked/.test(workSrc));
 ok('the row shows the number under the problem',
   /class="row-sub">\$\{esc\(w\.code/.test(workSrc));
 // The badge itself, not the words "stops the machine": the inline editor's option

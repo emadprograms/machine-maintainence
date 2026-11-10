@@ -235,12 +235,7 @@
                 <option value="high">High</option>
               </select>
             </label>
-            <label class="field"><span>Does this stop the machine?</span>
-              <select id="w-stops">
-                <option value="0" selected>No — it is still running</option>
-                <option value="1">Yes — take it out of service</option>
-              </select>
-            </label>
+            <div class="stage-machine"><div class="stage-machine-copy"><strong id="w-running-question">Machine status</strong><span id="w-running-help" class="hint">The state you record becomes the machine’s latest status.</span></div><label class="machine-toggle"><input id="w-running" type="checkbox" role="switch" aria-labelledby="w-running-question w-running-label" aria-describedby="w-running-help" onchange="workMachineToggleChanged()" disabled /><span class="toggle-track" aria-hidden="true"></span><strong id="w-running-label" class="toggle-status">Loading…</strong></label></div>
             <label class="field"><span>Reported by (optional)</span>
               <input id="w-reporter" placeholder="Who saw it — e.g. Ada on line 2" /></label>
             <label class="field field-wide"><span>Photo or video of the fault (optional)</span>

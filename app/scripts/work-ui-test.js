@@ -167,11 +167,17 @@ assert.equal(el('#w-owner').disabled, false);
 assert.match(el('#w-equipment').innerHTML, /Press/);
 assert.match(el('#w-equipment').innerHTML, /Conveyor/);
 assert.equal(el('#w-equipment').value, '1');
-assert.equal(el('#w-stops').value, '1'); // preselect this machine's reported state
+assert.equal(el('#w-running').checked, false); // preselect this machine's reported state
+assert.equal(el('#w-running-label').textContent, 'Out of service');
+assert.equal(el('#w-running').disabled, false);
 assert.equal(el('#w-create').disabled, false);
 el('#w-equipment').value = '2';
 work.syncWorkMachineState();
-assert.equal(el('#w-stops').value, '0');
+assert.equal(el('#w-running').checked, true);
+assert.equal(el('#w-running-label').textContent, 'Running');
+el('#w-running').checked = false; work.workMachineToggleChanged();
+assert.equal(el('#w-running-label').textContent, 'Out of service');
+el('#w-running').checked = true; work.workMachineToggleChanged();
 el('#w-title').value = '   ';
 const beforeBlank = requests.length;
 await work.addWorkOrder();
@@ -184,12 +190,15 @@ const created = JSON.parse(requests.findLast((r) => r.path === '/work-orders' &&
 assert.equal(created.title, 'Oil leak');
 assert.equal(created.equipment_id, '2');
 assert.equal(created.assigned_to, '2');
+assert.equal(created.stops_machine, false); // running is the checked state
 assert.equal(closed.at(-1), 'work-form');
 await work.openNewWork();
 el('#w-title').value = 'Unassigned fault';
 el('#w-owner').value = '';
 await work.addWorkOrder();
-assert.equal(JSON.parse(requests.findLast((r) => r.path === '/work-orders' && r.options.method === 'POST').options.body).assigned_to, null);
+const unassigned = JSON.parse(requests.findLast((r) => r.path === '/work-orders' && r.options.method === 'POST').options.body);
+assert.equal(unassigned.assigned_to, null);
+assert.equal(unassigned.stops_machine, true); // the selected down machine stays down
 // For a freshly open ticket, show the known empty state even while the
 // history request is pending; still verify the server before allowing a save.
 let releaseEmpty;
@@ -414,6 +423,7 @@ failMachines = true;
 await work.openNewWork();
 assert.equal(el('#w-create').disabled, true);
 assert.match(el('#w-machine-status').textContent, /machines unavailable/i);
+assert.equal(el('#w-running').disabled, true); assert.equal(el('#w-running-label').textContent, 'Unavailable');
 assert.equal(el('#w-machine-retry').hidden, false);
 // Retry in the same dialog, without navigating to Machines first.
 failMachines = false;
@@ -425,6 +435,7 @@ noMachines = true;
 await work.openNewWork();
 assert.equal(el('#w-create').disabled, true);
 assert.match(el('#w-machine-status').textContent, /no machines in service/i);
+assert.equal(el('#w-running').disabled, true); assert.equal(el('#w-running-label').textContent, 'Unavailable');
 assert.equal(el('#w-machine-retry').hidden, false);
 noMachines = false;
 await work.retryWorkMachines();
@@ -445,6 +456,9 @@ waitPeople = null;
 let releaseOldMachines;
 waitMachines = new Promise((resolve) => { releaseOldMachines = resolve; });
 const oldForm = work.openNewWork();
+assert.equal(el('#w-running').disabled, true);
+assert.equal(el('#w-running-label').textContent, 'Loading…');
+assert.equal(el('#w-create').disabled, true);
 waitMachines = null;
 await work.openNewWork();
 el('#w-equipment').value = '2';

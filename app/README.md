@@ -225,8 +225,8 @@ stored `role` values keep the word *user*, because everything else already speak
   A technician sees History on every row but not Edit, Retire or Delete; the server refuses
   those requests too, so the hidden button is not the protection.
 * **The latest explicit answer says whether the machine is running.** The report form
-  defaults to the selected machine's currently recorded state, and the stage dialog has
-  a red *Out of service* / green *Running* switch. A later report or update supersedes an
+  defaults to the selected machine's currently recorded state. Both the report form and
+  stage dialog use the same red *Out of service* / green *Running* switch. A later report or update supersedes an
   older one, even on a different work order. Closing requires a fresh confirmation that
   the machine is running, which is saved as the newest state event. Saving an unrelated work-order edit does not create a new state report.
   Retirement is a separate administrative state and takes precedence. On upgrade, the

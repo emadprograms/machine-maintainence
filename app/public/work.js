@@ -175,17 +175,21 @@ let workMachines = [];
 
 // Reporting starts with the selected machine's current state, not an accidental
 // "running" default that could overturn a more recent stoppage.
+export function workMachineToggleChanged() {
+  $('#w-running-label').textContent = $('#w-running').checked ? 'Running' : 'Out of service';
+}
 export function syncWorkMachineState() {
   const machine = workMachines.find((m) => String(m.id) === $('#w-equipment').value);
-  if (machine) $('#w-stops').value = machine.status === 'down' ? '1' : '0';
+  if (machine) { $('#w-running').checked = machine.status !== 'down'; workMachineToggleChanged(); }
 }
-window.syncWorkMachineState = syncWorkMachineState;
+Object.assign(window, { syncWorkMachineState, workMachineToggleChanged });
 
 export async function retryWorkMachines() {
   const formRun = workFormRun;
   const load = ++machineLoad;
   const picker = $('#w-equipment');
   picker.disabled = true;
+  $('#w-running').disabled = true; $('#w-running-label').textContent = 'Loading…';
   picker.innerHTML = '<option value="">Loading machines…</option>';
   $('#w-create').disabled = true;
   $('#w-machine-retry').hidden = true;
@@ -195,6 +199,7 @@ export async function retryWorkMachines() {
     if (formRun !== workFormRun || load !== machineLoad) return;
     if (!machines.length) {
       picker.innerHTML = '<option value="">No machines in service</option>';
+      $('#w-running-label').textContent = 'Unavailable';
       $('#w-machine-status').textContent = 'No machines in service. Add or restore a machine, then retry.';
       $('#w-machine-retry').hidden = false;
       return;
@@ -202,12 +207,13 @@ export async function retryWorkMachines() {
     workMachines = machines;
     picker.innerHTML = machines.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
     syncWorkMachineState();
-    picker.disabled = false;
+    picker.disabled = false; $('#w-running').disabled = false;
     $('#w-create').disabled = false;
     $('#w-machine-status').textContent = '';
   } catch (e) {
     if (formRun !== workFormRun || load !== machineLoad) return;
     picker.innerHTML = '<option value="">Could not load machines</option>';
+    $('#w-running-label').textContent = 'Unavailable';
     $('#w-machine-status').textContent = `Could not load machines: ${e.message}`;
     $('#w-machine-retry').hidden = false;
   }
@@ -251,7 +257,7 @@ export async function addWorkOrder() {
       reported_by: $('#w-reporter')?.value.trim() || null,
       // The ticket says whether the machine stops; the server does not guess from
       // the priority, and neither does this form.
-      stops_machine: $('#w-stops')?.value === '1',
+      stops_machine: !$('#w-running').checked,
     })});
     const file = $('#w-photo')?.files?.[0];
     if (file) {
