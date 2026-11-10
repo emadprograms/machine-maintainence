@@ -76,6 +76,7 @@ Check with `node --version`.
 | `work-lock.js` | Locks the original report when stages exist | — |
 | `stage-photos.js` | Stage photo validation and storage | 20 |
 | `scripts/smoke-test.js` | Starts a throwaway server and checks hundreds of behaviours | 3,645 |
+| `scripts/settings-ui-test.js` | Checks settings navigation, role restrictions and delayed settings loads | — |
 | `scripts/navigation-ui-test.js` | Exercises merged navigation, maintenance filters, picker retry and race handling | — |
 | `scripts/work-ui-test.js` | Exercises work-order UI interactions with a DOM and API double, invoked by the smoke suite | 611 |
 | `scripts/shell-ui-test.js` | Checks sidebar controls, keyboard, preference and failure handling | 45 |
@@ -145,8 +146,10 @@ photograph pushed that page past 600 lines.
 
 ### The screens
 
-`Dashboard` · `Machines` · `Work orders` · `Reports` · `Maintenance` ·
-`Spare parts` · `Admins & Technicians` (admins) · `Backup` (admins)
+`Dashboard` · `Machines` · `Work orders` · `Maintenance` · `Spare parts` · `Reports`
+
+The top-bar **Settings** button provides the workshop time zone and, for administrators,
+**Admins & Technicians** and **Backup**.
 
 `Admins & Technicians` has no public sign-up counterpart: accounts exist only if an admin
 creates them. The screen is named for the two roles it holds — the table, the route and the
@@ -490,7 +493,7 @@ means copying `photos/` too.
 
 ### Back up
 
-* Button on the **Backup** tab (admins only), or
+* Open **Settings → Backup** and select **Back up now** (admins only), or
 * `backup.bat`, or
 * Windows Task Scheduler → daily → `backup.bat`.
 

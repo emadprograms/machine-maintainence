@@ -436,6 +436,10 @@ th.sorted .sort-btn { color: var(--ink); }
 
 .settings-button { white-space: nowrap; }
 .settings-field { display: grid; gap: 6px; font-size: 13px; }
+.settings-admin { border-top: 1px solid var(--line, #ddd); margin-top: 16px; padding-top: 12px; display: grid; gap: 8px; }
+.settings-admin h4, .settings-admin p { margin: 0; }
+.settings-link { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; width: 100%; }
+.settings-link span { font-size: 12px; font-weight: 400; }
 #machine-cost-status { color: #8a4b08; margin-top: 8px; }
 #settings-status { position: absolute; right: 20px; top: 100%; background: #fff4f2; padding: 6px 10px; }
 @media (max-width: 600px) {

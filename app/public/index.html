@@ -474,7 +474,7 @@
           <h2>Admins &amp; Technicians</h2>
           <p class="page-sub">Who can sign in, and what they are allowed to do.</p>
         </div>
-        <button class="primary" onclick="openForm('users-form')">New account</button>
+        <div class="head-actions"><button class="ghost" type="button" onclick="openSettings()">Back to settings</button><button class="primary" onclick="openForm('users-form')">New account</button></div>
       </div>
       <div class="card">
         <div class="card-toolbar">
@@ -550,6 +550,7 @@
           <h2>Backup</h2>
           <p class="page-sub">Keep a copy of everything, in case this computer stops.</p>
         </div>
+        <button class="ghost" type="button" onclick="openSettings()">Back to settings</button>
       </div>
       <div class="card card-pad">
         <p class="muted">Writes a full copy into the <code>data</code> folder next to the
@@ -571,7 +572,14 @@
       <datalist id="time-zone-options"></datalist>
     </div>
     <p class="muted">Enter an IANA time zone, such as Asia/Bahrain. Dates and times use this zone, including daylight saving time.</p>
-    <p id="settings-permission" class="muted" hidden>Only administrators can change these settings.</p><p class="form-error error" role="alert"></p>
+    <p id="settings-permission" class="muted" hidden>Only administrators can change these settings.</p>
+    <div id="settings-admin" class="settings-admin" hidden>
+      <h4>Administration</h4>
+      <p class="muted">Save any time zone changes before opening another setting.</p>
+      <button class="ghost settings-link" type="button" onclick="openSettingsPage('users')"><strong>Admins &amp; Technicians</strong><span>Manage accounts and access</span></button>
+      <button class="ghost settings-link" type="button" onclick="openSettingsPage('backup')"><strong>Backup</strong><span>Save a database backup</span></button>
+    </div>
+    <p class="form-error error" role="alert"></p>
     <div class="sheet-foot"><button type="button" class="ghost" onclick="closeForm('app-settings')">Cancel</button><button type="button" id="settings-save" class="primary" onclick="saveSettings()">Save settings</button></div>
   </div>
 </dialog>

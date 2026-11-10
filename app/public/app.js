@@ -173,19 +173,17 @@ const PAGES = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'equipment', label: 'Machines' },
   { key: 'work', label: 'Work orders' },
-  { key: 'report', label: 'Reports' },
   { key: 'pm', label: 'Maintenance' },
   { key: 'parts', label: 'Spare parts' },
-  { key: 'users', label: 'Admins & Technicians', adminOnly: true },
-  { key: 'backup', label: 'Backup', adminOnly: true },
+  { key: 'report', label: 'Reports' },
+  { key: 'users', label: 'Admins & Technicians', adminOnly: true, settingsOnly: true },
+  { key: 'backup', label: 'Backup', adminOnly: true, settingsOnly: true },
 ];
 let currentPage = 'dashboard';
 let machineTab = 'list';
 
 function buildTabs(user) {
-  // Same PAGES array and the same adminOnly filter as before — the sidebar is a
-  // different rendering of the one list of screens, never a second list.
-  const visible = PAGES.filter((p) => !p.adminOnly || user.role === 'admin');
+  const visible = PAGES.filter((p) => !p.settingsOnly && (!p.adminOnly || user.role === 'admin'));
   shellReady.then((shell) => shell.renderShell({
     pages: visible,
     current: currentPage,
@@ -199,6 +197,8 @@ function navigatePage(key) {
 }
 
 async function showPage(key) {
+  const page = PAGES.find((p) => p.key === key);
+  if (!page || (page.adminOnly && window.me?.role !== 'admin')) return;
   currentPage = key;
   if (window.shell) window.shell.markCurrent(key);
   $$('section[data-page]').forEach((s) => s.classList.toggle('hidden', s.dataset.page !== key));
@@ -216,8 +216,6 @@ async function showPage(key) {
   if (currentPage === key) await loaders[key]?.();
 }
 
-// A single Machines section contains the current list and the workshop-wide
-// closed-job history. The per-machine history dialog remains available separately.
 function selectMachineTab(tab, load = true) {
   if (!['list', 'history'].includes(tab)) return;
   machineTab = tab;
@@ -265,6 +263,7 @@ async function openSettings() {
   $('#settings-save').disabled = true;
   $('#settings-save').hidden = !admin;
   $('#settings-permission').hidden = admin;
+  $('#settings-admin').hidden = !admin;
   input.value = timeKit?.getDisplayZone() || 'UTC';
   const options = $('#time-zone-options');
   if (!options.children.length) {
@@ -273,13 +272,20 @@ async function openSettings() {
   }
   try {
     const settings = await syncTimeZone();
-    if (run !== settingsLoad) return;
+    if (run !== settingsLoad || !$('#app-settings').open) return;
     input.value = settings.time_zone || 'UTC';
     input.dataset.original = input.value;
     input.disabled = false;
     $('#settings-save').disabled = false;
     input.focus();
-  } catch (error) { if (run === settingsLoad) formError('app-settings', `Could not load settings: ${error.message}. Close and try again.`); }
+  } catch (error) { if (run === settingsLoad && $('#app-settings').open) formError('app-settings', `Could not load settings: ${error.message}. Close and try again.`); }
+}
+
+function openSettingsPage(key) {
+  if (window.me?.role !== 'admin' || !['users', 'backup'].includes(key)) return;
+  ++settingsLoad; // A pending settings lookup must not refocus a closed dialog.
+  closeForm('app-settings');
+  return showPage(key);
 }
 
 async function saveSettings() {
@@ -494,7 +500,6 @@ async function pmDone(id) {
   // Send the date the technician actually chose. Sending {} was how the field
   // silently meant "today" no matter what it said.
   //
-  // The picker belongs to the visible maintenance row.
   const picker = $(`#pm-on-${id}`);
   const on = picker ? picker.value : today();
   try {

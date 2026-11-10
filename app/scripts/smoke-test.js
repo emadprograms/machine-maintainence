@@ -1096,6 +1096,10 @@ const navigationUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'nav
 ok('combined navigation and maintenance interactions', navigationUiTest.status === 0,
   navigationUiTest.stderr || navigationUiTest.stdout);
 
+const settingsUiTest = spawnSync(process.execPath, [join(root, 'scripts', 'settings-ui-test.js')], { cwd: root, encoding: 'utf8' });
+ok('settings navigation preserves sidebar order and role restrictions', settingsUiTest.status === 0,
+  settingsUiTest.stderr || settingsUiTest.stdout);
+
 console.log('\nPhase 11 — the shell');
 
 const shellSrc = readFileSync(join(root, 'public', 'shell.js'), 'utf8');
@@ -3271,7 +3275,7 @@ ok('marking a schedule done from Due soon does not depend on another table',
 // The screen lists people by role: administrators and technicians. "Users" is the
 // word the database uses, and the word leaked into the name of the screen.
 const SECTION_NAME = 'Admins & Technicians';
-const navLabel = (appSrc13.match(/\{ key: 'users', label: '([^']+)', adminOnly: true \}/) || [])[1];
+const navLabel = (appSrc13.match(/\{ key: 'users', label: '([^']+)', adminOnly: true, settingsOnly: true \}/) || [])[1];
 const pageHeading = (indexEq.match(/<section data-page="users"[\s\S]*?<h2>([^<]+)<\/h2>/) || [])[1];
 ok('the menu and the page heading give the section the same name',
   navLabel === SECTION_NAME && pageHeading === SECTION_NAME.replace('&', '&amp;'),
