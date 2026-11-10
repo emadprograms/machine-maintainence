@@ -1165,6 +1165,11 @@ const sidebarWidth = Number((sidebarStyle.match(/width:\s*(\d+)px/) || [])[1]);
 ok('the expanded sidebar uses a compact width and keeps its collapsed rail',
   sidebarWidth > 68 && sidebarWidth <= 170 && sidebarStyle.includes(`flex: 0 0 ${sidebarWidth}px`)
   && /#sidebar\.collapsed\s*\{[^}]*width:\s*68px;\s*flex-basis:\s*68px/.test(shellCss));
+ok('the compact brand and collapse button share one row',
+  /\.side-brand\s*\{[^}]*display:\s*flex;/.test(shellCss)
+  && !/\.side-brand\s*\{[^}]*flex-wrap:\s*wrap/.test(shellCss)
+  && /\.side-home\s*\{[^}]*flex:\s*1;/.test(shellCss)
+  && /\.side-toggle\s*\{[^}]*width:\s*30px/.test(shellCss));
 ok('the dashboard brand grows slightly on hover while respecting reduced motion',
   /prefers-reduced-motion:\s*no-preference/.test(shellCss)
   && /\.side-home:hover\s*\{[^}]*transform:\s*scale\(1\.035\)/.test(shellCss)
